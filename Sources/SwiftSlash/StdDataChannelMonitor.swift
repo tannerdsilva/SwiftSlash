@@ -1,4 +1,5 @@
 import Foundation
+import Cepoll
 
 internal class StdDataChannelMonitor {
 	typealias DataIntakeHandler = (Data) -> Void
@@ -15,7 +16,7 @@ internal class StdDataChannelMonitor {
 		}
 		let fh:Int32
 		
-		let mainGroup = DispatchGroup()
+		var epollStructure = epoll_data()
 		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
 		
 		var dataBuffer = Data()
@@ -26,7 +27,10 @@ internal class StdDataChannelMonitor {
 	
 		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
 			self.fh = fh
-
+			
+			self.epollStructure.data.fd = fh
+			self.epollStructure.events = Int32(EPOLLIN)
+			
 			self.triggerMode = triggerMode
 		
 			self.dataHandler = dataHandler
@@ -81,22 +85,22 @@ internal class StdDataChannelMonitor {
 		let main:DispatchQueue = DispatchQueue(label:".com.swiftslash.data-channel-monitor.")
 	}
 
+
+	let epoll = epoll_create1(0);
+	
 	let internalSync = DispatchQueue(label:"com.swiftslash.data-channel-monitor.global-instance.sync", target:swiftslashCaptainQueue)
 	let mainQueue = DispatchQueue(label:"com.swiftslash.data-channel-monitor.main.sync", target:swiftslashCaptainQueue)
-	var mainLoopRunning = false
+	var mainLoopLaunched = false
 
 	var readers = [Int32:IncomingChannel]()
 	var writers = [Int32:DataHandler]()
 
-	func registerInboundDataChannel(fh:Int32, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
-		internalSync.async(flags:[.barrier]) { [weak self, fd, handler] in
-			guard let self = self else {
-				return
-			}
+	func registerInboundDataChannel(fh:Int32, mode:IncomingChannel.TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
+		internalSync.sync(flags:[.barrier]) {
 			self.readers[fd] = IncomingChannel(fh:fh, dataHandler:dataHandler, terminationHandler:terminationHandler)
-			if (self.mainLoopRunning == false) {
+			if (self.mainLoopLaunched == false) {
 				//launch the main loop if it is not already running
-				self.mainLoopRunning = true
+				self.mainLoopLaunched = true
 				self.mainQueue.async { [weak self] in
 					guard let self = self else {
 						return
