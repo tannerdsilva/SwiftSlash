@@ -16,7 +16,7 @@ internal class StdDataChannelMonitor {
 		}
 		let fh:Int32
 		
-		var epollStructure = epoll_data()
+		var epollStructure = epoll_event()
 		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
 		
 		var dataBuffer = Data()
@@ -29,7 +29,7 @@ internal class StdDataChannelMonitor {
 			self.fh = fh
 			
 			self.epollStructure.data.fd = fh
-			self.epollStructure.events = Int32(EPOLLIN)
+			self.epollStructure.events = UInt32(EPOLLIN.rawValue) | UInt32(POLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 			
 			self.triggerMode = triggerMode
 		
@@ -46,10 +46,6 @@ internal class StdDataChannelMonitor {
 	
 		//this main loop is called as soon as 
 		private func mainLoop() {
-			mainGroup.enter()
-			defer {
-				mainGroup.leave()
-			}
 			do {
 				while try fh.pollReading(timeoutMilliseconds:-1) != .pipeTerm {
 					do {
@@ -57,7 +53,7 @@ internal class StdDataChannelMonitor {
 					} catch let error {
 						switch error {
 							case FileHandleError.error_pipe:
-								loopRun = false;
+								break;
 							default:
 								break;
 						}
@@ -80,11 +76,11 @@ internal class StdDataChannelMonitor {
 	}
 	
 	struct OutgoingHandler:Equatable {
-		let fh:Int32
-	
-		let main:DispatchQueue = DispatchQueue(label:".com.swiftslash.data-channel-monitor.")
+	//	let fh:Int32
+	//
+	//	let main:DispatchQueue = DispatchQueue(label:".com.swiftslash.data-channel-monitor.")
 	}
-
+//
 
 	let epoll = epoll_create1(0);
 	
@@ -93,11 +89,11 @@ internal class StdDataChannelMonitor {
 	var mainLoopLaunched = false
 
 	var readers = [Int32:IncomingChannel]()
-	var writers = [Int32:DataHandler]()
+	var writers = [Int32:OutgoingHandler]()
 
 	func registerInboundDataChannel(fh:Int32, mode:IncomingChannel.TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
 		internalSync.sync(flags:[.barrier]) {
-			self.readers[fd] = IncomingChannel(fh:fh, dataHandler:dataHandler, terminationHandler:terminationHandler)
+			self.readers[fh] = IncomingChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler)
 			if (self.mainLoopLaunched == false) {
 				//launch the main loop if it is not already running
 				self.mainLoopLaunched = true

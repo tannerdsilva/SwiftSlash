@@ -1,12 +1,6 @@
 import Foundation
 import Glibc
 
-//this is the queue that acts as the 'workload root' for the sub-queues that make up the SwiftSlash workload
-let swiftslashCaptainQueue = DispatchQueue(label:"com.swiftslash.global.captain", attributes:[.concurrent])
-
-//file handles and pipes are created and closed using this queue
-let fileHandleQueue = DispatchQueue(label:"com.swiftslash.global.fh_admin", target:swiftslashCaptainQueue)
-
 internal enum FileHandleError:Error {
 	case pollingError;
 	case readAllocationError;
@@ -231,12 +225,3 @@ extension Int32 {
 		return returnStruct
 	}
 }
-
-var myPipe = PosixPipe()
-let writeLeftovers = try myPipe.writing.writeFileHandle("foo")
-print("Successfully wrote the thing. '\(writeLeftovers)'")
-let capturedData = try myPipe.reading.readFileHandle()
-print("\(try myPipe.reading.pollReading(500))")
-let capAsString = String(data:capturedData, encoding:.utf8)
-
-print("\(capAsString)")
