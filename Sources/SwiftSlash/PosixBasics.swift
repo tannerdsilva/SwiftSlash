@@ -14,6 +14,7 @@ internal enum FileHandleError:Error {
 	case error_invalid;
 	case error_io;
 	case error_nospace;
+	
 	case error_pipe;
 }
 
@@ -61,80 +62,80 @@ internal struct PosixPipe {
 	}
 }
 
-internal enum PollResult {
-	case readable
-	case writable
-	case pipeTerm
-	case waiting
-}
+//internal enum PollResult {
+//	case readable
+//	case writable
+//	case pipeTerm
+//	case waiting
+//}
 
 extension Array where Element == pollfd {
-	internal func poll(timeoutMicroseconds:Int32) throws -> [Int32:PollResult] {
-		let fdsToMonitor = UnsafeMutablePointer<pollfd>.allocate(capacity:self.count)
-		defer {
-			fdsToMonitor.deallocate()
-		}
-		for (i, curInstruction) in enumerated() {
-			fdsToMonitor[i] = curInstruction
-		}
-		guard Glibc.poll(fdsToMonitor, nfds_t(self.count), timeoutMicroseconds) >= 0 else {
-			print("Poll failed to execute")
-			throw FileHandleError.pollingError
-		}
-		var i = 0
-		var pollResultBuild = [Int32:PollResult]()
-		while i < self.count {
-			let returnEvents = fdsToMonitor[i].revents
-			if returnEvents & Int16(POLLIN) != 0 {
-				pollResultBuild[fdsToMonitor[i].fd] = PollResult.readable
-			} else if returnEvents & Int16(POLLOUT) != 0 {
-				pollResultBuild[fdsToMonitor[i].fd] = PollResult.writable
-			} else if returnEvents & Int16(POLLERR) != 0 || returnEvents & Int16(POLLHUP) != 0 {
-				pollResultBuild[fdsToMonitor[i].fd] = PollResult.pipeTerm
-			} else {
-				pollResultBuild[fdsToMonitor[i].fd] = PollResult.waiting
-			}
-			i = i + 1
-		}
-		return pollResultBuild
-	}
+//	internal func poll(timeoutMicroseconds:Int32) throws -> [Int32:PollResult] {
+//		let fdsToMonitor = UnsafeMutablePointer<pollfd>.allocate(capacity:self.count)
+//		defer {
+//			fdsToMonitor.deallocate()
+//		}
+//		for (i, curInstruction) in enumerated() {
+//			fdsToMonitor[i] = curInstruction
+//		}
+//		guard Glibc.poll(fdsToMonitor, nfds_t(self.count), timeoutMicroseconds) >= 0 else {
+//			print("Poll failed to execute")
+//			throw FileHandleError.pollingError
+//		}
+//		var i = 0
+//		var pollResultBuild = [Int32:PollResult]()
+//		while i < self.count {
+//			let returnEvents = fdsToMonitor[i].revents
+//			if returnEvents & Int16(POLLIN) != 0 {
+//				pollResultBuild[fdsToMonitor[i].fd] = PollResult.readable
+//			} else if returnEvents & Int16(POLLOUT) != 0 {
+//				pollResultBuild[fdsToMonitor[i].fd] = PollResult.writable
+//			} else if returnEvents & Int16(POLLERR) != 0 || returnEvents & Int16(POLLHUP) != 0 {
+//				pollResultBuild[fdsToMonitor[i].fd] = PollResult.pipeTerm
+//			} else {
+//				pollResultBuild[fdsToMonitor[i].fd] = PollResult.waiting
+//			}
+//			i = i + 1
+//		}
+//		return pollResultBuild
+//	}
 }
 
 extension Int32 {
-	internal func pollReading(timeoutMilliseconds:Int32 = 0) throws -> PollResult {
-		var pfd = self.pollfd_read()
-		let pollResult = Glibc.poll(&pfd, nfds_t(1), timeoutMilliseconds)
-		guard pollResult >= 0 else { 
-			throw FileHandleError.pollingError
-		}
-		let pollinFlag = Int16(POLLIN)
-		let pollClosedFlag = Int16(POLLHUP)
-		if (pfd.revents & pollinFlag == pollinFlag) {
-			return PollResult.readable
-		} else if (pfd.revents & pollClosedFlag == pollClosedFlag) {
-			return PollResult.pipeTerm
-		} else {
-			return PollResult.waiting
-		}
-	}
-	
-	internal func pollWriting(timeoutMilliseconds:Int32 = 0) throws -> PollResult {
-		var pfd = self.pollfd_write()
-		let pollResult = Glibc.poll(&pfd, nfds_t(1), timeoutMilliseconds)
-		guard pollResult >= 0 else { 
-			throw FileHandleError.pollingError
-		}
-		let polloutFlag = Int16(POLLOUT)
-		let pollClosedFlag = Int16(POLLERR)
-		if (pfd.revents & polloutFlag == polloutFlag) {
-			return PollResult.writable
-		} else if (pfd.revents & pollClosedFlag == pollClosedFlag) {
-			return PollResult.pipeTerm
-		} else {
-			return PollResult.waiting
-		}
-	}
-	
+//	internal func pollReading(timeoutMilliseconds:Int32 = 0) throws -> PollResult {
+//		var pfd = self.pollfd_read()
+//		let pollResult = Glibc.poll(&pfd, nfds_t(1), timeoutMilliseconds)
+//		guard pollResult >= 0 else { 
+//			throw FileHandleError.pollingError
+//		}
+//		let pollinFlag = Int16(POLLIN)
+//		let pollClosedFlag = Int16(POLLHUP)
+//		if (pfd.revents & pollinFlag == pollinFlag) {
+//			return PollResult.readable
+//		} else if (pfd.revents & pollClosedFlag == pollClosedFlag) {
+//			return PollResult.pipeTerm
+//		} else {
+//			return PollResult.waiting
+//		}
+//	}
+//	
+//	internal func pollWriting(timeoutMilliseconds:Int32 = 0) throws -> PollResult {
+//		var pfd = self.pollfd_write()
+//		let pollResult = Glibc.poll(&pfd, nfds_t(1), timeoutMilliseconds)
+//		guard pollResult >= 0 else { 
+//			throw FileHandleError.pollingError
+//		}
+//		let polloutFlag = Int16(POLLOUT)
+//		let pollClosedFlag = Int16(POLLERR)
+//		if (pfd.revents & polloutFlag == polloutFlag) {
+//			return PollResult.writable
+//		} else if (pfd.revents & pollClosedFlag == pollClosedFlag) {
+//			return PollResult.pipeTerm
+//		} else {
+//			return PollResult.waiting
+//		}
+//	}
+//	
 	internal func readFileHandle() throws -> Data {
 		guard let readAllocation = malloc(Int(PIPE_BUF) + 1) else {
 			throw FileHandleError.error_unknown
@@ -170,8 +171,6 @@ extension Int32 {
 	
 	internal func writeFileHandle(_ inputString:String) throws -> String {
 		if let utf8Data = inputString.data(using:.utf8) {
-			print("data converted")
-			print("\(utf8Data)")
 			return try String(data:self.writeFileHandle(utf8Data), encoding:.utf8) ?? ""
 		}
 		return ""
@@ -183,7 +182,6 @@ extension Int32 {
 		}
 		let prefixedData = inputData.prefix(Int(PIPE_BUF))
 		let amountWritten = prefixedData.withUnsafeBytes { (startBuff) -> Int in 
-			print("attempting to write \(prefixedData.count) bytes")
 			return write(self, startBuff.baseAddress, prefixedData.count)
 		}
 		guard amountWritten > -1 else {
@@ -210,18 +208,18 @@ extension Int32 {
 		}
 		return inputData.suffix(from:amountWritten)
 	}
-	
-	fileprivate func pollfd_read() -> pollfd {
-		var returnStruct = pollfd()
-		returnStruct.fd = self
-		returnStruct.events = Int16(POLLIN)
-		return returnStruct
-	}
-	
-	fileprivate func pollfd_write() -> pollfd {
-		var returnStruct = pollfd()
-		returnStruct.fd = self
-		returnStruct.events = Int16(POLLOUT)
-		return returnStruct
-	}
+//	
+//	fileprivate func pollfd_read() -> pollfd {
+//		var returnStruct = pollfd()
+//		returnStruct.fd = self
+//		returnStruct.events = Int16(POLLIN)
+//		return returnStruct
+//	}
+//	
+//	fileprivate func pollfd_write() -> pollfd {
+//		var returnStruct = pollfd()
+//		returnStruct.fd = self
+//		returnStruct.events = Int16(POLLOUT)
+//		return returnStruct
+//	}
 }
