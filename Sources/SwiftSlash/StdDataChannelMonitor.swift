@@ -1,14 +1,139 @@
 import Foundation
 import Cepoll
 
-internal class StdDataChannelMonitor {
-	typealias DataIntakeHandler = (Data) -> Void
-	typealias GenericHandler = () -> Void
+protocol FileHandleOwner {
+	func handleEndedLifecycle(_ fh:Int32)
+}
+
+internal class StdDataChannelMonitor:FIleHandleOwner {
+	
+	typealias InboundDataHandler = (Data) -> Void
+	typealias OutboundDataHandler = () -> Data
+	typealias DataChannelTerminationHander = () -> Void
 	
 	static let dataCaptureQueue = DispatchQueue(label:"com.swiftslash.global.data-channel-monitor.reading", attributes:[.concurrent], target:swiftslashCaptainQueue)
-	static let dataCallbackQueue = DispatchQueue(label:"com.swiftslash.global.data-channel-monitor.writing", attributes:[.concurrent], target:swiftslashCaptainQueue)
+	static let dataBroadcastQueue = DispatchQueue(label:"com.swiftslash.global.data-channel-monitor.writing", attributes:[.concurrent], target:swiftslashCaptainQueue)
 	
-	class IncomingChannel:Equatable {
+	private class IncomingDataChannel {
+		enum TriggerMode {
+			case lineBreaks
+			case immediate
+		}
+		
+		//defined on initialization
+		private let inboundHandler:InboundDataHandler
+		private let terminationHandler:DataChannelTerminationHandler
+		let fh:Int32
+		let triggerMode:TriggerMode
+		let epollStructure:epoll_event
+		weak let manager:FileHandleOwner
+
+		private var asyncCallbackScheduled = false
+		private var callbackFires = [Data]()
+		private var dataBuffer = Data()
+		
+		//workload queues
+		private let internalSync = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
+		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
+		private let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.callback", target:dataCaptureQueue)
+		
+		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(OutboundDataHandler)) {
+			self.fh = fh
+			
+			var buildEpoll = epoll_event()
+			buildEpoll.data.fd = fh
+			buildEpoll.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+			self.epollStructure = buildEpoll
+			
+			self.inboundHandler = dataHandler
+			self.terminationHandler = terminationHandler
+		}
+		
+		func initiateDataCaptureIteration(terminate:Bool) {
+			captureQueue.async { [weak self] in
+				guard let self = self else {
+					return
+				}
+				
+				//capture the data
+				do {
+					while let captureData = try self.fh.readFileHandle() {
+						self.dataBuffer.append(captureData)
+					}
+				} catch let error {
+					print("IO ERROR: \(error)")
+				}
+				
+				//parse the data based on the triggering mode
+				switch triggerMode {
+					case .lineBreaks:
+						var shouldParse = dataBuffer.withUnsafeBytes { unsafeBuffer in
+							var i = 0
+							while (i < dataBuffer.count) { 
+								if (unsafeBuffer[i] == 10 || unsafeBuffer[i] == 13) {
+									return true
+								}
+								i = i + 1;
+							}
+							return false
+						}
+						
+						switch shouldParse {
+							case true:
+								let parsedLines = dataBuffer.cutLines(flush:terminate)
+								if parsedLines.lines != nil && parsedLines.lines!.count != 0 {
+									internalSync.sync {
+										//I dont like how I've done this, I would rather call a mutating function
+										dataBuffer = dataBuffer[parsedLines.cut..<dataBuffer.endIndex]
+										callbackFires.append(contentsOf:parsedLines.lines!)
+										if asyncCallbackScheduled == false {
+											asyncCallbackScheduled = true
+											self.scheduleAsyncCallback()
+										}
+									}
+								}
+							case false:
+								
+						}
+					case .immediate:
+						internalSync.sync {
+							callbackFires.append(dataBuffer)
+							self.dataBuffer.removeAll(keepingCapacity:true)
+							self.scheduleAsyncCallback()
+						}
+				}
+			}
+		}
+		
+		func scheduleAsyncCallback() {
+			self.callbackQueue.async { [weak self] in
+				guard let self = self else {
+					return
+				}
+				var dataForCallback = internalSync.sync {
+					defer {
+						self.callbackFires.removeAll(keepingCapacity:true)
+					}
+					return self.callbackFires
+				}
+				//if trigger mode is immediate (unparsed), collapse the callback fires into a single fire with all the data appended
+				if triggerMode == .immediate {
+					var singleData = Data()
+					for (_, curData) in self.callbackFires.enumerated() {
+						singleData.append(curData)
+					}
+					dataForCallback = [singleData]
+				}
+				
+				//fire the intake handler
+				for (_, curCallbackChunk) in dataForCallback.enumerated() {
+					self.inboundHandler(curCallbackChunk)
+				}
+			}
+		}
+	}
+	
+	class OldIncomingDataChannel:Equatable {
 		enum TriggerMode {
 			case lineBreakParsed;
 			case lineBreakUnparsed;
@@ -18,10 +143,13 @@ internal class StdDataChannelMonitor {
 		let fh:Int32
 		
 		var epollStructure = epoll_event()
+		
+		//asynchronous utilities
 		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
 		let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.callback", target:dataCallbackQueue)
-		
 		let runningGroup = DispatchGroup()
+		
+		//this is where incoming data that has not been handled by the data handler has been stored
 		var dataBuffer = Data()
 	
 		let triggerMode:TriggerMode
@@ -41,13 +169,13 @@ internal class StdDataChannelMonitor {
 		}
 		
 		//this is called by the owning function
-		func readIncomingData() {
+		func readIncomingData(flushMode:Bool = false) {
 			mainQueue.async { [weak self] in 
 				guard let self = self else {
 					return
 				}
 				self.runningGroup.enter()
-				self.fireReadEvent()
+				self.fireReadEvent(closing:flushMode)
 				self.runningGroup.leave()
 			}
 		}
@@ -116,7 +244,7 @@ internal class StdDataChannelMonitor {
 			}
 		}
 	
-		static func == (lhs:IncomingChannel, rhs:IncomingChannel) -> Bool {
+		static func == (lhs:IncomingDataChannel, rhs:IncomingDataChannel) -> Bool {
 			if lhs.fh == rhs.fh {
 				return true
 			} else {
@@ -129,10 +257,10 @@ internal class StdDataChannelMonitor {
 		}
 	}
 	
-	struct OutgoingHandler:Equatable {
-	//	let fh:Int32
-	//
-	//	let main:DispatchQueue = DispatchQueue(label:".com.swiftslash.data-channel-monitor.")
+	class OutgoingDataChannel:Equatable, Hashable {
+		var fh:Int32
+		
+		let internalSync = DispatchQueue(label:"com.swiftslash.") 
 	}
 
 	let epoll = epoll_create1(0);
@@ -140,13 +268,6 @@ internal class StdDataChannelMonitor {
 	let mainQueue = DispatchQueue(label:"com.swiftslash.data-channel-monitor.main.sync", target:swiftslashCaptainQueue)
 	var mainLoopLaunched = false
 	
-	//`EventMode` is used by the main loop of this object
-	private enum EventMode {
-		case readableEvent
-		case writableEvent
-		case readingClosed
-		case writingClosed
-	}
 	//When events are received from the epoll loop, the workloads to dispatch concurrent workloads into this queue
 	let events = DispatchQueue(label:"com.swiftslash.data-channel-monitor.events", attributes:[.concurrent], target:swiftslashCaptainQueue)
 
@@ -154,8 +275,8 @@ internal class StdDataChannelMonitor {
 	var currentAllocationSize = 32
 	var targetAllocationSize = 32
 	var currentAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
-	var readers = [Int32:IncomingChannel]()
-	var writers = [Int32:OutgoingHandler]()
+	var readers = [Int32:IncomingDataChannel]()
+	var writers = [Int32:OutgoingDataHandler]()
 
 	private func adjustTargetAllocations() {
 		if (((self.readers.count + self.writers.count) * 2) > targetAllocationSize) {
@@ -169,12 +290,12 @@ internal class StdDataChannelMonitor {
 		}
 	}
 	
-	func registerInboundDataChannel(fh:Int32, mode:IncomingChannel.TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) throws {
+	func registerInboundDataChannel(fh:Int32, mode:IncomingDataChannel.TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) throws {
 		internalSync.async { [weak self] in
 			guard let self = self else {
 				return
 			}
-			self.readers[fh] = IncomingChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler)
+			self.readers[fh] = IncomingDataChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler)
 			self.adjustTargetAllocations()
 			if (self.mainLoopLaunched == false) {
 				//launch the main loop if it is not already running
@@ -188,22 +309,49 @@ internal class StdDataChannelMonitor {
 			}
 		}
 	}
+	
+	func scheduleOutboundWrite(fh:Int32, dataIntake:@escaping(DataWritingHandler)
 
 	func mainLoop() {
+	
 		var handleEvents = [Int32:EventMode]()
 		while true {
+			/*
+				THIS IS THE MAIN LOOP: let us discuss what this loop is doing
+				This main loop can be broken down into two primary phases
+				=============================================================
+				Phase 1: (synchronized with `internalSync` queue)
+					Phase 1 is internally synchronized with the class's primary body of instance variables
+					During this phase, any pending handle events that have been written to the `handleEvents` variable passed are passed to and processed asynchronously by the individual `IncomingDataChannel` objects. During this phase, these asynchronous events are triggered and fired
+					During this phase, the current allocation size of the `epoll_event` buffer is resized to the target allocation size.
+					The internally synchronized block is responsible for returning two variables:
+						1. The pointer to the current allocated buffer that can be passed to `epoll_wait() in the next phase
+						2. The size of the currently allocated buffer. this is also passed to `epoll_wait()` in the next phase
+				Phase 2: (unsynchronized)
+					Phase to consists of calling `epoll_wait()` and parsing the results of the call
+			*/
 			let (readAllocation, allocationSize) = internalSync.sync { () -> (UnsafeMutablePointer<epoll_event>, Int) in
 				for (_, curEvent) in handleEvents.enumerated() {
 					switch curEvent.value {
 						case .readableEvent:
 							if readers[curEvent.key] != nil {
-								readers[curEvent.key]!.readIncomingData() 
+								readers[curEvent.key]!.readIncomingData(flushMode:false) 
+							} else {
+								print("`epoll_wait()` received an event for a file handle not stored in this instance.")
 							}
 						case .writableEvent:
-						
+							break;	//TODO
+							if writers[curEvent.key] != nil {
+								writers[curEvent.key]!.write
+							}
 						case .readingClosed:
-						
+							if readers[curEvent.key] != nil {
+								readers[curEvent.key]!.readIncomingData(flushMode:true)
+							} else {
+								print("`epoll_wait()` received an event for a file handle not stored in this instance.")
+							}
 						case .writingClosed:
+							break; //TODO
 							
 					}
 				}
@@ -228,12 +376,16 @@ internal class StdDataChannelMonitor {
 					let currentEvent = readAllocation[i]
 					if (currentEvent.events & UInt32(EPOLLIN.rawValue) != 0) {
 						//read data available
+						handleEvents[currentEvent.data.fd] = .readableEvent
 					} else if (currentEvent.events & UInt32(POLLHUP.rawValue) != 0) {
 						//reading handle closed
+						handleEvents[currentEvent.data.fd] = .readingClosed
 					} else if (currentEvent.events & UInt32(EPOLLOUT.rawValue) != 0) {
 						//writing available
+						handleEvents[currentEvent.data.fd] = .writableEvent
 					} else if (currentEvent.events & UInt32(EPOLLERR.rawValue) != 0) {
-					
+						//writing handle closed
+						handleEvents[currentEvent.data.fd] = .writingClosed
 					}
 				
 					i = i + 1;
