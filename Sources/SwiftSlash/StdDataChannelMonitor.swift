@@ -87,9 +87,8 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 								let parsedLines = dataBuffer.cutLines(flush:terminate)
 								if parsedLines.lines != nil && parsedLines.lines!.count != 0 {
 									internalSync.sync {
-										//I dont like how I've done this, I would rather call a mutating function
-										dataBuffer = dataBuffer[parsedLines.cut..<dataBuffer.endIndex]
-										callbackFires.append(contentsOf:parsedLines.lines!)
+										dataBuffer = dataBuffer.suffix(from:parsedLines.cut)
+										callbackFires.append(contentsOf:parsedLines.lines!) //the parsed lines need to be fired against the data handler
 										if asyncCallbackScheduled == false {
 											asyncCallbackScheduled = true
 											self.scheduleAsyncCallback()
@@ -97,7 +96,7 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 									}
 								}
 							case false:
-								
+								break;
 						}
 					case .immediate:
 						internalSync.sync {
@@ -110,24 +109,27 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		}
 		
 		func scheduleAsyncCallback() {
-			self.flightGroup.enter();
+			self.flightGroup.enter()
 			self.callbackQueue.async { [weak self] in
 				guard let self = self else {
 					return
 				}
 				defer {
-					self.flightGroup.leave();
+					self.flightGroup.leave()
 				}
+				
+				//capture the data that needs to fire against the incoming data handler
 				var dataForCallback = internalSync.sync {
 					defer {
 						self.callbackFires.removeAll(keepingCapacity:true)
 					}
 					return self.callbackFires
 				}
+				
 				//if trigger mode is immediate (unparsed), collapse the callback fires into a single fire with all the data appended
 				if triggerMode == .immediate {
 					var singleData = Data()
-					for (_, curData) in self.callbackFires.enumerated() {
+					for (_, curData) in dataForCallback.enumerated() {
 						singleData.append(curData)
 					}
 					dataForCallback = [singleData]
@@ -188,7 +190,6 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 			}
 		}
 	
-		//this main loop is called as soon as 
 		private func fireReadEvent(closing:Bool) {
 			//capture the data from this file handle
 			do {
