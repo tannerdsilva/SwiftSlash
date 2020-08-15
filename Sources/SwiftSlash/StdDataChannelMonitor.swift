@@ -36,6 +36,7 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		private let internalSync = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
 		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
 		private let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.callback", target:dataCaptureQueue)
+		private let flightGroup = DispatchGroup();
 		
 		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(OutboundDataHandler)) {
 			self.fh = fh
@@ -50,11 +51,14 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		}
 		
 		func initiateDataCaptureIteration(terminate:Bool) {
+			self.flightGroup.enter();
 			captureQueue.async { [weak self] in
 				guard let self = self else {
 					return
 				}
-				
+				defer {
+					self.flightGroup.leave()
+				}
 				//capture the data
 				do {
 					while let captureData = try self.fh.readFileHandle() {
@@ -106,9 +110,13 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		}
 		
 		func scheduleAsyncCallback() {
+			self.flightGroup.enter();
 			self.callbackQueue.async { [weak self] in
 				guard let self = self else {
 					return
+				}
+				defer {
+					self.flightGroup.leave();
 				}
 				var dataForCallback = internalSync.sync {
 					defer {
