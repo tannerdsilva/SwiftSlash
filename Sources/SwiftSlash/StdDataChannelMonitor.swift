@@ -64,6 +64,8 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 					while let captureData = try self.fh.readFileHandle() {
 						self.dataBuffer.append(captureData)
 					}
+				} catch FileHandleError.error_again, FileHandleError.error_wouldblock {
+					//do nothing
 				} catch let error {
 					print("IO ERROR: \(error)")
 				}
@@ -143,6 +145,7 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		}
 	}
 	
+<<<<<<< Updated upstream
 	class OldIncomingDataChannel:Equatable {
 		enum TriggerMode {
 			case lineBreakParsed;
@@ -265,6 +268,131 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 			hasher.combine(fh)
 		}
 	}
+=======
+//	class OldIncomingDataChannel:Equatable {
+//		enum TriggerMode {
+//			case lineBreakParsed;
+//			case lineBreakUnparsed;
+//			case immediate;
+//		}
+//		
+//		let fh:Int32
+//		
+//		var epollStructure = epoll_event()
+//		
+//		//asynchronous utilities
+//		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
+//		let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.callback", target:dataCallbackQueue)
+//		let runningGroup = DispatchGroup()
+//		
+//		//this is where incoming data that has not been handled by the data handler has been stored
+//		var dataBuffer = Data()
+//	
+//		let triggerMode:TriggerMode
+//		let dataHandler:DataIntakeHandler
+//		let terminationHandler:GenericHandler
+//	
+//		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
+//			self.fh = fh
+//			
+//			self.epollStructure.data.fd = fh
+//			self.epollStructure.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+//			
+//			self.triggerMode = triggerMode
+//		
+//			self.dataHandler = dataHandler
+//			self.terminationHandler = terminationHandler
+//		}
+//		
+//		//this is called by the owning function
+//		func readIncomingData(flushMode:Bool = false) {
+//			mainQueue.async { [weak self] in 
+//				guard let self = self else {
+//					return
+//				}
+//				self.runningGroup.enter()
+//				self.fireReadEvent(closing:flushMode)
+//				self.runningGroup.leave()
+//			}
+//		}
+//	
+//		//this main loop is called as soon as 
+//		private func fireReadEvent(closing:Bool) {
+//			//capture the data from this file handle
+//			do {
+//				while let capturedData = try self.fh.readFileHandle() {
+//					self.dataBuffer.append(capturedData)
+//				}
+//			} catch FileHandleError.error_pipe {
+//			} catch FileHandleError.error_again, FileHandleError.error_wouldblock {
+//			} catch let error {
+//				print("IO ERROR: \(error)")
+//			}
+//			
+//			//fire the data handler based on our triggering mode
+//			switch triggerMode {
+//				case .lineBreakParsed:
+//				case .lineBreakUnparsed:
+//					//parse the data buffer for lines
+//					var shouldParse = dataBuffer.withUnsafeBytes { unsafeBuffer in
+//						var i = 0
+//						while (i < dataBuffer.count) {
+//							if (unsafeBuffer[i] == 10 || unsafeBuffer[i] == 13) {
+//								return true
+//							}
+//							i = i + 1;
+//						}
+//						return false
+//					}
+//					if closing == true { 
+//						shouldParse = true
+//					}
+//					//trigger the data handler for the lines we have picked up.
+//					switch shouldParse {
+//						case true:
+//							let lineParse = dataBuffer.cutLines(flush:closing)
+//							if lineParse.lines != nil {
+//								self.callbackQueue.async { [weak self, pl = lineParse.lines] in
+//									guard let self = self else {
+//										return
+//									}
+//									for (_, curLine) in pl!.enumerated() {
+//										dataHandler(curLine)
+//									}
+//								}
+//								
+//							}
+//							if closing == false {
+//								let cutCapture = dataBuffer[lineParse.cut..<dataBuffer.endIndex]
+//								dataBuffer.removeAll(keepingCapacity:true)
+//								dataBuffer.append(cutCapture)
+//							} else {
+//								dataBuffer.removeAll(keepingCapacity:false)
+//							}
+//							
+//						case false:
+//							break;
+//					}
+//				case .immediate:
+//					//immediate data handling mode is far simpler
+//					dataHandler(self.dataBuffer)
+//					dataBuffer.removeAll(keepingCapacity:true)
+//			}
+//		}
+//	
+//		static func == (lhs:IncomingDataChannel, rhs:IncomingDataChannel) -> Bool {
+//			if lhs.fh == rhs.fh {
+//				return true
+//			} else {
+//				return false
+//			}
+//		}
+//	
+//		func hash(into hasher:inout Hasher) {
+//			hasher.combine(fh)
+//		}
+//	}
+>>>>>>> Stashed changes
 	
 	class OutgoingDataChannel:Equatable, Hashable {
 		var fh:Int32
