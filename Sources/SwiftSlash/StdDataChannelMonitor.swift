@@ -34,11 +34,11 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 		
 		//workload queues
 		private let internalSync = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
-		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.sync", target:dataCaptureQueue)
+		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.capture", target:dataCaptureQueue)
 		private let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.callback", target:dataCaptureQueue)
 		private let flightGroup = DispatchGroup();
 		
-		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(OutboundDataHandler)) {
+		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(OutboundDataHandler), manager:FileHandleOwner) {
 			self.fh = fh
 			
 			var buildEpoll = epoll_event()
@@ -48,6 +48,8 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 			
 			self.inboundHandler = dataHandler
 			self.terminationHandler = terminationHandler
+			
+			self.manager = manager
 		}
 		
 		func initiateDataCaptureIteration(terminate:Bool) {
@@ -60,12 +62,15 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 					self.flightGroup.leave()
 				}
 				//capture the data
+				var didReadTerminate = false
 				do {
 					while let captureData = try self.fh.readFileHandle() {
 						self.dataBuffer.append(captureData)
 					}
 				} catch FileHandleError.error_again, FileHandleError.error_wouldblock {
 					//do nothing
+				} catch FileHandleError.error_pipe {
+					didReadTerminate = true
 				} catch let error {
 					print("IO ERROR: \(error)")
 				}
@@ -143,261 +148,43 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 				}
 			}
 		}
-	}
-	
-<<<<<<< Updated upstream
-	class OldIncomingDataChannel:Equatable {
-		enum TriggerMode {
-			case lineBreakParsed;
-			case lineBreakUnparsed;
-			case immediate;
-		}
 		
-		let fh:Int32
-		
-		var epollStructure = epoll_event()
-		
-		//asynchronous utilities
-		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
-		let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.callback", target:dataCallbackQueue)
-		let runningGroup = DispatchGroup()
-		
-		//this is where incoming data that has not been handled by the data handler has been stored
-		var dataBuffer = Data()
-	
-		let triggerMode:TriggerMode
-		let dataHandler:DataIntakeHandler
-		let terminationHandler:GenericHandler
-	
-		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
-			self.fh = fh
-			
-			self.epollStructure.data.fd = fh
-			self.epollStructure.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
-			
-			self.triggerMode = triggerMode
-		
-			self.dataHandler = dataHandler
-			self.terminationHandler = terminationHandler
-		}
-		
-		//this is called by the owning function
-		func readIncomingData(flushMode:Bool = false) {
-			mainQueue.async { [weak self] in 
-				guard let self = self else {
-					return
-				}
-				self.runningGroup.enter()
-				self.fireReadEvent(closing:flushMode)
-				self.runningGroup.leave()
+		func scheduleAsyncTermination() {
+			self.flightGroup.enter()
+			self.callbackQueue.async { [weak self] in
+				
 			}
-		}
-	
-		private func fireReadEvent(closing:Bool) {
-			//capture the data from this file handle
-			do {
-				while let capturedData = try self.fh.readFileHandle() {
-					self.dataBuffer.append(capturedData)
-				}
-			} catch FileHandleError.error_pipe {
-			} catch FileHandleError.error_again, FileHandleError.error_wouldblock {
-			} catch let error {
-				print("IO ERROR: \(error)")
-			}
-			
-			//fire the data handler based on our triggering mode
-			switch triggerMode {
-				case .lineBreakParsed:
-				case .lineBreakUnparsed:
-					//parse the data buffer for lines
-					var shouldParse = dataBuffer.withUnsafeBytes { unsafeBuffer in
-						var i = 0
-						while (i < dataBuffer.count) {
-							if (unsafeBuffer[i] == 10 || unsafeBuffer[i] == 13) {
-								return true
-							}
-							i = i + 1;
-						}
-						return false
-					}
-					if closing == true { 
-						shouldParse = true
-					}
-					//trigger the data handler for the lines we have picked up.
-					switch shouldParse {
-						case true:
-							let lineParse = dataBuffer.cutLines(flush:closing)
-							if lineParse.lines != nil {
-								self.callbackQueue.async { [weak self, pl = lineParse.lines] in
-									guard let self = self else {
-										return
-									}
-									for (_, curLine) in pl!.enumerated() {
-										dataHandler(curLine)
-									}
-								}
-								
-							}
-							if closing == false {
-								let cutCapture = dataBuffer[lineParse.cut..<dataBuffer.endIndex]
-								dataBuffer.removeAll(keepingCapacity:true)
-								dataBuffer.append(cutCapture)
-							} else {
-								dataBuffer.removeAll(keepingCapacity:false)
-							}
-							
-						case false:
-							break;
-					}
-				case .immediate:
-					//immediate data handling mode is far simpler
-					dataHandler(self.dataBuffer)
-					dataBuffer.removeAll(keepingCapacity:true)
-			}
-		}
-	
-		static func == (lhs:IncomingDataChannel, rhs:IncomingDataChannel) -> Bool {
-			if lhs.fh == rhs.fh {
-				return true
-			} else {
-				return false
-			}
-		}
-	
-		func hash(into hasher:inout Hasher) {
-			hasher.combine(fh)
 		}
 	}
-=======
-//	class OldIncomingDataChannel:Equatable {
-//		enum TriggerMode {
-//			case lineBreakParsed;
-//			case lineBreakUnparsed;
-//			case immediate;
-//		}
-//		
-//		let fh:Int32
-//		
-//		var epollStructure = epoll_event()
-//		
-//		//asynchronous utilities
-//		let mainQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:dataCaptureQueue)
-//		let callbackQueue = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.callback", target:dataCallbackQueue)
-//		let runningGroup = DispatchGroup()
-//		
-//		//this is where incoming data that has not been handled by the data handler has been stored
-//		var dataBuffer = Data()
-//	
-//		let triggerMode:TriggerMode
-//		let dataHandler:DataIntakeHandler
-//		let terminationHandler:GenericHandler
-//	
-//		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) {
-//			self.fh = fh
-//			
-//			self.epollStructure.data.fd = fh
-//			self.epollStructure.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
-//			
-//			self.triggerMode = triggerMode
-//		
-//			self.dataHandler = dataHandler
-//			self.terminationHandler = terminationHandler
-//		}
-//		
-//		//this is called by the owning function
-//		func readIncomingData(flushMode:Bool = false) {
-//			mainQueue.async { [weak self] in 
-//				guard let self = self else {
-//					return
-//				}
-//				self.runningGroup.enter()
-//				self.fireReadEvent(closing:flushMode)
-//				self.runningGroup.leave()
-//			}
-//		}
-//	
-//		//this main loop is called as soon as 
-//		private func fireReadEvent(closing:Bool) {
-//			//capture the data from this file handle
-//			do {
-//				while let capturedData = try self.fh.readFileHandle() {
-//					self.dataBuffer.append(capturedData)
-//				}
-//			} catch FileHandleError.error_pipe {
-//			} catch FileHandleError.error_again, FileHandleError.error_wouldblock {
-//			} catch let error {
-//				print("IO ERROR: \(error)")
-//			}
-//			
-//			//fire the data handler based on our triggering mode
-//			switch triggerMode {
-//				case .lineBreakParsed:
-//				case .lineBreakUnparsed:
-//					//parse the data buffer for lines
-//					var shouldParse = dataBuffer.withUnsafeBytes { unsafeBuffer in
-//						var i = 0
-//						while (i < dataBuffer.count) {
-//							if (unsafeBuffer[i] == 10 || unsafeBuffer[i] == 13) {
-//								return true
-//							}
-//							i = i + 1;
-//						}
-//						return false
-//					}
-//					if closing == true { 
-//						shouldParse = true
-//					}
-//					//trigger the data handler for the lines we have picked up.
-//					switch shouldParse {
-//						case true:
-//							let lineParse = dataBuffer.cutLines(flush:closing)
-//							if lineParse.lines != nil {
-//								self.callbackQueue.async { [weak self, pl = lineParse.lines] in
-//									guard let self = self else {
-//										return
-//									}
-//									for (_, curLine) in pl!.enumerated() {
-//										dataHandler(curLine)
-//									}
-//								}
-//								
-//							}
-//							if closing == false {
-//								let cutCapture = dataBuffer[lineParse.cut..<dataBuffer.endIndex]
-//								dataBuffer.removeAll(keepingCapacity:true)
-//								dataBuffer.append(cutCapture)
-//							} else {
-//								dataBuffer.removeAll(keepingCapacity:false)
-//							}
-//							
-//						case false:
-//							break;
-//					}
-//				case .immediate:
-//					//immediate data handling mode is far simpler
-//					dataHandler(self.dataBuffer)
-//					dataBuffer.removeAll(keepingCapacity:true)
-//			}
-//		}
-//	
-//		static func == (lhs:IncomingDataChannel, rhs:IncomingDataChannel) -> Bool {
-//			if lhs.fh == rhs.fh {
-//				return true
-//			} else {
-//				return false
-//			}
-//		}
-//	
-//		func hash(into hasher:inout Hasher) {
-//			hasher.combine(fh)
-//		}
-//	}
->>>>>>> Stashed changes
 	
 	class OutgoingDataChannel:Equatable, Hashable {
-		var fh:Int32
+		let fh:Int32
 		
-		let internalSync = DispatchQueue(label:"com.swiftslash.") 
+		let internalSync = DispatchQueue(label:"com.swiftslash.instance.outgoing-data-queue.sync")
+		let writingQueue = DispatchQueue(label:"com.swiftslash.instance.outgoing-data-queue.write")
+		let flightGroup = DispatchGroup()
+		
+		var dataWriteScheduled = false
+		var handleIsWritable = false
+		var remainingData = Data()
+		
+		let outboundHandler:OutboundDataHandler
+		let terminationHandler:TerminationHandler
+		
+		weak let manager:FileHandleOwner
+		
+		init(fh:Int32, dataHandler:OutboundDataHandler, terminationHandler:TerminationHandler, manager:FileHandleOwner) {
+			self.fh = fh
+			self.outboundHandler = dataHandler
+			self.terminationHandler = terminationHandler
+			self.manager = manager
+		}
+		
+		func scheduleDataForWriting(_ inputData:Data) {
+			
+		}
+		
+		func handleIsAvailableForWriting(_ )
 	}
 
 	let epoll = epoll_create1(0);
@@ -429,7 +216,6 @@ internal class StdDataChannelMonitor:FIleHandleOwner {
 	
 	func registerInboundDataChannel(fh:Int32, mode:IncomingDataChannel.TriggerMode, dataHandler:@escaping(DataIntakeHandler), terminationHandler:@escaping(GenericHandler)) throws {
 		internalSync.async { [weak self] in
-			guard let self = self else {
 				return
 			}
 			self.readers[fh] = IncomingDataChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler)
