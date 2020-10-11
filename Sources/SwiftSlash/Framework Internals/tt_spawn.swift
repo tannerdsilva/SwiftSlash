@@ -290,7 +290,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 			}
 		}
 		
-		//close any open file handles
+		//close any open file handles (excluding standard datas and the internal tt_spawn pipe)
 		guard let openFileHandlesPointer = opendir("/proc/self/fd/") else {
 			exit(-10)
 		}
