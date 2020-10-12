@@ -6,7 +6,7 @@ public struct Command {
 	var arguments:[String]
 	var environment:[String:String] = getCurrentEnvironment()
 	
-	init?(command:String) {
+	public init?(command:String) {
 		guard command.count > 0 else {
 			return nil
 		}
@@ -18,13 +18,13 @@ public struct Command {
 		self.arguments = elements
 	}
 	
-	init(bash command:String) {
+	public init(bash command:String) {
 		let commandTerminate = command.replacingOccurrences(of:"'", with:"''")
 		self.executable = "/bin/bash"
 		self.arguments = ["-c", commandTerminate]
 	}
 	
-	func runSync() throws -> CommandResult {
+	public func runSync() throws -> CommandResult {
 		let procInterface = ProcessInterface(command:self)
 		var stdoutLines = [Data]()
 		var stderrLines = [Data]()
