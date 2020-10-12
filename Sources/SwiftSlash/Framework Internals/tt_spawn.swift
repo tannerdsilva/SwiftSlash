@@ -78,21 +78,29 @@ internal func tt_wait_sync(pid:pid_t) -> Int32 {
 //this is the structure that is used to capture all relevant information about a process that is in flight
 internal struct tt_proc_signature:Hashable {
     let stdin:PosixPipe
-    var stdout:PosixPipe
-    var stderr:PosixPipe
+    let stdout:PosixPipe
+    let stderr:PosixPipe
     
-    var worker:pid_t
+    let stdinChannel:DataChannelMonitor.OutgoingDataChannel
+    let stdoutChannel:DataChannelMonitor.IncomingDataChannel?
+    let stderrChannel:DataChannelMonitor.IncomingDataChannel?
     
-    var launch_time:Date
+    let worker:pid_t
+    
+    let launch_time:Date
     
     //initialize
-    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe) {
+    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:DataChannelMonitor.OutgoingDataChannel, stdoutChannel:DataChannelMonitor.IncomingDataChannel?, stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil) {
         self.worker = work
         self.launch_time = Date()
         
 		self.stdin = stdin
 		self.stderr = stderr
 		self.stdout = stdout
+		
+		self.stdinChannel = stdinChannel
+		self.stdoutChannel = stdoutChannel
+		self.stderrChannel = stderrChannel
     }
     
     //comparable
@@ -131,27 +139,29 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 		let stderrPipe:PosixPipe
 		var handlesOfInterest = Set<Int32>()
 		let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-	
+		
 		//configure for a standard output handler if the user passed a handler block
+		var stdoutChannel:DataChannelMonitor.IncomingDataChannel? = nil
 		if stdout != nil {
 			stdoutPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 			guard stdoutPipe.isNullValued == false else {
 				throw tt_spawn_error.pipeError
 			}
 			handlesOfInterest.update(with:stdoutPipe.reading)
-			try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:.lineBreaks, dataHandler:stdout!, terminationHandler:{ return })
+			stdoutChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:.lineBreaks, dataHandler:stdout!, terminationHandler:{ return })
 		} else {
 			stdoutPipe = PosixPipe(reading:-1, writing:-1)
 		}
 	
 		//configure for a standard error handler if the user passed a handler block
+		var stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil
 		if stderr != nil {
 			stderrPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 			guard stderrPipe.isNullValued == false else {
 				throw tt_spawn_error.pipeError
 			}
 			handlesOfInterest.update(with:stderrPipe.reading)
-			try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:.lineBreaks, dataHandler:stderr!, terminationHandler:{ return })
+			stderrChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:.lineBreaks, dataHandler:stderr!, terminationHandler:{ return })
 		} else {
 			stderrPipe = PosixPipe(reading:-1, writing:-1)
 		}
@@ -161,7 +171,7 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 			throw tt_spawn_error.pipeError
 		}
 		handlesOfInterest.update(with:stdinPipe.writing)
-		try DataChannelMonitor.global.registerOutboundDataChannel(fh:stdinPipe.writing, initialData:nil, terminationHandler: { return })
+		let stdinChannel = try DataChannelMonitor.global.registerOutboundDataChannel(fh:stdinPipe.writing, initialData:nil, terminationHandler: { return })
 
 		//create a termination group that can be associated with the launched pid
 		let terminationGroup = try DataChannelMonitor.global.registerTerminationGroup(fhs:handlesOfInterest, handler: { [exitHandler] exitPid in
@@ -169,7 +179,7 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 		})
 	
 		//launch the process
-		let returnVal = try path.withCString({ executablePathPointer -> tt_proc_signature in
+		let returnVal = try path.withCString({ executablePathPointer -> pid_t in
 			var argBuild = [path]
 			argBuild.append(contentsOf:args)
 			return try argBuild.with_spawn_ready_arguments({ argumentsToSpawn in
@@ -179,9 +189,10 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 			})
 		})
 	
+		let newSignature = tt_proc_signature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel, stdoutChannel:stdoutChannel, stderrChannel:stderrChannel)
 		//associate the launched pid with the newly created termination group
-		terminationGroup.setAssociatedPid(returnVal.worker)
-		return returnVal
+		terminationGroup.setAssociatedPid(returnVal)
+		return newSignature
 	}
 }
 
@@ -195,7 +206,7 @@ internal enum tt_spawn_error:Error {
 //the primary means of I/O for the monitor process is the file descriptor passed to this function `notify`. This file descriptor acts as the activity log for the monitor process.
 //three types of monitor process events, launch event, exit event, and fatal event
 //BEHAVIOR UNDEFINED if a null valued standard input pipe is passed to this function
-fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe) throws -> tt_proc_signature {
+fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe) throws -> pid_t {
     //used internally for this function to determine when the forked process has successfully initialized
     let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 	guard internalNotify.isNullValued == false else {
@@ -391,8 +402,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             guard let messagePid = pid_t(notifyString) else {
             	throw tt_spawn_error.internalError
             }
-            var sigToReturn = tt_proc_signature(work:messagePid, stdin:stdin, stdout:stdout, stderr:stderr)
-            return sigToReturn
+            return messagePid
     }
 }
 

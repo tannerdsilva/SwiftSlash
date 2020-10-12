@@ -435,9 +435,8 @@ internal class DataChannelMonitor {
 	/*
 	creating an inbound data channel that is to have its data captured
 	*/
-	func registerInboundDataChannel(fh:Int32, mode:IncomingDataChannel.TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) {
+	func registerInboundDataChannel(fh:Int32, mode:IncomingDataChannel.TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) -> IncomingDataChannel {
 		let newChannel = IncomingDataChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler, manager:self)
-
 		self.internalSync.async(flags:[.barrier]) { [weak self, fh, newChannel] in
 			guard let self = self else {
 				return
@@ -460,12 +459,13 @@ internal class DataChannelMonitor {
 				}
 			}
 		}
+		return newChannel
 	}
 	
 	/*
 	creating a outbound data channel to help facilitate data capture
 	*/
-	func registerOutboundDataChannel(fh:Int32, initialData:Data? = nil, terminationHandler:@escaping(DataChannelTerminationHander)) {
+	func registerOutboundDataChannel(fh:Int32, initialData:Data? = nil, terminationHandler:@escaping(DataChannelTerminationHander)) -> OutgoingDataChannel {
 		let newChannel = OutgoingDataChannel(fh:fh, terminationHandler:terminationHandler, manager:self)		
 		internalSync.async(flags:[.barrier]) { [weak self, fh, newChannel] in
 			guard let self = self else {
@@ -491,7 +491,8 @@ internal class DataChannelMonitor {
 					self.mainLoop()
 				}
 			}
-		}			
+		}
+		return newChannel		
 	}
 	
 	/*

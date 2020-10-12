@@ -17,15 +17,48 @@ public struct Command {
 		self.executable = elements.removeFirst()
 		self.arguments = elements
 	}
-	init?(bash command:String) {
-		guard command.count > 0 else {
-			return nil
-		}
-		
-		let commandTerminate = "\(command.replacingOccurrences(of:"'", with:"''"))"
+	
+	init(bash command:String) {
+		let commandTerminate = command.replacingOccurrences(of:"'", with:"''")
 		self.executable = "/bin/bash"
 		self.arguments = ["-c", commandTerminate]
 	}
+	
+	func runSync() throws -> CommandResult {
+		let procInterface = ProcessInterface(command:self)
+		var stdoutLines = [Data]()
+		var stderrLines = [Data]()
+		procInterface.stderrHandler = { data in
+			stderrLines.append(data)
+		}
+		procInterface.stdoutHandler = { data in
+			stdoutLines.append(data)
+		}
+		try procInterface.run()
+		let exitCode = procInterface.waitForExitCode()
+		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
+	}
+}
+
+public struct CommandResult {
+	public var succeeded:Bool {
+		get {
+			if exitCode == 0 {
+				return true
+			} else {
+				return false
+			}
+		}
+	}
+	public let exitCode:Int32
+	public let stdout:[Data]
+	public let stderr:[Data]
+    
+    public init(exitCode:Int32, stdout:[Data], stderr:[Data]) {
+        self.exitCode = exitCode
+        self.stdout = stdout
+        self.stderr = stderr
+    }
 }
 
 fileprivate func getCurrentEnvironment() -> [String:String] {
