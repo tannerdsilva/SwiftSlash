@@ -1,53 +1,91 @@
-# 🔥 SwiftSlash 🔥 
+# 🔥 /SwiftSlash/ 🔥 
 
 ### A High-Performance Concurrent Shell Framework for Linux
 
+## Why SwiftSlash?
+
+SwiftSlash was developed as a need to solve for the shortcomings of all **existing** Swift shell frameworks. These frameworks are guilty of using `Foundation` (specifically the `Process` class within it) to launch commands. These frameworks include `Shell`, `ShellOut`, `ShellKit`, `Work`, and the highly popular `SwiftShell`. These frameworks have a cumulative star count of > 1,374 in their public GitHub repositories.
+
+When compared to the frameworks listed above, SwiftSlash is a breed of its own.
+
+SwiftSlash can manage large sets of concurrently executed processes with complete instructional safety. SwiftSlash captures data from these processes internally, and will parse bytestreams into lines before triggering downstream handler events. Line parsing is enabled by default and greatly reduces the complexity of parsing the data downstream in the process.
+
+When comparing `SwiftSlash` with the widespread `Process` class backing many popular frameworks, the practical improvements of `SwiftSlash` speak for themselves.
+
+- `SwiftSlash` does **NOT** leak memory, whereas `Process` will leak memory with ever command it runs. This is a significant downside for workloads that require many thousands of commands to be executed.
+
+- `SwiftSlash` is safe to use concurrently and asynchronously, unlike `Process` class, which takes neither of these features into consideration. By allowing shell commands to be run concurrently rather than serially, `SwiftSlash` can complete large quantities of non-sequential workloads in **fractions** of their expected time.
+
+- `SwiftSlash` can initialize and launch an external command with significantly greater efficiency than Foundation's `Process` class (both memory footprint and CPU impact). Similar performance improvements are seen in I/O handling from the `stdin`, `stdout`, and `stderr` streams.
+
+- `SwiftSlash` is structured to **ensure a secure execution environment**. `Process` class has many security vulnerabilities, including file handle sharing with the executing process and improper changing of the specified *working directory*.
+
+- `SwiftSlash` **can scale to massive workloads without consuming equally massive resources or time**.
+
 ## Getting Started
+
+`Command` implements a convenience function `runSync()` which serves as a simple way to execute processes with minimal setup. In this function, proces I/O is captured and available after the process exits.
 ```
 import SwiftSlash
+
+//define the command you'd like to run
 let zfsVersionCommand:Command = Command(bash:"zfs --version")
+
+//run the command in synchronous mode (wait for the process to exit - capture all process output)
 let commandResult:CommandResult = try zfsVersionCommand.runSync()
-if commandResult.succeeded {
+
+//check the exit code
+if commandResult.exitCode == 0 {
+
+	//print the first line of output
 	print("Found ZFS version: \(commandResult.stdout[0])")
 }
 ```
 
 ## Using the Full API with ProcessInterface
+
+`ProcessInterface` is a powerful yet flexible class that serves as the base API for the SwfitSlash framework. Whether your process requires synchronous or asynchronous handling of buffered or unbuffered data, `ProcessInterface` is provides a consistent platform for building such workloads.
+
 ```
-import SwiftSlash
+/* 
+Example 1: Vanilla ProcessInterface Usage/Setup
+	List all ZFS datasets on the system by running an external command. Buffer the standard output and error streams.
+	Return the datasets if no error occurred.
+*/
+//define the command you'd like to run
 let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
+
+//pass the command structure to a new ProcessInterface
 let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand)
+
+//configure a line handler for the standard output of the process. lines are captured in the `datasetNames` array
 var datasetNames = [String]()
-zfsProcessInterface.stdoutHandler = { data in
-	if let asString = String(data:data, encoding:.utf8) {
+zfsProcessInterface.stdoutHandler = { dataLine in
+	if let asString = String(data:dataLine, encoding:.utf8) {
 		datasetNames.append(asString)
 	}
 }
+
+//configure a line handler for the standard error of the process. lines are captured in the `errors` array
+var errors = [String]()
+zfsProcessInterface.stderrHandler = { errorLine in
+	if let asString = String(data:errorLine, encoding:.utf8) {
+		errors.append(asString)
+	}
+}
+
+//launch the process
 try zfsProcessInterface.run()
+
+//at this point, the code handlers above will begin firing as data begins streaming in from the process
+
+//wait for the process to exit, capturing its exit code
 let exitCode = zfsProcessInterface.waitForExitCode()
-return datasetNames
+
+//return if success
+if (exitCode == 0) {
+	return datasetNames
+}
 ```
-
-## Why SwiftSlash?
-
-SwiftSlash was born from a need to interface with large sets of concurrently executed processes with complete instructional safety. Furthermore, SwiftSlash was born with an uncompromising desire for time efficiency.
-
-While other frameworks (such as `SwiftShell` and the `Foundation` framework that underlies it) provide shell-like functionality in Swift, **these frameworks were not designed for demanding workloads**. SwiftShell is only guaranteed to be safe when processes are executed serially in a single thread. This is a technical limitation that severely limits `SwiftShell`'s ability to scale. This limitation is a particular concern for environments where multiple processes need to be running for a prolonged periods of time. SwiftSlash was designed with these concerns in mind.
-
-With full concurrency as requirement, SwiftSlash was designed to provide uncompromising stability with a simple, single-class API.
-
-When comparing `SwiftSlash` with the popular `SwiftShell` framework, the practical improvements of `SwiftSlash` speak for themselves.
-
-- `SwiftSlash` does **NOT** leak memory, whereas SwiftShell will leak memory with ever command it runs. This is a significant downside for workloads that require many thousands of commands to be executed.
-
-- `SwiftSlash` is safe to use concurrently and asynchronously, unlike `Process` class, which takes neither of these features into consideration. By allowing shell commands to be run concurrently rather than serially, `SwiftSlash` can complete large quantities of non-sequential workloads in **fractions** of their expected time.
-
-- `SwiftSlash` can initialize and launch an external command with significantly greater computational and memory efficiency than Foundation's `Process` class. Similar performance improvements are seen in I/O handling from the `stdin`, `stdout`, and `stderr` streams. For industrial workloads, better performance means a faster time to completion. For mobile workloads, better performance means better battery life.
-
-- `SwiftSlash` has the necessary infrastructure to **ensure a secure execution environment**. `Process` class has many security vulnerabilities, including file handle sharing with the executing process and improper changing of the specified *current directory*.
-
-- `SwiftSlash` **can scale to massive workloads without consuming equally massive resources or time**. 
-
-By executing shell commands concurrently rather than serially, one could see speedup multiples of *up to* 250x - *workload dependent*
 
 Please contact `@tannerdsilva` on Twitter for inquiries.
