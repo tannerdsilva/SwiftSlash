@@ -88,4 +88,10 @@ if (exitCode == 0) {
 }
 ```
 
+### License
+
+SwiftSlash is available under the MIT license, and is provided without warranty. See LICENSE.
+
+### Contact
+
 Please contact `@tannerdsilva` on Twitter for inquiries.
