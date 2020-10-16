@@ -1,6 +1,6 @@
 import Foundation
 //these are the types of line breaks that can be parsed from incoming data channels
-public enum LinebreakType:UInt8 {
+public enum DataParseMode:UInt8 {
 	case cr
 	case lf
 	case crlf
@@ -36,8 +36,8 @@ public class ProcessInterface {
 		inbound I/O data handlers
 	*/
 	//stdout
-	private var _stdoutParseMode:LinebreakType = .cr
-	public var stdoutParseMode:LinebreakType {
+	private var _stdoutParseMode:DataParseMode = .cr
+	public var stdoutParseMode:DataParseMode {
 		get {
 			return internalSync.sync {
 				return _stdoutParseMode
@@ -63,8 +63,8 @@ public class ProcessInterface {
 		}
 	}
 	//stderr
-	private var _stderrParseMode:LinebreakType = .cr
-	public var stderrParseMode:LinebreakType {
+	private var _stderrParseMode:DataParseMode = .cr
+	public var stderrParseMode:DataParseMode {
 		get {
 			return internalSync.sync {
 				return _stderrParseMode

@@ -133,7 +133,7 @@ let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn")
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
 internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
-internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stdoutParseMode:LinebreakType, stderrParseMode:LinebreakType, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
+internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
 	return try serialSetup.sync {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe

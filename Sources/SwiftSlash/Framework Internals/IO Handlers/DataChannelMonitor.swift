@@ -1,14 +1,14 @@
 import Foundation
 import Cepoll
 
-//this object breaks an incoming bytestream into lines based on the configured `LineBreakType`
+//this object breaks an incoming bytestream into lines based on the configured `DataParseMode`
 internal struct BufferedLineParser {
-	internal var type:LinebreakType
+	internal var type:DataParseMode
 	
 	fileprivate var currentLine = Data()
 	fileprivate var pendingLines = [Data]()
 	
-	init(mode:LinebreakType) {
+	init(mode:DataParseMode) {
 		self.type = mode
 	}
 	
@@ -104,7 +104,7 @@ internal class DataChannelMonitor {
 		private let inboundHandler:InboundDataHandler
 		private let terminationHandler:DataChannelMonitor.DataChannelTerminationHander
 		let fh:Int32
-		var triggerMode:LinebreakType {
+		var triggerMode:DataParseMode {
 			get {
 				return self.captureQueue.sync {
 					return self.lineParser.type
@@ -123,7 +123,7 @@ internal class DataChannelMonitor {
 		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.capture", target:dataCaptureQueue)
 		private let flightGroup = DispatchGroup();
 		
-		init(fh:Int32, triggerMode:LinebreakType, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander), manager:DataChannelMonitor) {
+		init(fh:Int32, triggerMode:DataParseMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander), manager:DataChannelMonitor) {
 			self.fh = fh
 			
 			var buildEpoll = epoll_event()
@@ -440,7 +440,7 @@ internal class DataChannelMonitor {
 	/*
 	creating an inbound data channel that is to have its data captured
 	*/
-	func registerInboundDataChannel(fh:Int32, mode:LinebreakType, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) -> IncomingDataChannel {
+	func registerInboundDataChannel(fh:Int32, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) -> IncomingDataChannel {
 		let newChannel = IncomingDataChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler, manager:self)
 		self.internalSync.async(flags:[.barrier]) { [weak self, fh, newChannel] in
 			guard let self = self else {
