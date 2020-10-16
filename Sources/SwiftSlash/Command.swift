@@ -4,7 +4,7 @@ import Glibc
 public struct Command {
 	var executable:String
 	var arguments:[String]
-	var environment:[String:String] = getCurrentEnvironment()
+	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
 	
 	public init?(command:String) {
 		guard command.count > 0 else {
@@ -59,16 +59,4 @@ public struct CommandResult {
         self.stdout = stdout
         self.stderr = stderr
     }
-}
-
-fileprivate func getCurrentEnvironment() -> [String:String] {
-	var i = 0
-	var buildEnv = [String:String]()
-	while let curPtr = environ[i] {
-		let curEnvString = String(cString:curPtr)
-		let splitEnv = curEnvString.split(separator:"=").compactMap { String($0) }
-		buildEnv[splitEnv[0]] = splitEnv[1]
-		i = i + 1
-	}
-	return buildEnv
 }

@@ -128,12 +128,12 @@ internal struct tt_proc_signature:Hashable {
     }
 }
 
-let serialSetup = DispatchQueue(label:"foo string")
+let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn")
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
 internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
-internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
+internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stdoutParseMode:LinebreakType, stderrParseMode:LinebreakType, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
 	return try serialSetup.sync {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe
@@ -148,7 +148,7 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 				throw tt_spawn_error.pipeError
 			}
 			handlesOfInterest.update(with:stdoutPipe.reading)
-			stdoutChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:.lineBreaks, dataHandler:stdout!, terminationHandler:{ return })
+			stdoutChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:stdoutParseMode, dataHandler:stdout!, terminationHandler:{ return })
 		} else {
 			stdoutPipe = PosixPipe(reading:-1, writing:-1)
 		}
@@ -161,7 +161,7 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 				throw tt_spawn_error.pipeError
 			}
 			handlesOfInterest.update(with:stderrPipe.reading)
-			stderrChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:.lineBreaks, dataHandler:stderr!, terminationHandler:{ return })
+			stderrChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:stderrParseMode, dataHandler:stderr!, terminationHandler:{ return })
 		} else {
 			stderrPipe = PosixPipe(reading:-1, writing:-1)
 		}

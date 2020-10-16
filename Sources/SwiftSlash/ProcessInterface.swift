@@ -1,4 +1,11 @@
 import Foundation
+//these are the types of line breaks that can be parsed from incoming data channels
+public enum LinebreakType:UInt8 {
+	case cr
+	case lf
+	case crlf
+	case immediate
+}
 
 public class ProcessInterface {
 	public typealias DataHandler = (Data) -> Void
@@ -29,6 +36,19 @@ public class ProcessInterface {
 		inbound I/O data handlers
 	*/
 	//stdout
+	private var _stdoutParseMode:LinebreakType = .cr
+	public var stdoutParseMode:LinebreakType {
+		get {
+			return internalSync.sync {
+				return _stdoutParseMode
+			}
+		}
+		set {
+			internalSync.sync { [newValue] in
+				_stdoutParseMode = newValue
+			}
+		}
+	}
 	private var _stdoutHandler:DataHandler? = nil
 	public var stdoutHandler:DataHandler? {
 		get {
@@ -43,6 +63,19 @@ public class ProcessInterface {
 		}
 	}
 	//stderr
+	private var _stderrParseMode:LinebreakType = .cr
+	public var stderrParseMode:LinebreakType {
+		get {
+			return internalSync.sync {
+				return _stderrParseMode
+			}
+		}
+		set {
+			internalSync.sync { [newValue] in
+				_stderrParseMode = newValue
+			}
+		}
+	}
 	private var _stderrHandler:DataHandler? = nil
 	public var stderrHandler:DataHandler? {
 		get {
@@ -89,7 +122,7 @@ public class ProcessInterface {
 		}
 	}
 	
-	private var _workingDirectory:URL = current_process_working_directory()
+	private var _workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
 	public var workingDirectory:URL {
 		get {
 			return internalSync.sync {
@@ -136,7 +169,6 @@ public class ProcessInterface {
 		command and flight related variables
 	*/
 	internal var _process_signature:tt_proc_signature? = nil
-	
 	public init(command:Command) {
 		_command = command
 	}
@@ -148,7 +180,7 @@ public class ProcessInterface {
     		}
     		do {
     			self.flightGroup.enter()
-    			let launchedProcess = try tt_spawn(path:self._command.executable, args:self._command.arguments, wd:self._workingDirectory, env:self._command.environment, stdout:self._stdoutHandler, stderr:self._stderrHandler, exitHandler: { [weak self] exitCode in
+    			let launchedProcess = try tt_spawn(path:self._command.executable, args:self._command.arguments, wd:self._workingDirectory, env:self._command.environment, stdout:self._stdoutHandler, stdoutParseMode:_stdoutParseMode, stderrParseMode:_stderrParseMode, stderr:self._stderrHandler, exitHandler: { [weak self] exitCode in
     				guard let self = self else {
     					return
     				}
@@ -170,6 +202,8 @@ public class ProcessInterface {
     		}
 		}
 	}
+	
+//	public func writeInput
 }
 
 internal func current_process_working_directory() -> URL {

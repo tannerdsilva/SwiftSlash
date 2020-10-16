@@ -1,15 +1,9 @@
 import Foundation
 import Cepoll
 
-//these are the types of line breaks that can be parsed from incoming data channels
-public enum LinebreakType:UInt8 {
-	case cr
-	case lf
-	case crlf
-}
-
+//this object breaks an incoming bytestream into lines based on the configured `LineBreakType`
 internal struct BufferedLineParser {
-	internal let type:LinebreakType
+	internal var type:LinebreakType
 	
 	fileprivate var currentLine = Data()
 	fileprivate var pendingLines = [Data]()
@@ -21,6 +15,10 @@ internal struct BufferedLineParser {
 	mutating func intake(_ dataToIntake:Data) -> Bool {
 		var didFind = false
 		var crLast = false
+		if (self.type == .immediate) {
+			pendingLines.append(dataToIntake)
+			return true
+		}
 		dataToIntake.withUnsafeBytes { unsafeBytes in
 			var i = 0
 			while (i < dataToIntake.count) {
@@ -60,6 +58,8 @@ internal struct BufferedLineParser {
 							crLast = false
 							currentLine.append(curByte)
 						}
+					default:
+						break
 				}
 			}
 		}
@@ -84,7 +84,7 @@ internal struct BufferedLineParser {
 	}
 }
 
-
+//this class handles concurrent IO for all processes globally
 internal class DataChannelMonitor {
 	enum DataChannelMonitorError:Error {
 		case invalidFileHandle
@@ -100,17 +100,22 @@ internal class DataChannelMonitor {
 	fileprivate static let dataBroadcastQueue = DispatchQueue(label:"com.swiftslash.global.data-channel-monitor.writing", attributes:[.concurrent], target:process_master_queue)
 	
 	internal class IncomingDataChannel {
-		/*TriggerMode: how is the incoming data from a given data channel to be passed into the incoming data handler block?*/
-		internal enum TriggerMode {
-			case lineBreaks
-			case immediate
-		}
-		
 		//constant variables that are defined on initialization
 		private let inboundHandler:InboundDataHandler
 		private let terminationHandler:DataChannelMonitor.DataChannelTerminationHander
 		let fh:Int32
-		let triggerMode:TriggerMode
+		var triggerMode:LinebreakType {
+			get {
+				return self.captureQueue.sync {
+					return self.lineParser.type
+				}
+			}
+			set {
+				self.captureQueue.sync { [newValue] in
+					self.lineParser.type = newValue
+				}
+			}
+		}
 		let epollStructure:epoll_event
 		weak var manager:DataChannelMonitor?
 		
@@ -118,7 +123,7 @@ internal class DataChannelMonitor {
 		private let captureQueue = DispatchQueue(label:"com.swiftslash.instance.incoming-data-channel.capture", target:dataCaptureQueue)
 		private let flightGroup = DispatchGroup();
 		
-		init(fh:Int32, triggerMode:TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander), manager:DataChannelMonitor) {
+		init(fh:Int32, triggerMode:LinebreakType, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander), manager:DataChannelMonitor) {
 			self.fh = fh
 			
 			var buildEpoll = epoll_event()
@@ -130,11 +135,11 @@ internal class DataChannelMonitor {
 			self.terminationHandler = terminationHandler
 			
 			self.manager = manager
-			self.triggerMode = triggerMode
+			self.lineParser = BufferedLineParser(mode:triggerMode)
 		}
 		
 		//FileHandleOwner will call this function when the relevant file handle has become available for reading
-		private var lineParser = BufferedLineParser(mode:.lf)	//used exclusively in this function
+		private var lineParser:BufferedLineParser	//used exclusively in this function
 		func initiateDataCaptureIteration(terminate:Bool) {
 			self.flightGroup.enter();
 			captureQueue.async { [weak self] in
@@ -149,10 +154,10 @@ internal class DataChannelMonitor {
 				do {
 					while true {
 						let capturedData = try self.fh.readFileHandle()
-						switch self.triggerMode {
+						switch self.lineParser.type {
 							case .immediate:
 								self.inboundHandler(capturedData)
-							case .lineBreaks:
+							default:
 								let hasNewLines = self.lineParser.intake(capturedData)
 								if (hasNewLines == true && terminate == false) {
 									for (_, curItem) in self.lineParser.flushLines().enumerated() {
@@ -171,7 +176,7 @@ internal class DataChannelMonitor {
 
 				if terminate == true {
 					//in linebreak mode there might be some callback fires that need to be called....
-					if (self.triggerMode == .lineBreaks) {
+					if (self.lineParser.type != .immediate) {
 						for (_, curItem) in self.lineParser.flushFinal().enumerated() {
 							self.inboundHandler(curItem) 
 						}
@@ -189,7 +194,7 @@ internal class DataChannelMonitor {
 		}
 	}
 	
-	class OutgoingDataChannel:Equatable, Hashable {
+	internal class OutgoingDataChannel:Equatable, Hashable {
 		let fh:Int32
 		
 		let internalSync = DispatchQueue(label:"com.swiftslash.instance.outgoing-data-queue.sync", target:dataBroadcastQueue)
@@ -435,7 +440,7 @@ internal class DataChannelMonitor {
 	/*
 	creating an inbound data channel that is to have its data captured
 	*/
-	func registerInboundDataChannel(fh:Int32, mode:IncomingDataChannel.TriggerMode, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) -> IncomingDataChannel {
+	func registerInboundDataChannel(fh:Int32, mode:LinebreakType, dataHandler:@escaping(InboundDataHandler), terminationHandler:@escaping(DataChannelTerminationHander)) -> IncomingDataChannel {
 		let newChannel = IncomingDataChannel(fh:fh, triggerMode:mode, dataHandler:dataHandler, terminationHandler:terminationHandler, manager:self)
 		self.internalSync.async(flags:[.barrier]) { [weak self, fh, newChannel] in
 			guard let self = self else {
