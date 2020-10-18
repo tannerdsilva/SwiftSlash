@@ -8,6 +8,9 @@ public enum DataParseMode:UInt8 {
 }
 
 public class ProcessInterface {
+	public enum Error:Swift.Error {
+		case invalidProcessState
+	}
 	public typealias DataHandler = (Data) -> Void
 	public typealias ExitHandler = (Int32) -> Void
 	
@@ -111,14 +114,7 @@ public class ProcessInterface {
 	private var _command:Command
 	public var command:Command {
 		get {
-			return internalSync.sync {
-				return _command
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_command = newValue
-			}
+			return _command
 		}
 	}
 	
@@ -184,7 +180,7 @@ public class ProcessInterface {
     				guard let self = self else {
     					return
     				}
-    				self.internalSync.sync { 
+    				self.internalSync.sync {
     					self._exitCode = exitCode
     					self._state = .exited
     					if (self._exitHandler != nil) {
@@ -203,17 +199,12 @@ public class ProcessInterface {
 		}
 	}
 	
-//	public func writeInput
-}
-
-internal func current_process_working_directory() -> URL {
-	let rawPointer = getcwd(nil, 0)
-	let currentWorkingDirectoryBuffer = UnsafeMutableRawPointer(rawPointer!)
-	defer {
-		free(currentWorkingDirectoryBuffer)
+	public func write(stdin:Data) throws {
+		try self.internalSync.sync {
+			guard self._state == .running else {
+				throw Error.invalidProcessState
+			}
+			self._process_signature!.stdinChannel.scheduleDataForWriting(stdin)
+		}
 	}
-	let length = strlen(rawPointer!)
-	let currentWDData = Data(bytes:currentWorkingDirectoryBuffer, count:length)
-	let currentPath = String(data:currentWDData, encoding:.utf8)!
-	return URL(fileURLWithPath:currentPath)
 }
