@@ -180,14 +180,18 @@ public class ProcessInterface {
     				guard let self = self else {
     					return
     				}
-    				self.internalSync.sync {
+    				let ehToFire:ExitHandler? = self.internalSync.sync {
     					self._exitCode = exitCode
     					self._state = .exited
     					if (self._exitHandler != nil) {
-    						self._exitHandler!(exitCode)
+    						return self._exitHandler 
     					}
+    					return nil
     				}
     				self.flightGroup.leave()
+					if (ehToFire != nil) {
+    					ehToFire!(exitCode)
+    				}
     			})
     			self._state = .running
     			self._process_signature = launchedProcess
