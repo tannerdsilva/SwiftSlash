@@ -39,7 +39,7 @@ public class ProcessInterface {
 		inbound I/O data handlers
 	*/
 	//stdout
-	private var _stdoutParseMode:DataParseMode = .cr
+	private var _stdoutParseMode:DataParseMode = .lf
 	public var stdoutParseMode:DataParseMode {
 		get {
 			return internalSync.sync {
@@ -66,7 +66,7 @@ public class ProcessInterface {
 		}
 	}
 	//stderr
-	private var _stderrParseMode:DataParseMode = .cr
+	private var _stderrParseMode:DataParseMode = .lf
 	public var stderrParseMode:DataParseMode {
 		get {
 			return internalSync.sync {
