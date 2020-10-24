@@ -128,12 +128,12 @@ internal struct tt_proc_signature:Hashable {
     }
 }
 
-let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn")
+let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn", target:process_master_queue)
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
 internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
-internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
+internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:DataChannelMonitor.InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:DataChannelMonitor.InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
 	return try serialSetup.sync {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe
