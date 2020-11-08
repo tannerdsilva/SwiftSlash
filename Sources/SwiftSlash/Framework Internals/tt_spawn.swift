@@ -81,16 +81,14 @@ internal struct tt_proc_signature:Hashable {
     let stdout:PosixPipe
     let stderr:PosixPipe
     
-    let stdinChannel:DataChannelMonitor.OutgoingDataChannel
-    let stdoutChannel:DataChannelMonitor.IncomingDataChannel?
-    let stderrChannel:DataChannelMonitor.IncomingDataChannel?
+    let stdinChannel:OutboundChannelState
     
     let worker:pid_t
     
     let launch_time:Date
     
     //initialize
-    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:DataChannelMonitor.OutgoingDataChannel, stdoutChannel:DataChannelMonitor.IncomingDataChannel?, stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil) {
+    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:OutboundChannelState, stdoutChannel:DataChannelMonitor.IncomingDataChannel?, stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil) {
         self.worker = work
         self.launch_time = Date()
         
@@ -99,8 +97,6 @@ internal struct tt_proc_signature:Hashable {
 		self.stdout = stdout
 		
 		self.stdinChannel = stdinChannel
-		self.stdoutChannel = stdoutChannel
-		self.stderrChannel = stderrChannel
     }
     
     //comparable
@@ -128,72 +124,67 @@ internal struct tt_proc_signature:Hashable {
     }
 }
 
-let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn", target:process_master_queue)
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
 internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
 internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:DataChannelMonitor.InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:DataChannelMonitor.InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
-	return try serialSetup.sync {
-		let stdoutPipe:PosixPipe
-		let stderrPipe:PosixPipe
-		var handlesOfInterest = Set<Int32>()
-		let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-		
-		//configure for a standard output handler if the user passed a handler block
-		var stdoutChannel:DataChannelMonitor.IncomingDataChannel? = nil
-		if stdout != nil {
-			stdoutPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-			guard stdoutPipe.isNullValued == false else {
-				throw tt_spawn_error.pipeError
-			}
-			handlesOfInterest.update(with:stdoutPipe.reading)
-			stdoutChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:stdoutParseMode, dataHandler:stdout!, terminationHandler:{ return })
-		} else {
-			stdoutPipe = PosixPipe(reading:-1, writing:-1)
-		}
+	let stdoutPipe:PosixPipe
+	let stderrPipe:PosixPipe
+	let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 	
-		//configure for a standard error handler if the user passed a handler block
-		var stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil
-		if stderr != nil {
-			stderrPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-			guard stderrPipe.isNullValued == false else {
-				throw tt_spawn_error.pipeError
-			}
-			handlesOfInterest.update(with:stderrPipe.reading)
-			stderrChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:stderrParseMode, dataHandler:stderr!, terminationHandler:{ return })
-		} else {
-			stderrPipe = PosixPipe(reading:-1, writing:-1)
-		}
+	let terminationGroup = TerminationGroup(fhs:Set<Int32>([stdinPipe.writing]), terminationHandler: { [exitHandler] exitPid in
+		exitHandler(tt_wait_sync(pid:exitPid))
+	})
 	
-		//bind the standard input handler. this is always configured because it is our primary means of determining when a process exits
-		guard stdinPipe.reading != -1 && stdinPipe.writing != -1 else {
+	let writeConfig = WritableConfiguration(fh:stdinPipe.writing, group:terminationGroup)
+	var readConfigs = [ReadableConfiguration]()
+	
+	//configure for a standard output handler if the user passed a handler block
+	if stdout != nil {
+		stdoutPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
+		terminationGroup.include(fh:stdoutPipe.reading)
+		readConfigs.append(ReadableConfiguration(fh:stdoutPipe.reading, parseMode:stdoutParseMode, group:terminationGroup, handler:stdout!))
+		guard stdoutPipe.isNullValued == false else {
 			throw tt_spawn_error.pipeError
 		}
-		handlesOfInterest.update(with:stdinPipe.writing)
-		let stdinChannel = try DataChannelMonitor.global.registerOutboundDataChannel(fh:stdinPipe.writing, initialData:nil, terminationHandler: { return })
+	} else {
+		stdoutPipe = PosixPipe(reading:-1, writing:-1)
+	}
 
-		//create a termination group that can be associated with the launched pid
-		let terminationGroup = try DataChannelMonitor.global.registerTerminationGroup(fhs:handlesOfInterest, handler: { [exitHandler] exitPid in
-			exitHandler(tt_wait_sync(pid:exitPid))
-		})
-	
-		//launch the process
-		let returnVal = try path.withCString({ executablePathPointer -> pid_t in
-			var argBuild = [path]
-			argBuild.append(contentsOf:args)
-			return try argBuild.with_spawn_ready_arguments({ argumentsToSpawn in
-				return try wd.path.withCString({ workingDirectoryPath in
-					return try tt_spawn(path:executablePathPointer, args:argumentsToSpawn, wd:workingDirectoryPath, env:env, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe)
-				})
+	//configure for a standard error handler if the user passed a handler block
+	if stderr != nil {
+		stderrPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
+		terminationGroup.include(fh:stderrPipe.reading)
+		readConfigs.append(ReadableConfiguration(fh:stderrPipe.reading, parseMode:stderrParseMode, group:terminationGroup, handler:stderr!))
+		guard stderrPipe.isNullValued == false else {
+			throw tt_spawn_error.pipeError
+		}
+	} else {
+		stderrPipe = PosixPipe(reading:-1, writing:-1)
+	}
+
+	//bind the standard input handler. this is always configured because it is our primary means of determining when a process exits
+	guard stdinPipe.reading != -1 && stdinPipe.writing != -1 else {
+		throw tt_spawn_error.pipeError
+	}
+
+	let stdinChannel = try EventSwarm.global.regiser(readers:readConfigs, writer:writeConfig)
+		
+	//launch the process
+	let returnVal = try path.withCString({ executablePathPointer -> pid_t in
+		var argBuild = [path]
+		argBuild.append(contentsOf:args)
+		return try argBuild.with_spawn_ready_arguments({ argumentsToSpawn in
+			return try wd.path.withCString({ workingDirectoryPath in
+				return try tt_spawn(path:executablePathPointer, args:argumentsToSpawn, wd:workingDirectoryPath, env:env, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe)
 			})
 		})
+	})
 	
-		let newSignature = tt_proc_signature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel, stdoutChannel:stdoutChannel, stderrChannel:stderrChannel)
-		//associate the launched pid with the newly created termination group
-		terminationGroup.setAssociatedPid(returnVal)
-		return newSignature
-	}
+	terminationGroup.setAssociatedPid(returnVal)
+
+	return tt_proc_signature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel)
 }
 
 internal enum tt_spawn_error:Error {
