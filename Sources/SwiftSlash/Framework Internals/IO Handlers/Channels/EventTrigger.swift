@@ -68,7 +68,7 @@ internal class EventTrigger {
 							reallocate(size:allocationSize*2)
 						}
 						print("calling channel manager \(channelManager)")
-						if (i < 0) && (channelManager != nil) {
+						if (i > 0) && (channelManager != nil) {
 							self.channelManager!.assignNewEvents(buildResults)
 							buildResults.removeAll(keepingCapacity:true)
 						}
