@@ -18,6 +18,7 @@ internal class EventTrigger {
 	weak var channelManager:ChannelManager? = nil
 	
 	func _mainLoop() {
+		print("Epoll main loop initialized")
 		var buildResults = [Int32:EventMode]()
 		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
 		var allocationSize:Int32 = 32
@@ -29,6 +30,7 @@ internal class EventTrigger {
 		
 		while true {
 			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
+			print("Epoll main loop released from sleep")
 			switch pollResult {
 				case -1:
 					print("EPOLL ERROR")
@@ -46,15 +48,19 @@ internal class EventTrigger {
 							if (pollhup != 0) {
 								//reading handle closed
 								buildResults[currentEvent.data.fd] = .readingClosed
+								print("\(currentEvent.data.fd) reading closed")
 							} else if (pollerr != 0) {
 								//writing handle closed
 								buildResults[currentEvent.data.fd] = .writingClosed
+								print("\(currentEvent.data.fd) writing closed")
 							} else if (pollin != 0) {
 								//read data available
 								buildResults[currentEvent.data.fd] = .readableEvent
+								print("\(currentEvent.data.fd) readable")
 							} else if (pollout != 0) {
 								//writing available
 								buildResults[currentEvent.data.fd] = .writableEvent
+								print("\(currentEvent.data.fd) writable")
 							}
 							i = i + 1
 						}
