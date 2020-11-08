@@ -1,5 +1,7 @@
+import Foundation
+
 class EventSwarm {
-	class let global = EventSwarm()
+	static let global = EventSwarm()
 	
 	let loopQueue = DispatchQueue(label:"com.swiftslash.events.trigger", attributes:[.concurrent], target:process_master_queue)
 	

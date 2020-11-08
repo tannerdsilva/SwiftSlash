@@ -88,7 +88,7 @@ internal struct tt_proc_signature:Hashable {
     let launch_time:Date
     
     //initialize
-    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:OutboundChannelState, stdoutChannel:DataChannelMonitor.IncomingDataChannel?, stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil) {
+    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:OutboundChannelState) {
         self.worker = work
         self.launch_time = Date()
         
@@ -126,9 +126,9 @@ internal struct tt_proc_signature:Hashable {
 
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
-internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
+internal typealias TTSpawnReadingHandler = InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
-internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:DataChannelMonitor.InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:DataChannelMonitor.InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
+internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
 	let stdoutPipe:PosixPipe
 	let stderrPipe:PosixPipe
 	let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
@@ -169,7 +169,7 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 		throw tt_spawn_error.pipeError
 	}
 
-	let stdinChannel = try EventSwarm.global.regiser(readers:readConfigs, writer:writeConfig)
+	let stdinChannel = try EventSwarm.global.register(readers:readConfigs, writer:writeConfig)
 		
 	//launch the process
 	let returnVal = try path.withCString({ executablePathPointer -> pid_t in
@@ -367,7 +367,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             var triggerData = Data()
             repeat {
             	do {
-            		try triggerData.append(contentsOf:internalNotify.reading.readFileHandle())
+            		try triggerData.append(contentsOf:internalNotify.reading.readFileHandle(size:Int(PIPE_BUF)))
             		shouldLoop = false
             	} catch FileHandleError.error_again {
             		shouldLoop = true

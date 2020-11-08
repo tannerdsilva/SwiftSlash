@@ -11,7 +11,7 @@ class ChannelManager {
 	var loopEnabled = false
 	let loopGroup = DispatchGroup()
 	
-	weak var eventTrigger:EventTrigger
+	weak var eventTrigger:EventTrigger?
 	
 	init() {
 		loopGroup.enter()
@@ -19,10 +19,10 @@ class ChannelManager {
 	
 	//this is a function that ensures that the main loop stops running if there are no shell instances active
 	fileprivate func _adjustLoopGroupState() {
-		if (self.readingStates.count == 0 && loopEnabled == true) {
+		if (self.states.count == 0 && loopEnabled == true) {
 			loopEnabled = false
 			loopGroup.enter() //pause the loop by entering the loop group
-		} else if (self.readingStates.count > 0 && loopEnabled == false) {
+		} else if (self.states.count > 0 && loopEnabled == false) {
 			loopEnabled = true
 			loopGroup.leave() //resume the loop by leaving the loop group
 		}
@@ -103,7 +103,7 @@ class ChannelManager {
 			postLoopResults.removeAll(keepingCapacity:true)
 			
 			//process the states and compile a list of HandleLoopResults to incorporate into the next synchronization phase
-			curEvents.states.explode(using: { (_, kv) -> Int32? in
+			curEvents.states.explode(using: { (_, kv) -> ChannelManager.HandleLoopResult? in
 				var returnValue:HandleLoopResult? = nil
 				switch (kv.value) {
 					case .readableEvent:
@@ -111,7 +111,7 @@ class ChannelManager {
 						let inboundConfig = curEvents.readers[kv.key]
 						if (inboundConfig != nil) {							
 							//tell the object to capture data - the object will return if the handle is blocked
-							let captureResult = inboundConfig.captureData(terminate:false)
+							let captureResult = inboundConfig!.captureData(terminate:false)
 							if (captureResult) {
 								//include this file handle in the return value so that it can be safely merged into the clearReaders variable 
 								returnValue = .activeReader(kv.key)
@@ -127,8 +127,8 @@ class ChannelManager {
 					case .readingClosed:
 						let inboundConfig = curEvents.readers[kv.key]
 						if (inboundConfig != nil) {
-							inboundConfig!.captureData(terminate:true)
-							returnValue = .clearReading(kv.key)
+							_ = inboundConfig!.captureData(terminate:true)
+							returnValue = .clearReader(kv.key)
 						}
 					
 					case .writingClosed:
@@ -148,7 +148,7 @@ class ChannelManager {
 	func register(readers:[ReadableConfiguration], writer:WritableConfiguration) -> OutboundChannelState {
 		return self.internalSync.sync {
 			for (_, curReadable) in readers.enumerated() {
-				let newConfig = InboundChannelState(fh:curReadable.fh, mode:curReadable.parseMode dataHandler:curReadable.handler)
+				let newConfig = InboundChannelState(fh:curReadable.fh, mode:curReadable.parseMode, dataHandler:curReadable.handler)
 				_ = self.readers.updateValue(newConfig, forKey:curReadable.fh)
 				_ = self.groups.updateValue(curReadable.group, forKey:curReadable.fh)
 			}

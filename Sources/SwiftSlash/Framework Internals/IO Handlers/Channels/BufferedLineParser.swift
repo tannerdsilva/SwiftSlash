@@ -6,8 +6,8 @@ internal struct BufferedLineParser {
 	fileprivate var currentLine = Data()
 	fileprivate var pendingLines = [Data]()
 	
-	convenience init() {
-		init(mode:.lf)
+	init() {
+		self.type = .lf
 	}
 	
 	init(mode:DataParseMode) {

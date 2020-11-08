@@ -22,7 +22,7 @@ extension Collection {
 		}
 
 		//post-process merging
-		let returnQueue = DispatchQueue(label:"com.tannersilva.function.explode.enumerate", target:explodeGlobal)
+		let returnQueue = DispatchQueue(label:"com.tannersilva.function.explode.enumerate", target:process_master_queue)
 
 		//process
 		DispatchQueue.concurrentPerform(iterations:count) { _ in

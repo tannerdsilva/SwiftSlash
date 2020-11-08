@@ -23,7 +23,7 @@ internal class EventTrigger {
 		var allocationSize:Int32 = 32
 		func reallocate(size:Int32) {
 			epollEventsAllocation.deallocate()
-			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:size)
+			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
 			allocationSize = size
 		}
 		
@@ -34,7 +34,7 @@ internal class EventTrigger {
 					print("EPOLL ERROR")
 					break;
 				default:
-					if (pollResult.count > 0) {
+					if (pollResult > 0) {
 						var i = 0
 						while (i < pollResult) {
 							let currentEvent = epollEventsAllocation[i]
@@ -61,7 +61,7 @@ internal class EventTrigger {
 						if (i*2 > allocationSize) {
 							reallocate(size:allocationSize*2)
 						}
-						if (channelManager != nil) {
+						if (i < 0) && (channelManager != nil) {
 							self.channelManager!.assignNewEvents(buildResults)
 							buildResults.removeAll(keepingCapacity:true)
 						}
@@ -107,6 +107,6 @@ internal class EventTrigger {
 	}
 	
 	deinit {
-		free(epoll)
+		epoll.closeFileHandle()
 	}
 }

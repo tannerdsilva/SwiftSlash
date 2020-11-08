@@ -6,11 +6,10 @@ class InboundChannelState:Hashable {
 	var parser:BufferedLineParser
 	let dataHandler:InboundDataHandler
 	
-	init(fh:Int32, mode:DataParseMode, dataHandler:InboundDataHandler) {
+	init(fh:Int32, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler)) {
 		self.fh = fh
 		self.dataHandler = dataHandler
 		self.parser = BufferedLineParser(mode:mode)
-		self.terminationHandler = terminationHandler
 	}
 	
 	static func == (lhs:InboundChannelState, rhs:InboundChannelState) -> Bool {
@@ -36,11 +35,11 @@ class InboundChannelState:Hashable {
 		} catch FileHandleError.error_pipe {
 		} catch _ {
 		}
-		if (captureData.count == readBlockSize) && (terminate == false) {
+		if (capturedData.count == readBlockSize) && (terminate == false) {
 			readBlockSize = readBlockSize * 2
 		}
 		if (capturedData.count > 0) {
-			if (parser.intake(capturedData!)) {
+			if (parser.intake(capturedData)) {
 				if (terminate) {
 					for (_, curChunk) in parser.flushFinal().enumerated() {
 						self.dataHandler(curChunk)

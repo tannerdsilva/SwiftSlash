@@ -208,7 +208,7 @@ public class ProcessInterface {
 			guard self._state == .running else {
 				throw Error.invalidProcessState
 			}
-			self._process_signature!.stdinChannel.scheduleDataForWriting(stdin)
+			self._process_signature!.stdinChannel.broadcast(stdin)
 		}
 	}
 }
