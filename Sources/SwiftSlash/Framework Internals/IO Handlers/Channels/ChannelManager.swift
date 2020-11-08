@@ -19,12 +19,15 @@ class ChannelManager {
 	
 	//this is a function that ensures that the main loop stops running if there are no shell instances active
 	fileprivate func _adjustLoopGroupState() {
+		print("Evaluating loop group state for channel manager; Loop Enabled: \(loopEnabled), Count: \(self.states.count)")
 		if (self.states.count == 0 && loopEnabled == true) {
 			loopEnabled = false
 			loopGroup.enter() //pause the loop by entering the loop group
+			print("triggered: enabled = false")
 		} else if (self.states.count > 0 && loopEnabled == false) {
 			loopEnabled = true
 			loopGroup.leave() //resume the loop by leaving the loop group
+			print("triggered: enabled = true")
 		}
 	}
 	
