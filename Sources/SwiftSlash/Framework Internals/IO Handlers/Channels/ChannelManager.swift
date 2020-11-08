@@ -142,6 +142,7 @@ class ChannelManager {
 			}, merge: { (_, curResult) in
 				postLoopResults.append(curResult)
 			})
+			print(".", terminator:"")
 		}
 	}
 		
