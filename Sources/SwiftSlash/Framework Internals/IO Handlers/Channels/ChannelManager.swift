@@ -19,15 +19,12 @@ class ChannelManager {
 	
 	//this is a function that ensures that the main loop stops running if there are no shell instances active
 	fileprivate func _adjustLoopGroupState() {
-		print("Evaluating loop group state for channel manager; Loop Enabled: \(loopEnabled), Count: \(self.states.count)")
 		if (self.states.count == 0 && loopEnabled == true) {
 			loopEnabled = false
 			loopGroup.enter() //pause the loop by entering the loop group
-			print("triggered: enabled = false")
 		} else if (self.states.count > 0 && loopEnabled == false) {
 			loopEnabled = true
 			loopGroup.leave() //resume the loop by leaving the loop group
-			print("triggered: enabled = true")
 		}
 	}
 	
@@ -92,16 +89,13 @@ class ChannelManager {
 	}
 	
 	func _mainLoop() {
-		print("Channel manager main loop initialized")
 		//this stores the file handles that are active for reading and need to be included in the next iteration
 		var postLoopResults = [HandleLoopResult]()
 		
 		while true {
 			//sleep the run loop if there are no active file handles to process
 			if (postLoopResults.count == 0) {
-				print("Channel manager is waiting for wake")
 				loopGroup.wait()
-				print("Channel manager loop was AWOKEN")
 			}			
 			
 			//extract the current file handle events 
@@ -168,7 +162,6 @@ class ChannelManager {
 	//batch intake new file handles
 	func assignNewEvents(_ fhEvents:[Int32:EventMode]) {
 		self.internalSync.sync { [fhEvents] in
-			print("Channel Manager is assigning \(fhEvents.count) new events")
 			for (_, kv) in fhEvents.enumerated() {
 				_ = self.states.updateValue(kv.value, forKey:kv.key)
 			}
