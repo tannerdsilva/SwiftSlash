@@ -89,13 +89,16 @@ class ChannelManager {
 	}
 	
 	func _mainLoop() {
+		print("Channel manager main loop initialized")
 		//this stores the file handles that are active for reading and need to be included in the next iteration
 		var postLoopResults = [HandleLoopResult]()
 		
 		while true {
 			//sleep the run loop if there are no active file handles to process
 			if (postLoopResults.count == 0) {
+				print("Channel manager is waiting for wake")
 				loopGroup.wait()
+				print("Channel manager loop was AWOKEN")
 			}			
 			
 			//extract the current file handle events 
@@ -162,6 +165,7 @@ class ChannelManager {
 	//batch intake new file handles
 	func assignNewEvents(_ fhEvents:[Int32:EventMode]) {
 		self.internalSync.sync { [fhEvents] in
+			print("Channel Manager is assigning \(fhEvents.count) new events")
 			for (_, kv) in fhEvents.enumerated() {
 				_ = self.states.updateValue(kv.value, forKey:kv.key)
 			}
