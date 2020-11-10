@@ -1,7 +1,7 @@
 import Foundation
 import Glibc
 
-public struct Command {
+public struct Command:Hashable, Equatable {
 	var executable:String
 	var arguments:[String]
 	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
@@ -37,6 +37,16 @@ public struct Command {
 		try procInterface.run()
 		let exitCode = procInterface.waitForExitCode()
 		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
+	}
+	
+	static func == (lhs:Command, rhs:Command) -> Bool {
+		return (lhs.executable == rhs.executable) && (lhs.arguments == rhs.arguments) && (lhs.environment == rhs.environment)
+	}
+	
+	public func hash(into hasher:inout Hasher) {
+		hasher.combine(executable)
+		hasher.combine(arguments)
+		hasher.combine(environment)
 	}
 }
 
