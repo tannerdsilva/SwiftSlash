@@ -249,7 +249,7 @@ class ChannelManager {
 	func assignNewEvents(_ fhEvents:[Int32:EventMode]) {
 		self.internalSync.sync { [fhEvents] in
 			for (_, kv) in fhEvents.enumerated() {
-				if (kv.value == .readableEvent) && (self.sizes[kv.key] == nil) {
+				if (kv.value == .readableEvent) || (kv.value == .readingClosed) && (self.sizes[kv.key] == nil) {
 					_ = self.sizes.updateValue(PIPE_BUF, forKey:kv.key)
 				}
 				_ = self.states.updateValue(kv.value, forKey:kv.key)
