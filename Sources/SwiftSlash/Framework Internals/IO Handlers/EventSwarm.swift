@@ -7,6 +7,7 @@ class EventSwarm {
 	
 	let eventTrigger = EventTrigger()
 	let channelManager = ChannelManager()
+	let downstreamHandler = DownstreamHandler()
 	
 	init() {
 		self.eventTrigger.channelManager = self.channelManager
@@ -26,6 +27,8 @@ class EventSwarm {
 		for (_, curReader) in readers.enumerated() {
 			try eventTrigger.register(reader:curReader.fh)
 		}
-		return channelManager.register(readers:readers, writer:writer)
+		let newOutboundItem = channelManager.register(writer:writer)
+		downstreamHandler.register(readers:readers, writer:writer)
+		return newOutboundItem
 	}
 }

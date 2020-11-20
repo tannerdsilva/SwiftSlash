@@ -1,17 +1,18 @@
 import Foundation
+import Glibc
 
 class ChannelManager {
 	let internalSync = DispatchQueue(label:"com.swiftslash.file-handle-capture.instance.sync", target:process_master_queue)
 	
-	var states = [Int32:EventMode]()
-	var readers = [Int32:InboundChannelState]()
-	var writers = [Int32:OutboundChannelState]()
-	var groups = [Int32:TerminationGroup]()
+	var states = [Int32:EventMode]() //states for readers and writers
+	var sizes = [Int32:Int32]() //for reading
+	var writers = [Int32:OutboundChannelState]() //for writing
 	
 	var loopEnabled = false
 	let loopGroup = DispatchGroup()
 	
 	weak var eventTrigger:EventTrigger?
+	weak var downstreamHandler:DownstreamHandler?
 	
 	init() {
 		loopGroup.enter()
@@ -29,68 +30,134 @@ class ChannelManager {
 	}
 	
 	//extract the reading events from a current process state
-	fileprivate struct ExtractionPackage {
-		let states:[Int32:EventMode]
-		let readers:[Int32:InboundChannelState]
-		let writers:[Int32:OutboundChannelState]
+	fileprivate struct ExtractionPackage:Equatable, Hashable {
+		let states:[Int32:EventMode] //states of readers and writers
+		let sizes:[Int32:Int32] //for reading
+		let writers:[Int32:OutboundChannelState] //for writing
+		var downstream:[CapturedHandleEvent] //generated events that go downstream to the next handler
+		
+		static func == (lhs:ExtractionPackage, rhs:ExtractionPackage) -> Bool {
+			return (lhs.states == rhs.states) && (lhs.sizes == rhs.sizes) && (lhs.writers == rhs.writers) && (lhs.downstream == rhs.downstream)
+		}
+		func hash(into hasher:inout Hasher) {
+			hasher.combine(self.states)
+			hasher.combine(self.sizes)
+			hasher.combine(self.writers)
+			hasher.combine(self.downstream)
+		}
 	}
-	fileprivate enum HandleLoopResult {
-		case activeReader(Int32)
-		case clearReader(Int32)
-		case clearWriter(Int32)
+	internal struct CapturedHandleEvent:Equatable, Hashable {
+		let fh:Int32
+		let closed:Bool
+		let time:timeval
+		let data:Data?
+		
+		init(fh:Int32, closed:Bool, data:Data?) {
+			self.fh = fh
+			self.closed = closed
+			self.time = CurrentProcessState.getCurrentSystemTime()
+			self.data = data
+		}
+		
+		//MARK: Equatable
+		static func == (lhs:CapturedHandleEvent, rhs:CapturedHandleEvent) -> Bool {
+			if (lhs.fh == rhs.fh) && (lhs.closed == rhs.closed) && (lhs.time == rhs.time) && (lhs.data == rhs.data) {
+				return true
+			} else {
+				return false
+			}
+		}
+		func hash(into hasher:inout Hasher) {
+			hasher.combine(self.fh)
+			hasher.combine(self.closed)
+//			hasher.combine(self.time)
+			if (self.data != nil) {
+				hasher.combine(self.data!)
+			}
+		}
 	}
-	fileprivate func extractEvents(actions:[HandleLoopResult]) -> ExtractionPackage {
+	fileprivate func extractEvents(actions:[EventResult]) -> ExtractionPackage {
 		return self.internalSync.sync {
+			var buildDownstream = [CapturedHandleEvent]()
 			//insert reading events for the file handles that are still active from the last run loop iteration
 			for (_, curAction) in actions.enumerated() {
-				switch curAction {
-					case let .activeReader(thisFH):
-						let checkValue = self.states[thisFH]
-						if (checkValue != .readingClosed) {
-							_ = self.states.updateValue(.readableEvent, forKey:thisFH)
+				switch curAction.direction {
+					case .readingInbound:
+						if (curAction.isClosed) {
+							_ = self.sizes.removeValue(forKey:curAction.fh)
+						} else {
+							if (curAction.sizeDelta != 0) {
+								let currentSize = self.sizes[curAction.fh]!
+								self.sizes[curAction.fh] = currentSize + curAction.sizeDelta
+							}			
+							if (curAction.isActive) {
+								_ = self.states.updateValue(.readableEvent, forKey:curAction.fh)
+							}
 						}
-					case let .clearReader(thisFH):
-						_ = self.readers.removeValue(forKey:thisFH)
-						_ = self.states.removeValue(forKey:thisFH)
-						let checkGroups = self.groups.removeValue(forKey:thisFH)
-						if (checkGroups != nil) {
-							checkGroups!.removeHandle(fh:thisFH)
+						if (curAction.capturedData != nil && curAction.capturedData!.count > 0) || (curAction.isClosed == true) {
+							buildDownstream.append(CapturedHandleEvent(fh:curAction.fh, closed:curAction.isClosed, data:curAction.capturedData))
 						}
-						if (self.eventTrigger != nil) {
-							try? self.eventTrigger!.deregister(reader:thisFH)
+					case .writingOutbound:
+						if (curAction.isClosed) {
+							_ = self.writers.removeValue(forKey:curAction.fh)
+							buildDownstream.append(CapturedHandleEvent(fh:curAction.fh, closed:true, data:nil))
 						}
-						thisFH.closeFileHandle()
-						
-					case let .clearWriter(thisFH):
-						_ = self.writers.removeValue(forKey:thisFH)
-						_ = self.states.removeValue(forKey:thisFH)
-						let checkGroups = self.groups.removeValue(forKey:thisFH)
-						if (checkGroups != nil) {
-							checkGroups!.removeHandle(fh:thisFH)
-						}
-						if (self.eventTrigger != nil) {
-							try? self.eventTrigger!.deregister(writer:thisFH)
-						}
-						thisFH.closeFileHandle()
 				}
 			}
 			
 			//capture the events and states as they currently exist in the synchrony state
 			let captureStates = self.states
-			let captureReaders = self.readers
 			let captureWriters = self.writers
+			let captureSizes = self.sizes
 			
 			//clear the events for all but the final readable
 			self._adjustLoopGroupState()
 			self.states.removeAll(keepingCapacity:true)
 			
-			return ExtractionPackage(states:captureStates, readers:captureReaders, writers:captureWriters)
+			return ExtractionPackage(states:captureStates, sizes:captureSizes, writers:captureWriters, downstream:buildDownstream)
+		}
+	}
+	
+	fileprivate struct EventResult:Equatable, Hashable {
+		fileprivate enum Direction:UInt8 {
+			case readingInbound = 0
+			case writingOutbound = 1
+		}
+		let direction:Direction
+		let fh:Int32
+		let sizeDelta:Int32
+		let isActive:Bool
+		let isClosed:Bool
+		let capturedData:Data?
+		
+		init(_ direction:Direction, fh:Int32, sizeDelta:Int32, isActive:Bool, isClosed:Bool, capturedData:Data?) {
+			self.direction = direction
+			self.fh = fh
+			self.sizeDelta = sizeDelta
+			self.isActive = isActive
+			self.isClosed = isClosed
+			self.capturedData = capturedData
+		}
+		
+		static func == (lhs:EventResult, rhs:EventResult) -> Bool {
+			return (lhs.direction == rhs.direction) && (lhs.fh == rhs.fh) && (lhs.sizeDelta == rhs.sizeDelta) && (lhs.isActive == rhs.isActive) && (lhs.isClosed == rhs.isClosed) && (lhs.capturedData == rhs.capturedData)
+		}
+		
+		func hash(into hasher:inout Hasher) {
+			hasher.combine(self.direction)
+			hasher.combine(self.fh)
+			hasher.combine(self.sizeDelta)
+			hasher.combine(self.isActive)
+			hasher.combine(self.isClosed)
+			if (self.capturedData != nil) {
+				hasher.combine(self.capturedData!)
+			}
 		}
 	}
 	
 	func _mainLoop() {
 		//this stores the file handles that are active for reading and need to be included in the next iteration
-		var postLoopResults = [HandleLoopResult]()
+		var postLoopResults = [EventResult]()
 		var lastIteration = Date()
 		while true {
 			//sleep the run loop if there are no active file handles to process
@@ -102,43 +169,67 @@ class ChannelManager {
 			let curEvents = self.extractEvents(actions:postLoopResults)
 			postLoopResults.removeAll(keepingCapacity:true)
 			
+			if (self.downstreamHandler != nil) {
+				
+			}
 			//process the states and compile a list of HandleLoopResults to incorporate into the next synchronization phase
-			curEvents.states.explode(using: { (_, kv) -> ChannelManager.HandleLoopResult? in
-				var returnValue:HandleLoopResult? = nil
+			curEvents.states.explode(using: { (_, kv) -> EventResult? in
 				switch (kv.value) {
 					case .readableEvent:
-						//find the object that we want to read with
-						let inboundConfig = curEvents.readers[kv.key]
-						if (inboundConfig != nil) {							
-							//tell the object to capture data - the object will return if the handle is blocked
-							let captureResult = inboundConfig!.captureData(terminate:false)
-							if (captureResult) {
-								//include this file handle in the return value so that it can be safely merged into the clearReaders variable 
-								returnValue = .activeReader(kv.key)
-							}
+						//capture the data from the file handle
+						var isReadable = true
+						let readSize = self.sizes[kv.key]!
+						var capturedData:Data
+						do {
+							capturedData = try kv.key.readFileHandle(size:Int(readSize))
+						} catch FileHandleError.error_again {
+							isReadable = false
+							capturedData = Data()
+						} catch FileHandleError.error_wouldblock {
+							isReadable = false
+							capturedData = Data()
+						} catch FileHandleError.error_pipe {
+							print("PIPE ERROR")
+							capturedData = Data()
+						} catch _ {
+							capturedData = Data()
 						}
+						
+						//return the result
+						let sizeDelta = (capturedData.count*2 > readSize) ? readSize : 0
+						if (sizeDelta > 0) {
+							print("info: adjusting size delta for \(kv.key) by \(sizeDelta)")
+						}
+						return EventResult(.readingInbound, fh:kv.key, sizeDelta:sizeDelta, isActive:isReadable, isClosed:false, capturedData:capturedData)
 						
 					case .writableEvent:
-						let outboundConfig = curEvents.writers[kv.key]
-						if (outboundConfig != nil) {
-							outboundConfig!.channelWriteableEvent()
-						}
+						curEvents.writers[kv.key]!.channelWriteableEvent()
+						return nil
 						
 					case .readingClosed:
-						let inboundConfig = curEvents.readers[kv.key]
-						if (inboundConfig != nil) {
-							_ = inboundConfig!.captureData(terminate:true)
-							returnValue = .clearReader(kv.key)
-						}
-					
-					case .writingClosed:
-						let outboundConfig = curEvents.writers[kv.key]
-						if (outboundConfig != nil) {
-							returnValue = .clearWriter(kv.key)
+						//capture the data from the file handle
+						let readSize = curEvents.sizes[kv.key]!
+						var capturedData = Data(capacity:Int(readSize))
+						do {
+							repeat {
+								try capturedData.append(kv.key.readFileHandle(size:Int(readSize)))
+							} while true
+						} catch _ {
 						}
 						
+						if (self.eventTrigger != nil) {
+							try? self.eventTrigger!.deregister(reader:kv.key)
+						}
+						kv.key.closeFileHandle()
+						return EventResult(.readingInbound, fh:kv.key, sizeDelta:0, isActive:false, isClosed:true, capturedData:capturedData)
+					
+					case .writingClosed:
+						if (self.eventTrigger != nil) {
+							try? self.eventTrigger!.deregister(writer:kv.key)
+						}
+						curEvents.writers[kv.key]!.closeFileHandle()
+						return EventResult(.writingOutbound, fh:kv.key, sizeDelta:0, isActive:false, isClosed:true, capturedData:nil)
 				}
-				return returnValue
 			}, merge: { (_, curResult) in
 				postLoopResults.append(curResult)
 			})
@@ -146,16 +237,10 @@ class ChannelManager {
 		}
 	}
 		
-	func register(readers:[ReadableConfiguration], writer:WritableConfiguration) -> OutboundChannelState {
+	func register(writer:WritableConfiguration) -> OutboundChannelState {
 		return self.internalSync.sync {
-			for (_, curReadable) in readers.enumerated() {
-				let newConfig = InboundChannelState(fh:curReadable.fh, mode:curReadable.parseMode, dataHandler:curReadable.handler)
-				_ = self.readers.updateValue(newConfig, forKey:curReadable.fh)
-				_ = self.groups.updateValue(curReadable.group, forKey:curReadable.fh)
-			}
 			let newWriter = OutboundChannelState(fh:writer.fh)
 			_ = self.writers.updateValue(newWriter, forKey:writer.fh)
-			_ = self.groups.updateValue(writer.group, forKey:writer.fh)
 			return newWriter
 		}
 	}
@@ -164,10 +249,12 @@ class ChannelManager {
 	func assignNewEvents(_ fhEvents:[Int32:EventMode]) {
 		self.internalSync.sync { [fhEvents] in
 			for (_, kv) in fhEvents.enumerated() {
+				if (kv.value == .readableEvent) && (self.sizes[kv.key] == nil) {
+					_ = self.sizes.updateValue(PIPE_BUF, forKey:kv.key)
+				}
 				_ = self.states.updateValue(kv.value, forKey:kv.key)
 			}
 			self._adjustLoopGroupState()
 		}
 	}
-					
 }

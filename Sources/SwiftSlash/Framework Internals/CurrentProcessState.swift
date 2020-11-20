@@ -1,4 +1,5 @@
 import Foundation
+import Glibc
 
 internal class CurrentProcessState {
 	class func getCurrentEnvironmentVariables() -> [String:String] {
@@ -23,5 +24,11 @@ internal class CurrentProcessState {
 		let currentWDData = Data(bytes:currentWorkingDirectoryBuffer, count:length)
 		let currentPath = String(data:currentWDData, encoding:.utf8)!
 		return URL(fileURLWithPath:currentPath)
+	}
+	
+	class func getCurrentSystemTime() -> timeval {
+		var returnVal = timeval();
+		gettimeofday(&returnVal, nil)
+		return returnVal
 	}
 }

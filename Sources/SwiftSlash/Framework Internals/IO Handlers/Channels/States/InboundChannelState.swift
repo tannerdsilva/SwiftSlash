@@ -2,7 +2,6 @@ import Foundation
 
 class InboundChannelState:Hashable {
 	let fh:Int32
-	var readBlockSize = Int(PIPE_BUF)
 	var parser:BufferedLineParser
 	let dataHandler:InboundDataHandler
 	
@@ -20,43 +19,24 @@ class InboundChannelState:Hashable {
 		hasher.combine(fh)
 	}
 	
-	func captureData(terminate:Bool) -> Bool {
-		var isReadable = true
+	func capture(data capturedData:Data, terminate:Bool) {
 		var didFire = false
-		var capturedData = Data()
-		do {
-			repeat {
-				try capturedData.append(fh.readFileHandle(size:readBlockSize))
-			} while terminate == true
-		} catch FileHandleError.error_again {
-			isReadable = false
-		} catch FileHandleError.error_wouldblock {
-			isReadable = false
-		} catch FileHandleError.error_pipe {
-		} catch _ {
-		}
-		if (capturedData.count == readBlockSize) && (terminate == false) {
-			readBlockSize = readBlockSize * 2
-		}
-		if (capturedData.count > 0) {
-			if (parser.intake(capturedData)) {
-				if (terminate) {
-					for (_, curChunk) in parser.flushFinal().enumerated() {
-						self.dataHandler(curChunk)
-					}
-				} else {
-					for (_, curChunk) in parser.flushLines().enumerated() {
-						self.dataHandler(curChunk)
-					}
+		if (parser.intake(capturedData)) {
+			if (terminate) {
+				for (_, curChunk) in parser.flushFinal().enumerated() {
+					self.dataHandler(curChunk)
 				}
-				didFire = true
+			} else {
+				for (_, curChunk) in parser.flushLines().enumerated() {
+					self.dataHandler(curChunk)
+				}
 			}
+			didFire = true
 		}
 		if terminate && !didFire {
 			for (_, curChunk) in parser.flushFinal().enumerated() {
 				self.dataHandler(curChunk)
 			}
 		}
-		return isReadable
 	}
 }

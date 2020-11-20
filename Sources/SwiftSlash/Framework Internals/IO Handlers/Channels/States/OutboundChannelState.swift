@@ -11,6 +11,12 @@ class OutboundChannelState:Hashable {
 		self.fh = fh
 	}
 	
+	func closeFileHandle() {
+		self.internalSync.sync {
+			self.fh.closeFileHandle()
+		}
+	}
+	
 	func broadcast(_ dataToWrite:Data) {
 		self.internalSync.sync {
 			outboundBuffer.append(contentsOf:dataToWrite)
