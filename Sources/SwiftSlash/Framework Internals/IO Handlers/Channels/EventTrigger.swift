@@ -25,13 +25,14 @@ internal class EventTrigger {
 			epollEventsAllocation.deallocate()
 			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
 			allocationSize = size
+			print("Reallocating event trigger allocation size to \(allocationSize)")
 		}
 		
 		while true {
 			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
 			switch pollResult {
 				case -1:
-					print("EPOLL ERROR")
+					print("EPOLL ERROR \(errno)")
 					break;
 				default:
 					if (pollResult > 0) {
