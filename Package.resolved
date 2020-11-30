@@ -5,9 +5,9 @@
         "package": "Cepoll",
         "repositoryURL": "https://github.com/tannerdsilva/Cepoll.git",
         "state": {
-          "branch": "master",
+          "branch": null,
           "revision": "8082c69e7ab97849a3f1f26f64d8bcfbcd5e750d",
-          "version": null
+          "version": "1.0.0"
         }
       }
     ]
