@@ -39,7 +39,7 @@ public struct Command:Hashable, Equatable {
 		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
 	}
 	
-	static func == (lhs:Command, rhs:Command) -> Bool {
+	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return (lhs.executable == rhs.executable) && (lhs.arguments == rhs.arguments) && (lhs.environment == rhs.environment)
 	}
 	
