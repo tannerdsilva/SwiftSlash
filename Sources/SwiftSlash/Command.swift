@@ -18,6 +18,12 @@ public struct Command {
 		self.arguments = elements
 	}
 	
+	public init(execute:String) {
+		self.executable = execute
+		self.arguments = [String]()
+	}
+
+	
 	public init(bash command:String) {
 		let commandTerminate = command.replacingOccurrences(of:"'", with:"''")
 		self.executable = "/bin/bash"
