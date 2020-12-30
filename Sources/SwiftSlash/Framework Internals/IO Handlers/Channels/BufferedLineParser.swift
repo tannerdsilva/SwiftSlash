@@ -80,6 +80,7 @@ internal struct BufferedLineParser {
 		var returnLines = self.pendingLines
 		self.pendingLines.removeAll()
 		if (currentLineCopy.count > 0) {
+			print("[SWIFTSLASH] returning current line")
 			returnLines.append(self.currentLine)
 		}
 		return returnLines
