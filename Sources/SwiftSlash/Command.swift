@@ -2,9 +2,9 @@ import Foundation
 import Glibc
 
 public struct Command {
-	var executable:String
-	var arguments:[String]
-	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
+	public var executable:String
+	public var arguments:[String]
+	public var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
 	
 	public init?(command:String) {
 		guard command.count > 0 else {
