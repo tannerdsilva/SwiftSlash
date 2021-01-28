@@ -22,7 +22,11 @@ public struct Command {
 		self.executable = execute
 		self.arguments = [String]()
 	}
-
+	
+	public init(execute:String, arguments:[String]) throws {
+		self.executable = execute
+		self.arguments = arguments	
+	}
 	
 	public init(bash command:String) {
 		let commandTerminate = "'" + command.replacingOccurrences(of:"'", with:"'\"'\"'") + "'"
