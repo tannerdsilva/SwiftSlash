@@ -25,7 +25,7 @@ public struct Command {
 
 	
 	public init(bash command:String) {
-		let commandTerminate = command.replacingOccurrences(of:"'", with:"''")
+		let commandTerminate = "'" + command.replacingOccurrences(of:"'", with:"'\"'\"'") + "'"
 		self.executable = "/bin/bash"
 		self.arguments = ["-c", commandTerminate]
 	}
