@@ -91,7 +91,6 @@ class ChannelManager {
 	func _mainLoop() {
 		//this stores the file handles that are active for reading and need to be included in the next iteration
 		var postLoopResults = [HandleLoopResult]()
-		var lastIteration = Date()
 		while true {
 			//sleep the run loop if there are no active file handles to process
 			if (postLoopResults.count == 0) {
@@ -142,7 +141,6 @@ class ChannelManager {
 			}, merge: { (_, curResult) in
 				postLoopResults.append(curResult)
 			})
-			print("------------- \(lastIteration.timeIntervalSinceNow) -------------")
 		}
 	}
 		

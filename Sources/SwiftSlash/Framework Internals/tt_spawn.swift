@@ -240,7 +240,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             }
 
             //assign stdout to the writing end of the file descriptor
-            var hasStdout:PosixPipe = try bindingStdout()
+            let hasStdout:PosixPipe = try bindingStdout()
             defer {
             	if (hasStdout.isNullValued == false) {
 					_ = _close(hasStdout.writing)
@@ -252,7 +252,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             }
             
             //assign stderr to the writing end of the file descriptor
-            var hasStderr:PosixPipe = try bindingStderr()
+            let hasStderr:PosixPipe = try bindingStderr()
             defer {
             	if (hasStderr.isNullValued == false) {
 					_ = _close(hasStderr.writing)
@@ -329,7 +329,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
                 _ = _close(STDERR_FILENO)
                 _ = _close(STDOUT_FILENO)
 				do {
-					try internalNotify.writing.writeFileHandle("\(processForkResult)")
+					_ = try internalNotify.writing.writeFileHandle("\(processForkResult)")
 				} catch _ {
 					exit(-2)
 				}

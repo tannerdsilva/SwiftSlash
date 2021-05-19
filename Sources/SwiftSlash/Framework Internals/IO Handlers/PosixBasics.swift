@@ -82,7 +82,7 @@ internal struct PosixPipe:Hashable {
 			guard read != -1 && write != -1 else {
 				throw FileHandleError.pipeOpenError
 			}
-			return try PosixPipe(reading:read, writing:write)
+			return PosixPipe(reading:read, writing:write)
 		}
 	}
 	
