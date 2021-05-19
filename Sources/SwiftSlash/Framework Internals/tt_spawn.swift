@@ -81,16 +81,14 @@ internal struct tt_proc_signature:Hashable {
     let stdout:PosixPipe
     let stderr:PosixPipe
     
-    let stdinChannel:DataChannelMonitor.OutgoingDataChannel
-    let stdoutChannel:DataChannelMonitor.IncomingDataChannel?
-    let stderrChannel:DataChannelMonitor.IncomingDataChannel?
+    let stdinChannel:OutboundChannelState
     
     let worker:pid_t
     
     let launch_time:Date
     
     //initialize
-    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:DataChannelMonitor.OutgoingDataChannel, stdoutChannel:DataChannelMonitor.IncomingDataChannel?, stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil) {
+    init(work:pid_t, stdin:PosixPipe, stdout:PosixPipe, stderr:PosixPipe, stdinChannel:OutboundChannelState) {
         self.worker = work
         self.launch_time = Date()
         
@@ -99,8 +97,6 @@ internal struct tt_proc_signature:Hashable {
 		self.stdout = stdout
 		
 		self.stdinChannel = stdinChannel
-		self.stdoutChannel = stdoutChannel
-		self.stderrChannel = stderrChannel
     }
     
     //comparable
@@ -128,55 +124,54 @@ internal struct tt_proc_signature:Hashable {
     }
 }
 
-let serialSetup = DispatchQueue(label:"com.swiftslash.global.spawn")
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
-internal typealias TTSpawnReadingHandler = DataChannelMonitor.InboundDataHandler?
+internal typealias TTSpawnReadingHandler = InboundDataHandler?
 internal typealias TTSpawnTerminationHandler = (Int32) -> Void
-internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:TTSpawnReadingHandler, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:TTSpawnReadingHandler, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
-	return try serialSetup.sync {
+internal let serial_spawn = DispatchQueue(label:"com.swiftslash.function.tt_spawn", target:process_master_queue)
+internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
+	return try serial_spawn.sync {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe
-		var handlesOfInterest = Set<Int32>()
 		let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-		
+
+		let terminationGroup = TerminationGroup(fhs:Set<Int32>([stdinPipe.writing]), terminationHandler: { [exitHandler] exitPid in
+			exitHandler(tt_wait_sync(pid:exitPid))
+		})
+
+		let writeConfig = WritableConfiguration(fh:stdinPipe.writing, group:terminationGroup)
+		var readConfigs = [ReadableConfiguration]()
+
 		//configure for a standard output handler if the user passed a handler block
-		var stdoutChannel:DataChannelMonitor.IncomingDataChannel? = nil
 		if stdout != nil {
 			stdoutPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
+			terminationGroup.include(fh:stdoutPipe.reading)
+			readConfigs.append(ReadableConfiguration(fh:stdoutPipe.reading, parseMode:stdoutParseMode, group:terminationGroup, handler:stdout!))
 			guard stdoutPipe.isNullValued == false else {
 				throw tt_spawn_error.pipeError
 			}
-			handlesOfInterest.update(with:stdoutPipe.reading)
-			stdoutChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stdoutPipe.reading, mode:stdoutParseMode, dataHandler:stdout!, terminationHandler:{ return })
 		} else {
 			stdoutPipe = PosixPipe(reading:-1, writing:-1)
 		}
-	
+
 		//configure for a standard error handler if the user passed a handler block
-		var stderrChannel:DataChannelMonitor.IncomingDataChannel? = nil
 		if stderr != nil {
 			stderrPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
+			terminationGroup.include(fh:stderrPipe.reading)
+			readConfigs.append(ReadableConfiguration(fh:stderrPipe.reading, parseMode:stderrParseMode, group:terminationGroup, handler:stderr!))
 			guard stderrPipe.isNullValued == false else {
 				throw tt_spawn_error.pipeError
 			}
-			handlesOfInterest.update(with:stderrPipe.reading)
-			stderrChannel = try DataChannelMonitor.global.registerInboundDataChannel(fh:stderrPipe.reading, mode:stderrParseMode, dataHandler:stderr!, terminationHandler:{ return })
 		} else {
 			stderrPipe = PosixPipe(reading:-1, writing:-1)
 		}
-	
+
 		//bind the standard input handler. this is always configured because it is our primary means of determining when a process exits
 		guard stdinPipe.reading != -1 && stdinPipe.writing != -1 else {
 			throw tt_spawn_error.pipeError
 		}
-		handlesOfInterest.update(with:stdinPipe.writing)
-		let stdinChannel = try DataChannelMonitor.global.registerOutboundDataChannel(fh:stdinPipe.writing, initialData:nil, terminationHandler: { return })
 
-		//create a termination group that can be associated with the launched pid
-		let terminationGroup = try DataChannelMonitor.global.registerTerminationGroup(fhs:handlesOfInterest, handler: { [exitHandler] exitPid in
-			exitHandler(tt_wait_sync(pid:exitPid))
-		})
+		let stdinChannel = try EventSwarm.global.register(readers:readConfigs, writer:writeConfig)
 	
 		//launch the process
 		let returnVal = try path.withCString({ executablePathPointer -> pid_t in
@@ -188,11 +183,10 @@ internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], 
 				})
 			})
 		})
-	
-		let newSignature = tt_proc_signature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel, stdoutChannel:stdoutChannel, stderrChannel:stderrChannel)
-		//associate the launched pid with the newly created termination group
+
 		terminationGroup.setAssociatedPid(returnVal)
-		return newSignature
+
+		return tt_proc_signature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel)
 	}
 }
 
@@ -246,7 +240,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             }
 
             //assign stdout to the writing end of the file descriptor
-            var hasStdout:PosixPipe = try bindingStdout()
+            let hasStdout:PosixPipe = try bindingStdout()
             defer {
             	if (hasStdout.isNullValued == false) {
 					_ = _close(hasStdout.writing)
@@ -258,7 +252,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             }
             
             //assign stderr to the writing end of the file descriptor
-            var hasStderr:PosixPipe = try bindingStderr()
+            let hasStderr:PosixPipe = try bindingStderr()
             defer {
             	if (hasStderr.isNullValued == false) {
 					_ = _close(hasStderr.writing)
@@ -335,7 +329,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
                 _ = _close(STDERR_FILENO)
                 _ = _close(STDOUT_FILENO)
 				do {
-					try internalNotify.writing.writeFileHandle("\(processForkResult)")
+					_ = try internalNotify.writing.writeFileHandle("\(processForkResult)")
 				} catch _ {
 					exit(-2)
 				}
@@ -376,7 +370,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             var triggerData = Data()
             repeat {
             	do {
-            		try triggerData.append(contentsOf:internalNotify.reading.readFileHandle())
+            		try triggerData.append(contentsOf:internalNotify.reading.readFileHandle(size:Int(PIPE_BUF)))
             		shouldLoop = false
             	} catch FileHandleError.error_again {
             		shouldLoop = true

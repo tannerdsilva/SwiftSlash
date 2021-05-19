@@ -82,7 +82,7 @@ internal struct PosixPipe:Hashable {
 			guard read != -1 && write != -1 else {
 				throw FileHandleError.pipeOpenError
 			}
-			return try PosixPipe(reading:read, writing:write)
+			return PosixPipe(reading:read, writing:write)
 		}
 	}
 	
@@ -98,14 +98,14 @@ internal struct PosixPipe:Hashable {
 }
 
 extension Int32 {
-	internal func readFileHandle() throws -> Data {
-		guard let readAllocation = malloc(Int(PIPE_BUF) + 1) else {
+	internal func readFileHandle(size:Int) throws -> Data {
+		guard let readAllocation = malloc(size + 1) else {
 			throw FileHandleError.error_unknown
 		}
 		defer {
 			free(readAllocation)
 		}
-		let amountRead = read(self, readAllocation, Int(PIPE_BUF))
+		let amountRead = read(self, readAllocation, size)
 		guard amountRead > -1 else {
 			switch errno {
 				case EAGAIN:
@@ -171,5 +171,9 @@ extension Int32 {
 			}
 		}
 		return inputData.suffix(from:amountWritten)
+	}
+	
+	internal func closeFileHandle() {
+		close(self);
 	}
 }
