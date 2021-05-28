@@ -6,9 +6,6 @@ fileprivate func _WSTATUS(_ status:Int32) -> Int32 {
 fileprivate func WIFEXITED(_ status:Int32) -> Bool {
     return _WSTATUS(status) == 0
 }
-fileprivate func WIFSIGNALED(_ status:Int32) -> Bool {
-    return (_WSTATUS(status) != 0) && (_WSTATUS(status) != 0x7f)
-}
 fileprivate func WEXITSTATUS(_ status: CInt) -> CInt {
     return (status >> 8) & 0xff
 }
@@ -46,7 +43,7 @@ extension Dictionary where Key == String, Value == String {
 }
 
 //waits for a process to exit
-internal func tt_wait_sync(pid:pid_t) -> Int32 {
+internal func tt_wait_sync(pid:pid_t) -> Int32? {
     var waitResult:Int32 = 0
     var exitCode:Int32 = 0
     var errNo:Int32 = 0
@@ -54,7 +51,11 @@ internal func tt_wait_sync(pid:pid_t) -> Int32 {
         waitResult = waitpid(pid, &exitCode, 0)
         errNo = errno
     } while waitResult == -1 && errNo == EINTR
-    return WEXITSTATUS(exitCode)
+    if WIFEXITED(exitCode) == true {
+    	return WEXITSTATUS(exitCode)
+    } else {
+    	return nil
+    }
 }
 
 //this is the structure that is used to capture all relevant information about a process that is in flight
@@ -109,7 +110,7 @@ internal struct tt_proc_signature:Hashable {
 //this is the wrapping function for tt_spawn. this function can be used with swift objects rather than c pointers that are required for the base tt_spawn command
 //before calling the base `tt_spawn` command, this function will prepare the global pipe readers for any spawns that are configured for stdout and stderr capture
 internal typealias TTSpawnReadingHandler = InboundDataHandler?
-internal typealias TTSpawnTerminationHandler = (Int32) -> Void
+internal typealias TTSpawnTerminationHandler = (Int32?) -> Void
 internal let serial_spawn = DispatchQueue(label:"com.swiftslash.function.tt_spawn", target:process_master_queue)
 internal func tt_spawn(path:String, args:[String], wd:URL, env:[String:String], stdout:InboundDataHandler?, stdoutParseMode:DataParseMode, stderrParseMode:DataParseMode, stderr:InboundDataHandler?, exitHandler:@escaping(TTSpawnTerminationHandler)) throws -> tt_proc_signature {
 	return try serial_spawn.sync {

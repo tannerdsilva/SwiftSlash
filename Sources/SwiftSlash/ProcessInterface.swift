@@ -10,6 +10,7 @@ public enum DataParseMode:UInt8 {
 public class ProcessInterface {
 	public enum Error:Swift.Error {
 		case invalidProcessState
+		case processSignaled
 	}
 	public typealias DataHandler = (Data) -> Void
 	public typealias ExitHandler = (Int32) -> Void
@@ -24,6 +25,7 @@ public class ProcessInterface {
 		case running
 		case suspended
 		case exited
+		case signaled
 		case failed
 	}
 	private var _state:State = State.initialized
@@ -147,9 +149,12 @@ public class ProcessInterface {
 	public func waitForExit() {
 		flightGroup.wait()
 	}
-	public func waitForExitCode() -> Int32 {
+	public func waitForExitCode() throws -> Int32 {
 		flightGroup.wait()
-		return internalSync.sync {
+		return try internalSync.sync {
+			guard _state != .signaled else {
+				throw Error.processSignaled
+			}
 			return self._exitCode!
 		}
 	}
@@ -165,14 +170,15 @@ public class ProcessInterface {
 		command and flight related variables
 	*/
 	internal var _process_signature:tt_proc_signature? = nil
+	
 	public init(command:Command) {
 		_command = command
 	}
 	
-	public func run() throws {
-    	try self.internalSync.sync {
+	public func run() throws -> pid_t {
+    	return try self.internalSync.sync {
     		guard self._state == .initialized else {
-    			return
+    			throw Error.invalidProcessState 
     		}
     		do {
     			self.flightGroup.enter()
@@ -181,20 +187,26 @@ public class ProcessInterface {
     					return
     				}
     				let ehToFire:ExitHandler? = self.internalSync.sync {
-    					self._exitCode = exitCode
-    					self._state = .exited
-    					if (self._exitHandler != nil) {
-    						return self._exitHandler 
+    					if (exitCode != nil) {
+    						self._exitCode = exitCode
+							self._state = .exited
+							if (self._exitHandler != nil) {
+								return self._exitHandler 
+							}
+							return nil
+    					} else {
+    						self._state = .signaled
+    						return nil
     					}
-    					return nil
     				}
     				self.flightGroup.leave()
-					if (ehToFire != nil) {
-    					ehToFire!(exitCode)
+					if (ehToFire != nil && exitCode != nil) {
+    					ehToFire!(exitCode!)
     				}
     			})
     			self._state = .running
     			self._process_signature = launchedProcess
+    			return launchedProcess.worker
     		} catch let error {
     			self.flightGroup.leave()
     			self._state = .failed

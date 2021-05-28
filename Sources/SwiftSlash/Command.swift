@@ -44,8 +44,8 @@ public struct Command:Hashable, Equatable {
 		procInterface.stdoutHandler = { data in
 			stdoutLines.append(data)
 		}
-		try procInterface.run()
-		let exitCode = procInterface.waitForExitCode()
+		_ = try procInterface.run()
+		let exitCode = try procInterface.waitForExitCode()
 		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
 	}
 	
