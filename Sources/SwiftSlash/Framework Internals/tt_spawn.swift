@@ -1,26 +1,5 @@
 import Foundation
-
-//these are the system calls that are required to help facilitate the tt_spawn functions
-#if canImport(Darwin)
-	import Darwin
-	internal let _read = Darwin.read(_:_:_:)
-	internal let _write = Darwin.write(_:_:_:)
-	internal let _close = Darwin.close(_:)
-	internal let o_cloexec = Darwin.O_CLOEXEC
-	internal let _pipe = Darwin.pipe(_:)
-	internal let _dup2 = Darwin.dup2(_:_:)
-	internal let _chdir = Darwin.chdir(_:)
-#elseif canImport(Glibc)
-	import Glibc
-	internal let _read = Glibc.read(_:_:_:)
-	internal let _write = Glibc.write(_:_:_:)
-	internal let _close = Glibc.close(_:)
-	internal let o_cloexec = Glibc.O_CLOEXEC
-	internal let _pipe = Glibc.pipe(_:)
-	internal let _dup2 = Glibc.dup2(_:_:)
-	internal let _chdir = Glibc.chdir(_:)
-#endif
-
+import Glibc
 fileprivate func _WSTATUS(_ status:Int32) -> Int32 {
     return status & 0x7f
 }
@@ -29,6 +8,9 @@ fileprivate func WIFEXITED(_ status:Int32) -> Bool {
 }
 fileprivate func WIFSIGNALED(_ status:Int32) -> Bool {
     return (_WSTATUS(status) != 0) && (_WSTATUS(status) != 0x7f)
+}
+fileprivate func WEXITSTATUS(_ status: CInt) -> CInt {
+    return (status >> 8) & 0xff
 }
 
 extension Array where Element == String {
@@ -212,15 +194,10 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 	}
 	
     let forkResult = fork()	//spawn the container process
-    
-    func executeProcessWork() -> Never {
-        Glibc.execvp(path, args)
-        _exit(0)
-	}
-		
+    		
     func processMonitor() -> Never {
     	//close the reading end of the pipe immediately
-        _ = _close(internalNotify.reading)
+        _ = close(internalNotify.reading)
         
         //bind the IO to the standard inputs and outputs.
         do {
@@ -243,53 +220,60 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             let hasStdout:PosixPipe = try bindingStdout()
             defer {
             	if (hasStdout.isNullValued == false) {
-					_ = _close(hasStdout.writing)
-					_ = _close(hasStdout.reading)
+					_ = close(hasStdout.writing)
+					_ = close(hasStdout.reading)
             	}
             }
-            guard _dup2(hasStdout.writing, STDOUT_FILENO) >= 0 else {
-                exit(-1)
+            guard dup2(hasStdout.writing, STDOUT_FILENO) >= 0 else {
+				_ = try? internalNotify.writing.writeFileHandle("1")
+				exit(250)
             }
             
             //assign stderr to the writing end of the file descriptor
             let hasStderr:PosixPipe = try bindingStderr()
             defer {
             	if (hasStderr.isNullValued == false) {
-					_ = _close(hasStderr.writing)
-					_ = _close(hasStderr.reading)
+					_ = close(hasStderr.writing)
+					_ = close(hasStderr.reading)
             	}
             }
-            guard _dup2(hasStderr.writing, STDERR_FILENO) >= 0 else {
-                exit(-1)
+            guard dup2(hasStderr.writing, STDERR_FILENO) >= 0 else {
+				_ = try? internalNotify.writing.writeFileHandle("1")
+				exit(250)
             }
 
             //assign stdin to the writing end of the file descriptor
             let hasStdin:PosixPipe = stdin
             defer {
-				_ = _close(hasStdin.writing)
-				_ = _close(hasStdin.reading)
+				_ = close(hasStdin.writing)
+				_ = close(hasStdin.reading)
             }
-            guard _dup2(stdin.reading, STDIN_FILENO) >= 0 else {
-                exit(-1)
+            guard dup2(stdin.reading, STDIN_FILENO) >= 0 else {
+				_ = try? internalNotify.writing.writeFileHandle("1")
+				exit(250)
             }
         } catch _ {
-            _exit(-1)
+			_ = try? internalNotify.writing.writeFileHandle("1")
+			exit(250)
         }
         
         //change the active directory
 		guard chdir(wd) == 0 else {
-			_exit(-1)
+			_ = try? internalNotify.writing.writeFileHandle("1")
+			exit(250)
 		}
 		
 		//clear the old environment variables and assign the new ones
 		guard clearenv() == 0 else {
-			exit(-1);
+			_ = try? internalNotify.writing.writeFileHandle("1")
+			exit(250)
 		}
 		for(_, kv) in env.enumerated() {
 			kv.key.withCString { keyPointer in
 				kv.value.withCString { valuePointer in
 					guard setenv(keyPointer, valuePointer, 1) == 0 else {
-						exit(-1);
+						_ = try? internalNotify.writing.writeFileHandle("1")
+						exit(250)
 					}
 				}
 			}
@@ -297,7 +281,8 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		
 		//close any open file handles (excluding standard datas and the internal tt_spawn pipe)
 		guard let openFileHandlesPointer = opendir("/proc/self/fd/") else {
-			exit(-10)
+			_ = try? internalNotify.writing.writeFileHandle("1")
+			exit(250)
 		}
 		while let curPointer = readdir(openFileHandlesPointer) {
 			withUnsafePointer(to:&curPointer.pointee.d_name) { pointer in
@@ -314,28 +299,11 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		}
         closedir(openFileHandlesPointer)
         
-       	let processForkResult = fork()
-        
-		switch processForkResult {
-			case -1:
-				exit(-3)
-				
-			case 0:
-				//in child: success
-                executeProcessWork()
-				
-			default:
-				_ = _close(STDIN_FILENO)
-                _ = _close(STDERR_FILENO)
-                _ = _close(STDOUT_FILENO)
-				do {
-					_ = try internalNotify.writing.writeFileHandle("\(processForkResult)")
-				} catch _ {
-					exit(-2)
-				}
-                _ = _close(internalNotify.writing)
-                _exit(0)
-        }
+		_ = try! internalNotify.writing.writeFileHandle("0")
+		_ = close(internalNotify.writing)
+		
+        Glibc.execvp(path, args)
+        exit(0)
     }
     
     //handle the result of the first fork call
@@ -357,13 +325,6 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             	close(stderr.writing)
             	close(stdout.writing)
             }
-			
-			//wait for the container process to exit
-			let containerExitCode = tt_wait_sync(pid:forkResult) 
-			guard containerExitCode == 0 else {
-				print("ERROR: CONTAINER PROCESS EXITED WITH NONZERO RESULT. \(containerExitCode)")
-				throw tt_spawn_error.internalError
-			}
 			
             //wait for data to appear in the internalNotify pipe
             var shouldLoop = false
@@ -392,11 +353,11 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
             guard let notifyString = String(data:triggerData, encoding:.utf8) else {
             	throw tt_spawn_error.internalError
             }
-            
-            guard let messagePid = pid_t(notifyString) else {
-            	throw tt_spawn_error.internalError
+            guard notifyString == "0" else {
+				throw tt_spawn_error.internalError
             }
-            return messagePid
+            
+            return forkResult
     }
 }
 
