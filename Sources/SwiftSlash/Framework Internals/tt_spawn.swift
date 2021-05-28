@@ -53,7 +53,7 @@ internal func tt_wait_sync(pid:pid_t) -> Int32 {
     repeat {
         waitResult = waitpid(pid, &exitCode, 0)
         errNo = errno
-    } while waitResult == -1 && errNo == EINTR || WIFEXITED(exitCode) == false
+    } while waitResult == -1 && errNo == EINTR
     return WEXITSTATUS(exitCode)
 }
 
