@@ -54,7 +54,7 @@ internal func tt_wait_sync(pid:pid_t) -> Int32 {
         waitResult = waitpid(pid, &exitCode, 0)
         errNo = errno
     } while waitResult == -1 && errNo == EINTR || WIFEXITED(exitCode) == false
-    return exitCode
+    return WEXITSTATUS(exitCode)
 }
 
 //this is the structure that is used to capture all relevant information about a process that is in flight
