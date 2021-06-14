@@ -23,7 +23,7 @@ public struct Command:Hashable, Equatable {
 		self.arguments = [String]()
 	}
 	
-	public init(execute:String, arguments:[String]) throws {
+	public init(execute:String, arguments:[String]) {
 		self.executable = execute
 		self.arguments = arguments	
 	}
