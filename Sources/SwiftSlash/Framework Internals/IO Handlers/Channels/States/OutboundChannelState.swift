@@ -4,7 +4,6 @@ class OutboundChannelState:Hashable {
 	let fh:Int32
 	let internalSync = DispatchQueue(label:"com.swiftslash.file-handle-broadcast.instance.sync", target:process_master_queue)
 	
-	var fhWritable = false
 	var outboundBuffer = Data()
 	
 	init(fh:Int32) {
@@ -14,20 +13,13 @@ class OutboundChannelState:Hashable {
 	func broadcast(_ dataToWrite:Data) {
 		self.internalSync.sync {
 			outboundBuffer.append(contentsOf:dataToWrite)
-			if (fhWritable) {
-				self._flushDataToHandle()
-			}
+			self._flushDataToHandle()
 		}
 	}
 	
 	func channelWriteableEvent() {
 		return self.internalSync.sync {
-			fhWritable = true
-			
-			//if there is data in the buffer that needs to be written, try to flush this data into the file handle
-			if (self.outboundBuffer.count > 0) {
-				self._flushDataToHandle()
-			}
+			self._flushDataToHandle()
 		}
 	}
 	
@@ -41,9 +33,7 @@ class OutboundChannelState:Hashable {
 				}
 			}
 		} catch FileHandleError.error_again {
-			fhWritable = false
 		} catch FileHandleError.error_wouldblock {
-			fhWritable = false
 		} catch FileHandleError.error_pipe {
 		} catch _ {}
 	}
