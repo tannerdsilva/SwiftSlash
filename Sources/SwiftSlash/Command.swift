@@ -29,9 +29,8 @@ public struct Command:Hashable, Equatable {
 	}
 	
 	public init(bash command:String) {
-		let commandTerminate = "'" + command.replacingOccurrences(of:"'", with:"'\"'\"'") + "'"
 		self.executable = "/bin/bash"
-		self.arguments = ["-c", commandTerminate]
+		self.arguments = ["-c", command]
 	}
 	
 	public func runSync() throws -> CommandResult {
