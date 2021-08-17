@@ -176,42 +176,42 @@ public class ProcessInterface {
 	}
 	
 	public func run() throws -> pid_t {
-    	return try self.internalSync.sync {
-    		guard self._state == .initialized else {
-    			throw Error.invalidProcessState 
-    		}
-    		do {
-    			self.flightGroup.enter()
-    			let launchedProcess = try tt_spawn(path:self._command.executable, args:self._command.arguments, wd:self._workingDirectory, env:self._command.environment, stdout:self._stdoutHandler, stdoutParseMode:_stdoutParseMode, stderrParseMode:_stderrParseMode, stderr:self._stderrHandler, exitHandler: { [weak self] exitCode in
-    				guard let self = self else {
-    					return
-    				}
-    				let ehToFire:ExitHandler? = self.internalSync.sync {
-    					if (exitCode != nil) {
-    						self._exitCode = exitCode
+		return try self.internalSync.sync {
+			guard self._state == .initialized else {
+				throw Error.invalidProcessState 
+			}
+			do {
+				self.flightGroup.enter()
+				let launchedProcess = try tt_spawn(path:self._command.executable, args:self._command.arguments, wd:self._workingDirectory, env:self._command.environment, stdout:self._stdoutHandler, stdoutParseMode:_stdoutParseMode, stderrParseMode:_stderrParseMode, stderr:self._stderrHandler, exitHandler: { [weak self] exitCode in
+					guard let self = self else {
+						return
+					}
+					let ehToFire:ExitHandler? = self.internalSync.sync {
+						if (exitCode != nil) {
+							self._exitCode = exitCode
 							self._state = .exited
 							if (self._exitHandler != nil) {
 								return self._exitHandler 
 							}
 							return nil
-    					} else {
-    						self._state = .signaled
-    						return nil
-    					}
-    				}
-    				self.flightGroup.leave()
+						} else {
+							self._state = .signaled
+							return nil
+						}
+					}
 					if (ehToFire != nil && exitCode != nil) {
-    					ehToFire!(exitCode!)
-    				}
-    			})
-    			self._state = .running
-    			self._process_signature = launchedProcess
-    			return launchedProcess.worker
-    		} catch let error {
-    			self.flightGroup.leave()
-    			self._state = .failed
-    			throw error
-    		}
+						ehToFire!(exitCode!)
+					}
+					self.flightGroup.leave()
+				})
+				self._state = .running
+				self._process_signature = launchedProcess
+				return launchedProcess.worker
+			} catch let error {
+				self.flightGroup.leave()
+				self._state = .failed
+				throw error
+			}
 		}
 	}
 	
