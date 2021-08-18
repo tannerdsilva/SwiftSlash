@@ -37,10 +37,10 @@ public struct Command:Hashable, Equatable {
 		let procInterface = ProcessInterface(command:self)
 		var stdoutLines = [Data]()
 		var stderrLines = [Data]()
-		procInterface.stderrHandler = { data in
+		procInterface.stderrHandler = { data, _ in
 			stderrLines.append(data)
 		}
-		procInterface.stdoutHandler = { data in
+		procInterface.stdoutHandler = { data, _ in
 			stdoutLines.append(data)
 		}
 		_ = try procInterface.run()
