@@ -215,23 +215,23 @@ public class ProcessInterface {
 					guard self != nil else {
 						return
 					}
-					let ehToFire:ExitHandler? = self.internalSync.sync {
+					let ehToFire:ExitHandler? = self!.internalSync.sync {
 						if (exitCode != nil) {
-							self._exitCode = exitCode
-							self._state = .exited
-							if (self._exitHandler != nil) {
-								return self._exitHandler 
+							self!._exitCode = exitCode
+							self!._state = .exited
+							if (self!._exitHandler != nil) {
+								return self!._exitHandler 
 							}
 							return nil
 						} else {
-							self._state = .signaled
+							self!._state = .signaled
 							return nil
 						}
 					}
 					if (ehToFire != nil && exitCode != nil) {
-						ehToFire!(exitCode!, self)
+						ehToFire!(exitCode!, self!)
 					}
-					self.flightGroup.leave()
+					self!.flightGroup.leave()
 				})
 				self._state = .running
 				self._process_signature = launchedProcess
