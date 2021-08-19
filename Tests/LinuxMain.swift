@@ -20,7 +20,7 @@ exit(randomInt)
 let testReadScript = """
 #! swift path
 for i in 0..<10000 {
-	print("\(i)")
+	print("\\(i)")
 }
 defer {
 	print("ex")
