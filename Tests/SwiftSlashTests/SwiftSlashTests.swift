@@ -175,7 +175,8 @@ final class SwiftSlashTests: XCTestCase {
 		guard whichSwiftRunResult.succeeded == true else {
 			exit(5)
 		}
-		let swiftPath = String(data:whichSwiftRunResult.stdout[0], encoding:.utf8)!
+		print("PRE UPDATE OUTPUT \(whichSwiftRunResult.stdout.count)")
+		let swiftPath = String(data:Data(), encoding:.utf8)!
 		guard swiftPath.count > 0 && swiftPath.contains("/") == true else {
 			exit(5)
 		}
