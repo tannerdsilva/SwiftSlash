@@ -18,6 +18,7 @@ jobs:
         swift build
     - name: Run tests
       run: |
+        echo "which is: $(which which)"
         sudo apt-get update -y
         sudo apt-get install -y bash which
         swift test
