@@ -44,24 +44,22 @@ internal struct PosixPipe:Hashable {
 		defer {
 			fds.deallocate()
 		}
-		try file_handle_guard.sync {
-			//assign the new file handles
-			switch pipe(fds) {
-				case 0:
-					readingValue = fds.pointee
-					writingValue = fds.successor().pointee
-				default:
-					break;
+		//assign the new file handles
+		switch pipe(fds) {
+			case 0:
+				readingValue = fds.pointee
+				writingValue = fds.successor().pointee
+			default:
+				break;
+		}
+		if (nonblockingReads == true) {
+			guard fcntl(readingValue, F_SETFD, O_NONBLOCK) == 0 else {
+				throw FileHandleError.fcntlError
 			}
-			if (nonblockingReads == true) {
-				guard fcntl(readingValue, F_SETFD, O_NONBLOCK) == 0 else {
-					throw FileHandleError.fcntlError
-				}
-			}
-			if (nonblockingWrites == true) {
-				guard fcntl(writingValue, F_SETFD, O_NONBLOCK) == 0 else {
-					throw FileHandleError.fcntlError
-				}
+		}
+		if (nonblockingWrites == true) {
+			guard fcntl(writingValue, F_SETFD, O_NONBLOCK) == 0 else {
+				throw FileHandleError.fcntlError
 			}
 		}
 		self.reading = readingValue
@@ -74,16 +72,14 @@ internal struct PosixPipe:Hashable {
 	}
 	
 	static func createNullPipe() throws -> PosixPipe {
-		return try file_handle_guard.sync {
-			let read = open("/dev/null", O_RDWR)
-			let write = open("/dev/null", O_WRONLY)
-			_ = fcntl(read, F_SETFL, O_NONBLOCK)
-			_ = fcntl(write, F_SETFL, O_NONBLOCK)
-			guard read != -1 && write != -1 else {
-				throw FileHandleError.pipeOpenError
-			}
-			return PosixPipe(reading:read, writing:write)
+		let read = open("/dev/null", O_RDWR)
+		let write = open("/dev/null", O_WRONLY)
+		_ = fcntl(read, F_SETFL, O_NONBLOCK)
+		_ = fcntl(write, F_SETFL, O_NONBLOCK)
+		guard read != -1 && write != -1 else {
+			throw FileHandleError.pipeOpenError
 		}
+		return PosixPipe(reading:read, writing:write)
 	}
 	
 	
