@@ -1,9 +1,9 @@
 import Foundation
 
-actor TerminationGroup {
-	var fileHandles:Set<Int32>
-	let terminationHandler:(pid_t) -> Void
-	private var associatedPid:pid_t? = nil
+internal actor TerminationGroup {
+	fileprivate var fileHandles:Set<Int32>
+	fileprivate let terminationHandler:(pid_t) -> Void
+	fileprivate var associatedPid:pid_t? = nil
 	
 	init(fhs:Set<Int32>, terminationHandler:@escaping((pid_t) -> Void)) {
 		self.fileHandles = fhs
