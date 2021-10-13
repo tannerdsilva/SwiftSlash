@@ -2,9 +2,14 @@ import Foundation
 
 actor InboundChannelState:Hashable {
 	let fh:Int32
-	var readBlockSize = Int(PIPE_BUF)
-	var parser:BufferedLineParser
-	let dataHandler:InboundDataHandler
+	fileprivate var readBlockSize = Int(PIPE_BUF)
+	fileprivate var parser:BufferedLineParser
+	fileprivate let dataHandler:InboundDataHandler
+	
+	fileprivate var isLaunched = false
+	fileprivate var isClosed = false
+	fileprivate var didClose = false
+	fileprivate var terminationGroup:TerminationGroup
 	
 	nonisolated internal var hashValue:Int { 
 		var hasher = Hasher()
@@ -12,50 +17,83 @@ actor InboundChannelState:Hashable {
 		return hasher.finalize()
 	}
 	
-	init(fh:Int32, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler)) {
+	init(fh:Int32, group:TerminationGroup, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler)) {
 		self.fh = fh
 		self.parser = BufferedLineParser(mode:mode)
 		self.dataHandler = dataHandler
+		self.terminationGroup = group
 	}
 	
-	func captureData(terminate:Bool) -> Bool {
-		var isReadable = true
-		var didFire = false
-		var capturedData = Data()
+	func shouldLaunchTask() -> Bool {
+		if isLaunched == false {
+			isLaunched = true
+			return true
+		}
+		return false
+	}
+	
+	func captureData() async {
+		guard isLaunched == false else {
+			return
+		}
+		isLaunched = true
 		do {
-			repeat {
-				try capturedData.append(fh.readFileHandle(size:readBlockSize))
-			} while terminate == true
-		} catch FileHandleError.error_again {
-			isReadable = false
-		} catch FileHandleError.error_wouldblock {
-			isReadable = false
-		} catch FileHandleError.error_pipe {
-		} catch _ {
-		}
-		if (capturedData.count == readBlockSize) && (terminate == false) {
-			readBlockSize = readBlockSize * 2
-		}
-		if (capturedData.count > 0) {
-			if (parser.intake(capturedData)) {
-				if (terminate) {
-					for (_, curChunk) in parser.flushFinal().enumerated() {
+			var first:Bool = true
+			infiniteLoop: repeat {
+				let capturedData = try fh.readFileHandle(size:readBlockSize)
+				if (isClosed) {
+					parser.intake(capturedData)
+					for curChunk in parser.flushFinal() {
 						self.dataHandler(curChunk)
 					}
+					didClose = true
+					await terminationGroup.removeHandle(fh:self.fh)
+					break infiniteLoop
 				} else {
-					for (_, curChunk) in parser.flushLines().enumerated() {
-						self.dataHandler(curChunk)
+					if (capturedData.count == readBlockSize) {
+						readBlockSize = readBlockSize * 2
+					}
+					if parser.intake(capturedData) {
+						for curChunk in parser.flushLines() {
+							self.dataHandler(curChunk)
+						}
 					}
 				}
-				didFire = true
+				switch first {
+					case false:
+						await Task.yield()
+					case true:
+						first = false
+				}
+			} while true
+		} catch _ {
+			if isClosed == true && didClose == false {
+				for curChunk in parser.flushFinal() {
+					self.dataHandler(curChunk)
+				}
+				didClose = true
+				await terminationGroup.removeHandle(fh:self.fh)
 			}
 		}
-		if terminate && !didFire {
-			for (_, curChunk) in parser.flushFinal().enumerated() {
+		isLaunched = false
+	}
+	
+	func channelClosed() async {
+		isClosed = true
+		if isLaunched == false {
+			var capturedData = Data()
+			do {
+				repeat {
+					capturedData.append(contentsOf:try fh.readFileHandle(size:readBlockSize))
+				} while true
+			} catch {}
+			parser.intake(capturedData)
+			for curChunk in parser.flushFinal() {
 				self.dataHandler(curChunk)
 			}
+			didClose = true
+			await terminationGroup.removeHandle(fh:self.fh)
 		}
-		return isReadable
 	}
 	
 	nonisolated func hash(into hasher:inout Hasher) {
@@ -64,5 +102,9 @@ actor InboundChannelState:Hashable {
 	
 	static func == (lhs:InboundChannelState, rhs:InboundChannelState) -> Bool {
 		return lhs.fh == rhs.fh
+	}
+	
+	deinit {
+		print("inbound channel state deinit")
 	}
 }
