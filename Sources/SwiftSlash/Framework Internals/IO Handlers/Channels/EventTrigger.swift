@@ -8,17 +8,28 @@ internal enum EventMode {
 	case writingClosed
 }
 
-internal class EventTrigger {
+internal struct EventTrigger {
+	internal static func launchNew(_ handler:@escaping((Int32, EventMode) -> Void)) -> Self {
+		let newET = EventTrigger(handler)
+		let mainLoopQueue = DispatchQueue(label:"com.swiftslash.event-trigger")
+		mainLoopQueue.async {
+			newET._mainLoop()
+		}
+		return newET
+	}
 	enum Error:Swift.Error {
 		case unableToRegister
 	}
 	
 	fileprivate let epoll = epoll_create1(0);
 	
-	weak var channelManager:ChannelManager? = nil
+	fileprivate let handler:(Int32, EventMode) -> Void
 	
-	func _mainLoop() {
-		var buildResults = [Int32:EventMode]()
+	fileprivate init(_ handler:@escaping((Int32, EventMode) -> Void)) {
+		self.handler = handler
+	}
+	
+	fileprivate func _mainLoop() {
 		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
 		var allocationSize:Int32 = 32
 		func reallocate(size:Int32) {
@@ -45,25 +56,21 @@ internal class EventTrigger {
 				
 							if (pollhup != 0) {
 								//reading handle closed
-								buildResults[currentEvent.data.fd] = .readingClosed
+								self.handler(currentEvent.data.fd, .readingClosed)
 							} else if (pollerr != 0) {
 								//writing handle closed
-								buildResults[currentEvent.data.fd] = .writingClosed
+								self.handler(currentEvent.data.fd, .writingClosed)
 							} else if (pollin != 0) {
 								//read data available
-								buildResults[currentEvent.data.fd] = .readableEvent
+								self.handler(currentEvent.data.fd, .readableEvent)
 							} else if (pollout != 0) {
 								//writing available
-								buildResults[currentEvent.data.fd] = .writableEvent
+								self.handler(currentEvent.data.fd, .writableEvent)
 							}
 							i = i + 1
 						}
 						if (i*2 > allocationSize) {
 							reallocate(size:allocationSize*2)
-						}
-						if (i > 0) && (channelManager != nil) {
-							self.channelManager!.assignNewEvents(buildResults)
-							buildResults.removeAll(keepingCapacity:true)
 						}
 					}
 			}
@@ -104,9 +111,5 @@ internal class EventTrigger {
 		guard epoll_ctl(self.epoll, EPOLL_CTL_DEL, writer, &buildEvent) == 0 else {
 			throw Error.unableToRegister
 		}
-	}
-	
-	deinit {
-		epoll.closeFileHandle()
 	}
 }
