@@ -1,5 +1,3 @@
-import Foundation
-
 internal struct BufferedLineParser {
 	internal var type:DataParseMode
 	
@@ -14,7 +12,7 @@ internal struct BufferedLineParser {
 		self.type = mode
 	}
 	
-	mutating func intake(_ dataToIntake:Data) -> Bool {
+	@discardableResult mutating func intake(_ dataToIntake:Data) -> Bool {
 		var didFind = false
 		var crLast = false
 		if (self.type == .immediate) {
