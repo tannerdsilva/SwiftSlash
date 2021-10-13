@@ -1,23 +1,21 @@
 import Foundation
 
-class InboundChannelState:Hashable {
+actor InboundChannelState:Hashable {
 	let fh:Int32
 	var readBlockSize = Int(PIPE_BUF)
 	var parser:BufferedLineParser
 	let dataHandler:InboundDataHandler
 	
+	nonisolated internal var hashValue:Int { 
+		var hasher = Hasher()
+		hasher.combine(fh)
+		return hasher.finalize()
+	}
+	
 	init(fh:Int32, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler)) {
 		self.fh = fh
-		self.dataHandler = dataHandler
 		self.parser = BufferedLineParser(mode:mode)
-	}
-	
-	static func == (lhs:InboundChannelState, rhs:InboundChannelState) -> Bool {
-		return lhs.fh == rhs.fh
-	}
-	
-	func hash(into hasher:inout Hasher) {
-		hasher.combine(fh)
+		self.dataHandler = dataHandler
 	}
 	
 	func captureData(terminate:Bool) -> Bool {
@@ -58,5 +56,13 @@ class InboundChannelState:Hashable {
 			}
 		}
 		return isReadable
+	}
+	
+	nonisolated func hash(into hasher:inout Hasher) {
+		hasher.combine(fh)
+	}
+	
+	static func == (lhs:InboundChannelState, rhs:InboundChannelState) -> Bool {
+		return lhs.fh == rhs.fh
 	}
 }
