@@ -1,7 +1,7 @@
 import Foundation
 
-internal class CurrentProcessState {
-	class func getCurrentEnvironmentVariables() -> [String:String] {
+internal struct CurrentProcessState {
+	internal static func getCurrentEnvironmentVariables() -> [String:String] {
 		var i = 0
 		var buildEnv = [String:String]()
 		while let curPtr = environ[i] {
@@ -13,7 +13,7 @@ internal class CurrentProcessState {
 		return buildEnv
 	}
 	
-	class func getCurrentWorkingDirectory() -> URL {
+	internal static func getCurrentWorkingDirectory() -> URL {
 		let rawPointer = getcwd(nil, 0)
 		let currentWorkingDirectoryBuffer = UnsafeMutableRawPointer(rawPointer!)
 		defer {
