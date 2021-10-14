@@ -10,7 +10,7 @@ internal actor TerminationGroup {
 		self.terminationHandler = terminationHandler
 	}
 	
-	func include(fh:Int32) {
+	func includeHandle(fh:Int32) {
 		fileHandles.update(with:fh)
 	}
 	
