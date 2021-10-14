@@ -1,31 +1,26 @@
 import Foundation
 
-class EventSwarm {
-	static let global = EventSwarm()
+internal struct EventSwarm {
+	internal static let global = EventSwarm()
+
+	fileprivate let eventTrigger:EventTrigger
+	fileprivate let channelManager:ChannelManager
 	
-	let loopQueue = DispatchQueue(label:"com.swiftslash.events.trigger", attributes:[.concurrent], target:process_master_queue)
-	
-	let eventTrigger = EventTrigger()
-	let channelManager = ChannelManager()
-	
-	init() {
-		self.eventTrigger.channelManager = self.channelManager
-		self.channelManager.eventTrigger = self.eventTrigger
-		
-		loopQueue.async { [et = self.eventTrigger] in
-			et._mainLoop()
-		}
-		
-		loopQueue.async { [cm = self.channelManager] in
-			cm._mainLoop()
-		}
+	fileprivate init() {
+		let cm = ChannelManager()
+		self.channelManager = cm
+		self.eventTrigger = EventTrigger.launch({ fh, mode in
+			Task.detached { [fh, mode] in
+				await cm.handleEvent(fh:fh, event:mode)
+			}
+		})
 	}
 	
-	func register(readers:[ReadableConfiguration], writer:WritableConfiguration) throws -> OutboundChannelState {
+	internal func register(readers:[ReadableConfiguration], writer:WritableConfiguration) async throws -> OutboundChannelState {
 		try eventTrigger.register(writer:writer.fh)
 		for (_, curReader) in readers.enumerated() {
 			try eventTrigger.register(reader:curReader.fh)
 		}
-		return channelManager.register(readers:readers, writer:writer)
+		return await channelManager.register(readers:readers, writer:writer)
 	}
 }
