@@ -9,7 +9,7 @@ internal struct EventSwarm {
 	fileprivate init() {
 		let cm = ChannelManager()
 		self.channelManager = cm
-		self.eventTrigger = EventTrigger.launch({ fh, mode in
+		self.eventTrigger = EventTrigger.launchNew({ fh, mode in
 			Task.detached { [fh, mode] in
 				await cm.handleEvent(fh:fh, event:mode)
 			}
