@@ -2,7 +2,8 @@ import Foundation
 
 actor OutboundChannelState:Hashable {
 	let fh:Int32
-	var outboundBuffer = Data()
+	fileprivate var outboundBuffer = Data()
+	let terminationGroup:TerminationGroup
 	
 	nonisolated internal var hashValue:Int {
 		var hasher = Hasher()
@@ -10,8 +11,9 @@ actor OutboundChannelState:Hashable {
 		return hasher.finalize()
 	}
 	
-	init(fh:Int32) {
+	init(fh:Int32, group:TerminationGroup) {
 		self.fh = fh
+		self.terminationGroup = group
 	}
 	
 	func broadcast(_ dataToWrite:Data) {
@@ -32,9 +34,6 @@ actor OutboundChannelState:Hashable {
 					outboundBuffer.append(remainingData)
 				}
 			}
-		} catch FileHandleError.error_again {
-		} catch FileHandleError.error_wouldblock {
-		} catch FileHandleError.error_pipe {
 		} catch _ {}
 	}
 	
