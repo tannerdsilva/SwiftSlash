@@ -1,255 +1,241 @@
 import Foundation
+
 //these are the types of line breaks that can be parsed from incoming data channels
 public enum DataParseMode:UInt8 {
 	case cr			//parses line breaks with the cr byte
 	case lf			//parses line breaks with the lf byte
 	case crlf		//parses line breaks with the sequence of cr + lf
 	case immediate	//does not parse line breaks, fires the data handler as soon as the data is available
+	case discard	//do not handle data for this channel
 }
 
-public class ProcessInterface {
+public actor ProcessInterface {
 	public enum Error:Swift.Error {
 		case invalidProcessState
-		case processSignaled
+		case abnormalExit
 	}
-	public typealias DataHandler = (Data, ProcessInterface) -> Void
-	public typealias ExitHandler = (Int32, ProcessInterface) -> Void
 	
-	private let internalSync = DispatchQueue(label:"com.swiftslash.instance.data-channel-monitor.reading", target:process_master_queue)
-		
-	/*
-		State related
-	*/
-	public enum State:UInt8 {
+	public enum Status:UInt8 {
 		case initialized
 		case running
-		case suspended
-		case exited
 		case signaled
+		case exited
 		case failed
 	}
-	private var _state:State = State.initialized
-	public var state:State {
-		get {
-			return internalSync.sync {
-				return _state
-			}
-		}
-	}
+	public var status:Status = .initialized
 	
-	/*
-		inbound I/O data handlers
-	*/
-	//stdout
-	private var _stdoutParseMode:DataParseMode = .lf
-	public var stdoutParseMode:DataParseMode {
-		get {
-			return internalSync.sync {
-				return _stdoutParseMode
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_stdoutParseMode = newValue
-			}
-		}
-	}
-	private var _stdoutHandler:DataHandler? = nil
-	public var stdoutHandler:DataHandler? {
-		get {
-			return internalSync.sync {
-				return _stdoutHandler
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_stdoutHandler = newValue
-			}
-		}
-	}
-	//stderr
-	private var _stderrParseMode:DataParseMode = .lf
-	public var stderrParseMode:DataParseMode {
-		get {
-			return internalSync.sync {
-				return _stderrParseMode
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_stderrParseMode = newValue
-			}
-		}
-	}
-	private var _stderrHandler:DataHandler? = nil
-	public var stderrHandler:DataHandler? {
-		get {
-			return internalSync.sync {
-				return _stderrHandler
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_stderrHandler = newValue
-			}
-		}
-	}
-	
-	/*
-		exit handler
-	*/
-	private var _exitHandler:ExitHandler? = nil
-	public var exitHandler:ExitHandler? {
-		get {
-			return internalSync.sync {
-				return _exitHandler
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_exitHandler = newValue
-			}
-		}
-	}
-	
-	/*
-		command, arguments
-	*/
-	private var _command:Command
-	public var command:Command {
-		get {
-			return internalSync.sync {
-				return _command
-			}
-		}
-	}
-	
-	private var _workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
-	public var workingDirectory:URL {
-		get {
-			return internalSync.sync {
-				return _workingDirectory
-			}
-		}
-		set {
-			internalSync.sync { [newValue] in
-				_workingDirectory = newValue
-			}
-		}
-	}	
-	
-	/*
-		pid and exit code information
-	*/
-	private let flightGroup = DispatchGroup()
-	private var _exitCode:Int32? = nil
-	public var exitCode:Int32? {
-		get {
-			return internalSync.sync {
-				return _exitCode
-			}
-		}
-	}
-	public func waitForExit() {
-		flightGroup.wait()
-	}
-	public func waitForExitCode() throws -> Int32 {
-		flightGroup.wait()
-		return try internalSync.sync {
-			guard _state != .signaled else {
-				throw Error.processSignaled
-			}
-			return self._exitCode!
-		}
-	}
-	public var pid:pid_t? {
-		get {
-			return internalSync.sync {
-				return _process_signature?.worker
-			}
-		}
-	}
-	
-	/*
-		command and flight related variables
-	*/
-	internal var _process_signature:tt_proc_signature? = nil
-	
-	public init(command:Command) {
-		_command = command
-	}
-	
-	@discardableResult public func run() throws -> pid_t {
-		return try self.internalSync.sync {
-			guard self._state == .initialized else {
-				throw Error.invalidProcessState 
-			}
-			do {
-				self.flightGroup.enter()
-				
-				let outGateway:InboundDataHandler?
-				if (self._stdoutHandler == nil) {
-					outGateway = nil
-				} else {
-					outGateway = { [weak self, dh = self._stdoutHandler!] someData in
-						guard self != nil else {
-							return
-						}
-						dh(someData, self!)
-					}
-				}
-				
-				let errGateway:InboundDataHandler?
-				if (self._stderrHandler == nil) {
-					errGateway = nil
-				} else {
-					errGateway = { [weak self, dh = self._stderrHandler!] someData in
-						guard self != nil else {
-							return
-						}
-						dh(someData, self!)
-					}
-				}
+//	public typealias ExitHandler = (Int32?, ProcessInterface) -> Void
 
-				let launchedProcess = try tt_spawn(path:self._command.executable, args:self._command.arguments, wd:self._workingDirectory, env:self._command.environment, stdout:outGateway, stdoutParseMode:_stdoutParseMode, stderrParseMode:_stderrParseMode, stderr:errGateway, exitHandler: { [weak self] exitCode in
-					guard self != nil else {
-						return
-					}
-					let ehToFire:ExitHandler? = self!.internalSync.sync {
-						if (exitCode != nil) {
-							self!._exitCode = exitCode
-							self!._state = .exited
-							if (self!._exitHandler != nil) {
-								return self!._exitHandler 
-							}
-							return nil
-						} else {
-							self!._state = .signaled
-							return nil
-						}
-					}
-					if (ehToFire != nil && exitCode != nil) {
-						ehToFire!(exitCode!, self!)
-					}
-					self!.flightGroup.leave()
-				})
-				self._state = .running
-				self._process_signature = launchedProcess
-				return launchedProcess.worker
-			} catch let error {
-				self.flightGroup.leave()
-				self._state = .failed
-				throw error
+	//stdout streams
+	public let stdoutParseMode:DataParseMode
+	public var stdout:AsyncStream<Data>?
+	fileprivate let stdoutContinuation:AsyncStream<Data>.Continuation?
+	
+	//stderr streams
+	public let stderrParseMode:DataParseMode
+	public var stderr:AsyncStream<Data>?
+	fileprivate let stderrContinuation:AsyncStream<Data>.Continuation?
+	
+	public let command:Command
+	fileprivate var signature:ProcessSignature? = nil
+	
+	init(command:Command, stdoutParseMode:DataParseMode = .lf, stderrParseMode:DataParseMode = .lf) throws {
+		var outContinuation:AsyncStream<Data>.Continuation? = nil
+		self.stdoutParseMode = stdoutParseMode
+		if stdoutParseMode != .discard {
+			self.stdout = AsyncStream(Data.self) { stdoutContinuation in
+				outContinuation = stdoutContinuation
 			}
+		} else {
+			self.stdout = nil
 		}
+		self.stdoutContinuation = outContinuation
+		
+		var errContinuation:AsyncStream<Data>.Continuation? = nil
+		self.stderrParseMode = stderrParseMode
+		if stderrParseMode != .discard {
+			self.stderr = AsyncStream(Data.self) { stderrContinuation in
+				errContinuation = stderrContinuation
+			}
+		} else {
+			self.stderr = nil
+		}
+		self.stderrContinuation = errContinuation
+		self.command = command
 	}
 	
-	public func write(stdin:Data) throws {
-		try self.internalSync.sync {
-			guard self._state == .running else {
-				throw Error.invalidProcessState
+	public func launch() async throws {
+		self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:stdoutContinuation, stdoutParseMode:self.stdoutParseMode, stderr:stderrContinuation, stderrParseMode:self.stderrParseMode)
+	}
+	
+	public func exitCode() async throws -> Int32 {
+		let tg = self.signature!.stdinChannel.terminationGroup
+		let exitStatus = await tg.getExitStatus()
+		if exitStatus.didExit {
+			if exitStatus.exitCode != nil {
+				return exitStatus.exitCode!
+			} else {
+				throw Error.abnormalExit
 			}
-			self._process_signature!.stdinChannel.broadcast(stdin)
+		} else {
+			return try await withUnsafeThrowingContinuation { [tg] continuation in
+				Task.detached { [tg, continuation] in
+					await tg.whenExited({ exitCode in
+						if (exitCode != nil) {
+							continuation.resume(returning:exitCode!)
+						} else {
+							continuation.resume(throwing:Error.abnormalExit)
+						}
+					})
+				}
+			}
 		}
 	}
 }
+
+	
+//	@discardableResult public func run() async throws -> Int32? {
+//		var myContinuation:UnsafeContinuation<Int32?, Swift.Error>? = nil
+//		await withUnsafeThrowingContinuation { exitContinuation in
+//			myContinuation = exitContinuation
+//		}
+//
+//		guard self.status == .initialized else {
+//			exitContinuation.resume(throwing:Error.invalidProcessState)
+//		}
+//	
+//		//build the stdout handler function that is going to be passed to the process spawner
+//		let outHandler:InboundDataHandler?
+//		if let outContinuation = stdoutContinuation {
+//			outHandler = { someData in
+//				if someData == nil {
+//					outContinuation.finish()
+//				} else {
+//					outContinuation.yield(someData!)
+//				}
+//			}		
+//		} else {
+//			outHandler = nil
+//		}
+//	
+//		//build the stderr handler function that is going to be passed to the process spawner
+//		let errHandler:InboundDataHandler?
+//		if let errContinuation = stderrContinuation {
+//			errHandler = { someData in
+//				if someData == nil {
+//					errContinuation.finish()
+//				} else {
+//					errContinuation.yield(someData!)
+//				}
+//			} 
+//		} else {
+//			errHandler = nil
+//		}
+//		do {
+//		self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:outHandler, stdoutParseMode:self.stdoutParseMode, stderr:errHandler, stderrParseMode:self.stderrParseMode, exitHandler: { exitCode in
+//			Task.detached {
+//				print("WOW")
+//			}
+//		})
+//			self.status = .running
+//		} catch let error {
+//			self.status = .failed
+//			throw error
+//		}
+//	}
+//}
+
+//public actor ProcessInterface {
+//	public enum Error:Swift.Error {
+//		case invalidProcessState
+//		case processSignaled
+//	}
+//	
+//	public enum Status:UInt8 {
+//		case initialized
+//		case running
+//		case signaled
+//		case exited
+//		case failed
+//	}
+//	public var status:Status = .initialized
+//	
+//	public typealias DataHandler = (Data, ProcessInterface) -> Void
+//	public typealias ExitHandler = (Int32?, ProcessInterface) -> Void
+//	
+//	//handlers
+//	//stdout
+//	public var stdoutParseMode:DataParseMode = .lf
+//	public var stdoutHandler:DataHandler? = nil
+//	
+//	//stderr
+//	public var stderrParseMode:DataParseMode = .lf
+//	public var stderrHandler:DataHandler? = nil
+//	
+//	//exit
+//	public var exitHandler:ExitHandler? = nil
+//	
+//	//launch parameters
+//	public var command:Command
+//	public var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
+//	public var exitCode:Int32? = nil
+//	
+//	internal var signature:ProcessSignature? = nil
+//	
+//	public init(command:Command) {
+//		self.command = command
+//	}
+//	
+//	fileprivate func processExited(_ code:Int32?) -> ExitHandler? {
+//		if code == nil {
+//			self.status = .signaled
+//		} else {
+//			self.status = .exited
+//		}
+//		return self.exitHandler
+//	}	
+//	
+//	@discardableResult public func run() async throws -> pid_t {
+//		guard self.status == .initialized else {
+//			throw Error.invalidProcessState
+//		}
+//		let outGateway:InboundDataHandler?
+//		if (self.stdoutHandler == nil) {
+//			outGateway = nil
+//		} else {
+//			outGateway = { [dh = self.stdoutHandler!] someData in
+//				dh(someData, self)
+//			}
+//		}
+//		
+//		let errGateway:InboundDataHandler?
+//		if (self.stderrHandler == nil) {
+//			errGateway = nil
+//		} else {
+//			errGateway = { [dh = self.stderrHandler!] someData in
+//				dh(someData, self)
+//			}
+//		}
+//		do {
+//			self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.workingDirectory, env:self.command.environment, stdout:outGateway, stdoutParseMode:stdoutParseMode, stderr:errGateway, stderrParseMode:stderrParseMode, exitHandler: { exitCode in
+//				Task.detached {
+//					if let externalExitHandler = await self.processExited(exitCode) {
+//						externalExitHandler(exitCode, self)
+//					}
+//				}
+//			})
+//			self.status = .running
+//			return self.signature!.worker
+//		} catch let error {
+//			self.status = .failed
+//			throw error
+//		}
+//	}
+//	
+//	public func write(stdin:Data) async throws {
+//		guard self.status == .running else {
+//			throw Error.invalidProcessState
+//		}
+//		await self.signature!.stdinChannel.broadcast(stdin)
+//	}
+//}
