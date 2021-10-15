@@ -17,10 +17,11 @@ internal struct EventSwarm {
 	}
 	
 	internal func register(readers:[ReadableConfiguration], writer:WritableConfiguration) async throws -> OutboundChannelState {
+		let returnValue = await channelManager.register(readers:readers, writer:writer)
 		try eventTrigger.register(writer:writer.fh)
 		for (_, curReader) in readers.enumerated() {
 			try eventTrigger.register(reader:curReader.fh)
 		}
-		return await channelManager.register(readers:readers, writer:writer)
+		return returnValue
 	}
 }
