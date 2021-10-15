@@ -5,7 +5,7 @@ public struct Command:Hashable, Equatable {
 	var executable:String
 	var arguments:[String]
 	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
-	
+	var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
 	public init?(command:String) {
 		guard command.count > 0 else {
 			return nil
@@ -33,20 +33,20 @@ public struct Command:Hashable, Equatable {
 		self.arguments = ["-c", command]
 	}
 	
-	public func runSync() throws -> CommandResult {
-		let procInterface = ProcessInterface(command:self)
-		var stdoutLines = [Data]()
-		var stderrLines = [Data]()
-		procInterface.stderrHandler = { data, _ in
-			stderrLines.append(data)
-		}
-		procInterface.stdoutHandler = { data, _ in
-			stdoutLines.append(data)
-		}
-		_ = try procInterface.run()
-		let exitCode = try procInterface.waitForExitCode()
-		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
-	}
+//	public func runSync() throws -> CommandResult {
+//		let procInterface = ProcessInterface(command:self)
+//		var stdoutLines = [Data]()
+//		var stderrLines = [Data]()
+//		procInterface.stderrHandler = { data, _ in
+//			stderrLines.append(data)
+//		}
+//		procInterface.stdoutHandler = { data, _ in
+//			stdoutLines.append(data)
+//		}
+//		_ = try procInterface.run()
+//		let exitCode = try procInterface.waitForExitCode()
+//		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
+//	}
 	
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return (lhs.executable == rhs.executable) && (lhs.arguments == rhs.arguments) && (lhs.environment == rhs.environment)
