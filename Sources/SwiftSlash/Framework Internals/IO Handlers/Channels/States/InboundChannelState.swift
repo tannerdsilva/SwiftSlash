@@ -47,6 +47,7 @@ actor InboundChannelState:Hashable {
 						self.dataHandler(curChunk)
 					}
 					didClose = true
+					self.dataHandler(nil)
 					await terminationGroup.removeHandle(fh:self.fh)
 					break infiniteLoop
 				} else {
@@ -72,6 +73,7 @@ actor InboundChannelState:Hashable {
 					self.dataHandler(curChunk)
 				}
 				didClose = true
+				self.dataHandler(nil)
 				await terminationGroup.removeHandle(fh:self.fh)
 			}
 		}
@@ -92,6 +94,7 @@ actor InboundChannelState:Hashable {
 				self.dataHandler(curChunk)
 			}
 			didClose = true
+			self.dataHandler(nil)
 			await terminationGroup.removeHandle(fh:self.fh)
 		}
 	}
