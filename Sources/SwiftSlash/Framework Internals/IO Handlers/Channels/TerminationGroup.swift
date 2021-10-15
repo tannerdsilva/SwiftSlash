@@ -1,13 +1,20 @@
 import Foundation
 
 internal actor TerminationGroup {
+	typealias ExitHandler = (Int32?) -> Void
+	struct TerminationInfo {
+		let didExit:Bool
+		let exitCode:Int32?
+	}
 	fileprivate var fileHandles:Set<Int32>
-	fileprivate let terminationHandler:(pid_t) -> Void
 	fileprivate var associatedPid:pid_t? = nil
+	var exitCode:Int32? = nil
+	var didExit:Bool = false
 	
-	init(fhs:Set<Int32>, terminationHandler:@escaping((pid_t) -> Void)) {
+	fileprivate var whenExited:ExitHandler?
+	
+	init(fhs:Set<Int32>) {
 		self.fileHandles = fhs
-		self.terminationHandler = terminationHandler
 	}
 	
 	func includeHandle(fh:Int32) {
@@ -16,16 +23,36 @@ internal actor TerminationGroup {
 	
 	func removeHandle(fh:Int32) {
 		fileHandles.remove(fh)
+		fh.closeFileHandle()
 		if (self.fileHandles.count == 0 && associatedPid != nil) {
-			self.terminationHandler(associatedPid!)
+			self.groupClosed()
 		}
 	}
 	
 	func setAssociatedPid(_ inputPid:pid_t) {
+		self.associatedPid = inputPid
 		if (self.fileHandles.count == 0) {
-			self.terminationHandler(inputPid)
+			self.groupClosed()
+		}
+	}
+	
+	func getExitStatus() -> TerminationInfo {
+		return TerminationInfo(didExit:self.didExit, exitCode:self.exitCode)
+	}
+	
+	func whenExited(_ handler:@escaping((Int32?) -> Void)) {
+		if didExit == true {
+			handler(exitCode)
 		} else {
-			self.associatedPid = inputPid
+			self.whenExited = handler
+		}
+	}
+	
+	fileprivate func groupClosed() {
+		self.exitCode = self.associatedPid!.getExitCode()
+		self.didExit = true
+		if (self.whenExited != nil) {
+			whenExited!(self.exitCode)
 		}
 	}
 }
