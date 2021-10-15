@@ -119,7 +119,7 @@ internal actor ProcessSpawner {
 	
 	static let global = ProcessSpawner()
 	
-	func launch(path:String, args:[String], wd:URL, env:[String:String], stdout:InboundDataHandler?, stdoutParseMode:DataParseMode, stderr:InboundDataHandler?, stderrParseMode:DataParseMode, exitHandler:@escaping(ProcessTerminationHandler)) async throws -> ProcessSignature {
+	func launch(path:String, args:[String], wd:URL, env:[String:String], stdout:AsyncStream<Data>.Continuation?, stdoutParseMode:DataParseMode, stderr:AsyncStream<Data>.Continuation?, stderrParseMode:DataParseMode) async throws -> ProcessSignature {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe
 		let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
@@ -128,9 +128,7 @@ internal actor ProcessSpawner {
 			throw Error.pipeError
 		}
 		
-		let terminationGroup = TerminationGroup(fhs:Set<Int32>([stdinPipe.writing]), terminationHandler: { [exitHandler] exitPid in
-			exitHandler(exitPid.getExitCode())
-		})
+		let terminationGroup = TerminationGroup(fhs:Set<Int32>([stdinPipe.writing]))
 		
 		let writeConfig = WritableConfiguration(fh:stdinPipe.writing, group:terminationGroup)
 		var readConfigs = [ReadableConfiguration]()
@@ -139,7 +137,7 @@ internal actor ProcessSpawner {
 		if stdout != nil {
 			stdoutPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 			await terminationGroup.includeHandle(fh:stdoutPipe.reading)
-			readConfigs.append(ReadableConfiguration(fh:stdoutPipe.reading, parseMode:stdoutParseMode, group:terminationGroup, handler:stdout!))
+			readConfigs.append(ReadableConfiguration(fh:stdoutPipe.reading, parseMode:stdoutParseMode, group:terminationGroup, continuation:stdout!))
 			guard stdoutPipe.isNullValued == false else {
 				throw Error.pipeError
 			}
@@ -151,7 +149,7 @@ internal actor ProcessSpawner {
 		if stderr != nil {
 			stderrPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 			await terminationGroup.includeHandle(fh:stderrPipe.reading)
-			readConfigs.append(ReadableConfiguration(fh:stderrPipe.reading, parseMode:stderrParseMode, group:terminationGroup, handler:stderr!))
+			readConfigs.append(ReadableConfiguration(fh:stderrPipe.reading, parseMode:stderrParseMode, group:terminationGroup, continuation:stderr!))
 			guard stderrPipe.isNullValued == false else {
 				throw Error.pipeError
 			}
