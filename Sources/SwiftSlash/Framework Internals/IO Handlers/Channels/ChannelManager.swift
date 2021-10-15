@@ -6,7 +6,7 @@ internal actor ChannelManager {
 	
 	internal func register(readers:[ReadableConfiguration], writer:WritableConfiguration) -> OutboundChannelState {
 		for (_, curReadable) in readers.enumerated() {
-			let newConfig = InboundChannelState(fh:curReadable.fh, group:curReadable.group, mode:curReadable.parseMode, dataHandler:curReadable.handler)
+			let newConfig = InboundChannelState(fh:curReadable.fh, group:curReadable.group, mode:curReadable.parseMode, continuation:curReadable.continuation)
 			_ = self.readers.updateValue(newConfig, forKey:curReadable.fh)
 		}
 		let newWriter = OutboundChannelState(fh:writer.fh, group:writer.group)
