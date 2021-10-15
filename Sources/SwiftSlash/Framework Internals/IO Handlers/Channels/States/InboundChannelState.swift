@@ -4,7 +4,7 @@ actor InboundChannelState:Hashable {
 	let fh:Int32
 	fileprivate var readBlockSize = Int(PIPE_BUF)
 	fileprivate var parser:BufferedLineParser
-	fileprivate let dataHandler:InboundDataHandler
+	fileprivate let dataContinuation:AsyncStream<Data>.Continuation
 	
 	fileprivate var isLaunched = false
 	fileprivate var isClosed = false
@@ -17,10 +17,10 @@ actor InboundChannelState:Hashable {
 		return hasher.finalize()
 	}
 	
-	init(fh:Int32, group:TerminationGroup, mode:DataParseMode, dataHandler:@escaping(InboundDataHandler)) {
+	init(fh:Int32, group:TerminationGroup, mode:DataParseMode, continuation:AsyncStream<Data>.Continuation) {
 		self.fh = fh
 		self.parser = BufferedLineParser(mode:mode)
-		self.dataHandler = dataHandler
+		self.dataContinuation = continuation
 		self.terminationGroup = group
 	}
 	
@@ -44,10 +44,10 @@ actor InboundChannelState:Hashable {
 				if (isClosed) {
 					parser.intake(capturedData)
 					for curChunk in parser.flushFinal() {
-						self.dataHandler(curChunk)
+						self.dataContinuation.yield(curChunk)
 					}
 					didClose = true
-					self.dataHandler(nil)
+					self.dataContinuation.finish()
 					await terminationGroup.removeHandle(fh:self.fh)
 					break infiniteLoop
 				} else {
@@ -56,7 +56,7 @@ actor InboundChannelState:Hashable {
 					}
 					if parser.intake(capturedData) {
 						for curChunk in parser.flushLines() {
-							self.dataHandler(curChunk)
+							self.dataContinuation.yield(curChunk)
 						}
 					}
 				}
@@ -70,10 +70,10 @@ actor InboundChannelState:Hashable {
 		} catch _ {
 			if isClosed == true && didClose == false {
 				for curChunk in parser.flushFinal() {
-					self.dataHandler(curChunk)
+					self.dataContinuation.yield(curChunk)
 				}
 				didClose = true
-				self.dataHandler(nil)
+				self.dataContinuation.finish()
 				await terminationGroup.removeHandle(fh:self.fh)
 			}
 		}
@@ -91,10 +91,10 @@ actor InboundChannelState:Hashable {
 			} catch {}
 			parser.intake(capturedData)
 			for curChunk in parser.flushFinal() {
-				self.dataHandler(curChunk)
+				self.dataContinuation.yield(curChunk)
 			}
 			didClose = true
-			self.dataHandler(nil)
+			self.dataContinuation.finish()
 			await terminationGroup.removeHandle(fh:self.fh)
 		}
 	}
