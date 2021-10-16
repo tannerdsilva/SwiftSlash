@@ -106,8 +106,4 @@ actor InboundChannelState:Hashable {
 	static func == (lhs:InboundChannelState, rhs:InboundChannelState) -> Bool {
 		return lhs.fh == rhs.fh
 	}
-	
-	deinit {
-		print("inbound channel state deinit")
-	}
 }
