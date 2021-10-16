@@ -39,7 +39,7 @@ public actor ProcessInterface {
 	public let command:Command
 	fileprivate var signature:ProcessSignature? = nil
 	
-	init(command:Command, stdoutParseMode:DataParseMode = .lf, stderrParseMode:DataParseMode = .lf) throws {
+	public init(command:Command, stdoutParseMode:DataParseMode = .lf, stderrParseMode:DataParseMode = .lf) throws {
 		var outContinuation:AsyncStream<Data>.Continuation? = nil
 		self.stdoutParseMode = stdoutParseMode
 		if stdoutParseMode != .discard {
