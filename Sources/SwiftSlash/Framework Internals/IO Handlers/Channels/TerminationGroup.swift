@@ -29,7 +29,6 @@ internal actor TerminationGroup {
 		if (self.fileHandles.count == 0 && associatedPid != nil) {
 			self.groupClosed()
 		}
-		try fh.closeFileHandle()
 	}
 	
 	func setAssociatedPid(_ inputPid:pid_t) {
