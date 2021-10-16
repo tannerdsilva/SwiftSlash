@@ -1,6 +1,6 @@
 import Foundation
 
-actor InboundChannelState:Hashable {
+internal actor InboundChannelState:Hashable {
 	let fh:Int32
 	fileprivate var readBlockSize = Int(PIPE_BUF)
 	fileprivate var parser:BufferedLineParser
