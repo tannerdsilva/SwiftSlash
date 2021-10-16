@@ -11,6 +11,8 @@ internal actor TerminationGroup {
 	var exitCode:Int32? = nil
 	var didExit:Bool = false
 	
+	fileprivate weak var owningProcess:ProcessInterface? = nil
+	
 	fileprivate var whenExited:ExitHandler?
 	
 	init(fhs:Set<Int32>) {
@@ -36,9 +38,37 @@ internal actor TerminationGroup {
 			self.groupClosed()
 		}
 	}
-	
+		
+	fileprivate func groupClosed() {
+		self.exitCode = self.associatedPid!.getExitCode()
+		self.didExit = true
+		if (self.whenExited != nil) {
+			whenExited!(self.exitCode)
+		}
+		if (owningProcess != nil) {
+			Task.detached { [owningProcess, exitCode] in
+				if (exitCode == nil) {
+					await owningProcess?.setStatus(.signaled)
+				} else {
+					await owningProcess?.setStatus(.exited)
+				}
+			}
+		}
+	}
+
 	func getExitStatus() -> TerminationInfo {
 		return TerminationInfo(didExit:self.didExit, exitCode:self.exitCode)
+	}
+	
+	func setOwningProcess(_ pi:ProcessInterface) async {
+		self.owningProcess = pi
+		if didExit == true {
+			if (exitCode == nil) {
+				await pi.setStatus(.signaled)
+			} else {
+				await pi.setStatus(.exited)
+			}
+		}
 	}
 	
 	func whenExited(_ handler:@escaping((Int32?) -> Void)) {
@@ -48,12 +78,10 @@ internal actor TerminationGroup {
 			self.whenExited = handler
 		}
 	}
-	
-	fileprivate func groupClosed() {
-		self.exitCode = self.associatedPid!.getExitCode()
-		self.didExit = true
-		if (self.whenExited != nil) {
-			whenExited!(self.exitCode)
-		}
+}
+
+extension ProcessInterface {
+	fileprivate func setStatus(_ status:ProcessInterface.Status) async {
+		self.status = status
 	}
 }
