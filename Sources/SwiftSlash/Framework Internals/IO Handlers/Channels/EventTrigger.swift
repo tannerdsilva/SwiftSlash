@@ -56,9 +56,11 @@ internal struct EventTrigger {
 				
 							if (pollhup != 0) {
 								//reading handle closed
+								try? self.deregister(reader:currentEvent.data.fd)
 								self.handler(currentEvent.data.fd, .readingClosed)
 							} else if (pollerr != 0) {
 								//writing handle closed
+								try? self.deregister(writer:currentEvent.data.fd)
 								self.handler(currentEvent.data.fd, .writingClosed)
 							} else if (pollin != 0) {
 								//read data available
