@@ -54,7 +54,7 @@ if commandResult.exitCode == 0 {
 
 ```
 /* 
-EXAMPLE: query the system for any zfs datasets that might be imported
+EXAMPLE: query the system for any zfs datasets that might be imported. write 
 			stdout: parse as lines
 			stderr: unparsed, raw data will be sent through the stream as it becomes available
 
@@ -66,7 +66,7 @@ let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
 //pass the command structure to a new ProcessInterface. in this example, stdout will be parsed into lines with the lf byte, and stderr will be unparsed (raw data will be passed into the stream)
 let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdoutParseMode:.lf, stderrParseMode:.immediate)
 
-//launch the process (if any data needs to be passed into stdin upon launch, it can be passed into the launch() function)
+//launch the process. if any data needs to be passed into stdin upon launch, it can be passed into the launch() function
 let outputStreams = try await zfsProcessInterface.launch()
 
 //handle lines of stdout as they come in
@@ -82,6 +82,9 @@ for await stderrChunk in outputStreams.stderr {
 	print("\(stderrChunk.count) bytes were sent through stderr")
 	stderrBlob += stderrChunk
 }
+
+//data can be written to stdin after a process is launched, like so...
+zfsProcessInterface.write(stdin:"hello".data(using.utf8)!)
 
 //retreive the exit code of the process. 
 let exitCode = await zfsProcessInterface.exitCode()
