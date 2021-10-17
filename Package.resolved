@@ -9,6 +9,15 @@
           "revision": "8082c69e7ab97849a3f1f26f64d8bcfbcd5e750d",
           "version": "1.0.0"
         }
+      },
+      {
+        "package": "Cfork",
+        "repositoryURL": "https://github.com/tannerdsilva/Cfork.git",
+        "state": {
+          "branch": null,
+          "revision": "e8d669c630392586b7ff4c3221dd03f7b83e01b9",
+          "version": "1.0.0"
+        }
       }
     ]
   },

@@ -1,5 +1,7 @@
 import Foundation
 import Glibc
+import Cfork
+
 fileprivate func _WSTATUS(_ status:Int32) -> Int32 {
 	return status & 0x7f
 }
@@ -186,9 +188,9 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		throw ProcessSpawner.Error.badAccess
 	}
 	
-	let forkResult = fork()	//spawn the container process
+	let forkResult = cfork()	//spawn the container process
 		
-	func processMonitor() -> Never {
+	func prepareLaunch() -> Never {
 		//close the reading end of the pipe immediately
 		_ = close(internalNotify.reading)
 	
@@ -306,7 +308,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 			throw ProcessSpawner.Error.systemForkErrorno(errno)
 		case 0:
 			//in child: success
-			processMonitor()
+			prepareLaunch()
 	
 		default:
 			//in parent, success
