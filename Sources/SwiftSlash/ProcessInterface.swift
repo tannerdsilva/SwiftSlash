@@ -26,12 +26,12 @@ public actor ProcessInterface {
 
 	//stdout streams
 	public let stdoutParseMode:DataParseMode
-	public var stdout:AsyncStream<Data>?
+	public var stdout:AsyncStream<Data>
 	fileprivate let stdoutContinuation:AsyncStream<Data>.Continuation?
 	
 	//stderr streams
 	public let stderrParseMode:DataParseMode
-	public var stderr:AsyncStream<Data>?
+	public var stderr:AsyncStream<Data>
 	fileprivate let stderrContinuation:AsyncStream<Data>.Continuation?
 	
 	public let command:Command
@@ -40,34 +40,39 @@ public actor ProcessInterface {
 	public init(command:Command, stdoutParseMode:DataParseMode = .lf, stderrParseMode:DataParseMode = .lf) {
 		var outContinuation:AsyncStream<Data>.Continuation? = nil
 		self.stdoutParseMode = stdoutParseMode
-		if stdoutParseMode != .discard {
-			self.stdout = AsyncStream(Data.self) { stdoutContinuation in
-				outContinuation = stdoutContinuation
-			}
-		} else {
-			self.stdout = nil
+		let out = AsyncStream(Data.self) { stdoutContinuation in
+			outContinuation = stdoutContinuation
 		}
-		self.stdoutContinuation = outContinuation
+		self.stdout = out
+		if stdoutParseMode == .discard {
+			self.stdoutContinuation = nil
+			outContinuation!.finish()
+		} else {
+			self.stdoutContinuation = outContinuation
+		}
 		
 		var errContinuation:AsyncStream<Data>.Continuation? = nil
 		self.stderrParseMode = stderrParseMode
-		if stderrParseMode != .discard {
-			self.stderr = AsyncStream(Data.self) { stderrContinuation in
-				errContinuation = stderrContinuation
-			}
-		} else {
-			self.stderr = nil
+		let err = AsyncStream(Data.self) { stderrContinuation in
+			errContinuation = stderrContinuation
 		}
-		self.stderrContinuation = errContinuation
+		self.stderr = err
+		if stderrParseMode == .discard {
+			self.stderrContinuation = nil
+			errContinuation!.finish()
+		} else {
+			self.stderrContinuation = errContinuation
+		}
+
 		self.command = command
 	}
 	
-	@discardableResult public func launch() async throws -> (stdout:AsyncStream<Data>?, stderr:AsyncStream<Data>?) {
+	@discardableResult public func launch() async throws -> (stdout:AsyncStream<Data>, stderr:AsyncStream<Data>) {
 		guard self.status == .initialized else {
 			throw Error.invalidProcessState
 		}
+		self.status = .running
 		do {
-			self.status = .running
 			self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:stdoutContinuation, stdoutParseMode:self.stdoutParseMode, stderr:stderrContinuation, stderrParseMode:self.stderrParseMode)
 			await self.signature!.stdinChannel.terminationGroup.setOwningProcess(self)
 			return (stdout:self.stdout, stderr:self.stderr)
