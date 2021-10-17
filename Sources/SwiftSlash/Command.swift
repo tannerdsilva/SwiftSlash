@@ -38,13 +38,13 @@ public struct Command:Hashable, Equatable {
 		let exitCode = try await procInterface.exitCode()
 		//add the stdout task
 		var outLines = [Data]()
-		for await line in await procInterface.stdout! {
+		for await line in await procInterface.stdout {
 			outLines.append(line)
 		}
 
 		//add the stderr task
 		var errLines = [Data]()
-		for await line in await procInterface.stderr! {
+		for await line in await procInterface.stderr {
 			errLines.append(line)
 		}
 
