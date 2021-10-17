@@ -5,7 +5,7 @@ public enum DataParseMode:UInt8 {
 	case cr			//parses line breaks with the cr byte
 	case lf			//parses line breaks with the lf byte
 	case crlf		//parses line breaks with the sequence of cr + lf
-	case immediate	//does not parse line breaks, fires the data handler as soon as the data is available
+	case immediate	//feed the raw data (unparsed) into the asyncstream
 	case discard	//do not handle data for this channel
 }
 
@@ -23,7 +23,7 @@ public actor ProcessInterface {
 		case failed
 	}
 	public var status:Status = .initialized
-
+	
 	//stdout streams
 	public let stdoutParseMode:DataParseMode
 	public var stdout:AsyncStream<Data>
@@ -67,13 +67,13 @@ public actor ProcessInterface {
 		self.command = command
 	}
 	
-	@discardableResult public func launch() async throws -> (stdout:AsyncStream<Data>, stderr:AsyncStream<Data>) {
+	@discardableResult public func launch(writing stdin:Data? = nil) async throws -> (stdout:AsyncStream<Data>, stderr:AsyncStream<Data>) {
 		guard self.status == .initialized else {
 			throw Error.invalidProcessState
 		}
-		self.status = .running
 		do {
-			self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:stdoutContinuation, stdoutParseMode:self.stdoutParseMode, stderr:stderrContinuation, stderrParseMode:self.stderrParseMode)
+			self.status = .running
+			self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:stdoutContinuation, stdoutParseMode:self.stdoutParseMode, stderr:stderrContinuation, stderrParseMode:self.stderrParseMode, initialStdin:stdin)
 			await self.signature!.stdinChannel.terminationGroup.setOwningProcess(self)
 			return (stdout:self.stdout, stderr:self.stderr)
 		} catch let error {
@@ -107,5 +107,12 @@ public actor ProcessInterface {
 				}
 			}
 		}
+	}
+	
+	public func write(stdin:Data) async throws {
+		guard self.status == .running else {
+			throw Error.invalidProcessState
+		}
+		await self.signature!.stdinChannel.broadcast(stdin)
 	}
 }
