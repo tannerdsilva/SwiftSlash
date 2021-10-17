@@ -121,7 +121,7 @@ internal actor ProcessSpawner {
 	
 	static let global = ProcessSpawner()
 	
-	func launch(path:String, args:[String], wd:URL, env:[String:String], stdout:AsyncStream<Data>.Continuation?, stdoutParseMode:DataParseMode, stderr:AsyncStream<Data>.Continuation?, stderrParseMode:DataParseMode) async throws -> ProcessSignature {
+	func launch(path:String, args:[String], wd:URL, env:[String:String], stdout:AsyncStream<Data>.Continuation?, stdoutParseMode:DataParseMode, stderr:AsyncStream<Data>.Continuation?, stderrParseMode:DataParseMode, initialStdin:Data? = nil) async throws -> ProcessSignature {
 		let stdoutPipe:PosixPipe
 		let stderrPipe:PosixPipe
 		let stdinPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
@@ -171,6 +171,9 @@ internal actor ProcessSpawner {
 			})
 		})
 		
+		if (initialStdin != nil) {
+			await stdinChannel.broadcast(initialStdin!)
+		}
 		await terminationGroup.setAssociatedPid(returnVal)
 		
 		return ProcessSignature(work:returnVal, stdin:stdinPipe, stdout:stdoutPipe, stderr:stderrPipe, stdinChannel:stdinChannel)
