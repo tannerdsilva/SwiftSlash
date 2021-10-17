@@ -1,96 +1,99 @@
 # 🔥 /SwiftSlash/ 🔥 
 
-### A High-Performance Concurrent Shell Framework for Linux
+### Concurrent Shell Framework Built Entirely With Async/Await
 
 ## Why SwiftSlash?
 
-SwiftSlash was developed as a need to solve for the shortcomings of **all existing** Swift shell frameworks. These frameworks include `Shell`, `ShellOut`, `ShellKit`, `Work`, and the highly popular `SwiftShell`. These frameworks have a cumulative star count of > 1,374 in their public GitHub repositories.
+**Efficiency, concurrency, simplicity.**
 
-When comparing `SwiftSlash` with the widespread `Foundation.Process` class that backs the established shell frameworks listed above, the objective improvements of `SwiftSlash` speak for themselves.
+*SwiftSlash* was developed as a need to solve for the shortcomings of **all existing** shell frameworks. These frameworks include *SwiftCLI*, *Shell*, *ShellOut*, *ShellKit*, *Work*, and the highly popular *SwiftShell*. These frameworks have a cumulative star count of > 1,874 in their public GitHub repositories.
 
-- `SwiftSlash` does **NOT** leak memory, whereas `Process` will leak memory with every command it runs. This is a significant downside for workloads that require many thousands of commands to be executed.
+The Achilles heel of these existing frameworks is their internal use of *Foundation*'s own [*Process*](https://github.com/apple/swift-corelibs-foundation/blob/main/Sources/Foundation/Process.swift) class, which is a memory-heavy class that doesn't account for concurrent or complex use cases. For single, serialized executions, these frameworks will hold water (despite leaking memory). Under heavy use, however, all noted frameworks will struggle to stay afloat due to the shortcomings of *Process*.
 
-- `SwiftSlash` is safe to use concurrently and asynchronously, unlike `Process` class, which takes neither of these features into consideration. By allowing shell commands to be run concurrently, **SwiftSlash can complete large quantities of non-sequential workloads in *fractions* of their expected time**.
+*SwiftSlash* was designed intentionally from the ground up to address the shortcomings of these existing frameworks, and as such, deliberately doesn't use the *Process* class. As of version `3.0`, *SwiftSlash* is the first concurrent shell framework to be built entirely with Swift async/await concurrency paradigm [1]. Up to versions `2.2.2`, *SwiftSlash* used Grand Central Dispatch as the internal concurrency paradigm.
 
-- `SwiftSlash` can initialize and launch an external command with significantly greater efficiency than Foundation's `Process` class (both memory footprint and CPU impact). Similar performance improvements are seen in I/O handling from the `stdin`, `stdout`, and `stderr` streams.
+With a fundamentally different engine serving as the heart of *SwiftSlash*, the objective improvements over other frameworks are as follows:
 
-- `SwiftSlash` is structured to **ensure a secure execution environment**. `Process` class has many security vulnerabilities, including file handle sharing with the executing process and improper changing of the specified *working directory*.
+- `SwiftSlash` is the only known shell framework for Swift that will not leak memory with every command that has been executed.
 
-- `SwiftSlash` **can scale to massive workloads without consuming equally massive resources or time**.
+- `SwiftSlash` is completely safe to use concurrently. By allowing shell commands to be run concurrently, **SwiftSlash can complete large quantities of non-sequential workloads in *fractions* of their expected time with serialized executions**.
 
-- `SwiftSlash` does not have separate API classes for synchronous and asynchronous workloads.
+- `SwiftSlash` can initialize and launch an external command with significantly greater efficiency than existing frameworks (both memory footprint and CPU impact). Similar performance improvements are seen in I/O handling from the `stdin`, `stdout`, and `stderr` streams. This is primarily because SwiftSlash was designed without the need to create an event loop for every process.
 
-SwiftSlash was designed to internalize the complexities of process-spawning as much as possible to simplify developer usage. Notably, SwiftSlash asynchronously captures stdout and stderr, and will parse these incoming bytestreams into lines (by default) before firing handler events. SwiftSlash also internalizes process-reaping under-the-hood. The developer is never asked to wait for the process to exit at any point in the process lifecycle. This feature ensures that zombie processes will never appear on your system, even the developers code is buggy. In light of this design choice, SwiftSlash offers more flexibility in handling process exits (when required). In addition to the traditional `waitForExitCode()` type function, SwiftSlash can also pass the exit code asynchronously to an exit handler of the developers choice.
+- `SwiftSlash` is structured to **ensure a secure execution environment**. In contrast: *Process* class has many security vulnerabilities, including file handle sharing with the child process and improper changing of the specified *working directory*.
+
+- `SwiftSlash` deeply implements Swift's async/await concurrency paradigm at a fundamental level (**not** at the surface level). This allows for optimal resource sharing with other concurrent tasks that may be happening in your application.
+
+- `SwiftSlash` automatically [reaps processes](https://www.geeksforgeeks.org/zombie-and-orphan-processes-in-c/) as soon as it is possible to do so, making it impossible for zombie/orphan processes to linger on your system. This means that your application does not necessarily need to wait for exit codes of the processes it launches.
+
+Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API. All of SwiftSlash's functionality can be utilized with a single structure (`Command`) and a single actor (`ProcessInterface`). For added convenience, a third structure exists in the public API to fully encapsulate the result of an exited command: `CommandResult`.
 
 ## Getting Started
 
-`Command` implements a convenience function `runSync()` which serves as a simple way to execute processes with no setup. In this function, proces I/O is captured as lines and available after the process exits.
+`Command` implements a convenience function `runSync()` which serves as a simple way to execute processes with no setup or I/O handling.
+
 ```
 import SwiftSlash
 
-//define the command you'd like to run
-let zfsVersionCommand:Command = Command(bash:"zfs --version")
+// EXAMPLE: check the systems ZFS version and print the first line of the output
 
-//run the command in synchronous mode (wait for the process to exit - capture all process output)
-let commandResult:CommandResult = try zfsVersionCommand.runSync()
+let commandResult:CommandResult = try await Command(bash:"zfs --version").runSync()
 
 //check the exit code
 if commandResult.exitCode == 0 {
 
 	//print the first line of output
-	print("Found ZFS version: \(commandResult.stdout[0])")
+	print("Found ZFS version: \( String(data:commandResult.stdout[0], encoding:.utf8) )")
 }
+
 ```
 
-## Using the Full API with ProcessInterface
+## Full Functionality through ProcessInterface
 
-`ProcessInterface` is a powerful yet flexible class that serves as the base API for the SwfitSlash framework. Whether your process requires synchronous or asynchronous handling of buffered or unbuffered data, `ProcessInterface` provides a consistent platform for building such workloads.
+`ProcessInterface` is a powerful yet flexible class that serves as the base API for the SwfitSlash framework. Whether your process requires synchronous or asynchronous handling of parsed or unparsed data, `ProcessInterface` provides a consistent platform for defining such requirements.
 
 ```
 /* 
+EXAMPLE: query the system for any zfs datasets that might be imported
+			stdout: parse as lines
+			stderr: unparsed, raw data will be sent through the stream as it becomes available
+
+*/
+
 //define the command you'd like to run
 let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
 
-//pass the command structure to a new ProcessInterface
-let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand)
+//pass the command structure to a new ProcessInterface. in this example, stdout will be parsed into lines with the lf byte, and stderr will be unparsed (raw data will be passed into the stream)
+let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdoutParseMode:.lf, stderrParseMode:.immediate)
 
-//configure a line handler for the standard output of the process. lines are captured in the `datasetNames` array
-var datasetNames = [String]()
-zfsProcessInterface.stdoutHandler = { dataLine in
-	if let asString = String(data:dataLine, encoding:.utf8) {
-		datasetNames.append(asString)
-	}
+//launch the process (if any data needs to be passed into stdin upon launch, it can be passed into the launch() function)
+let outputStreams = try await zfsProcessInterface.launch()
+
+//handle lines of stdout as they come in
+var datasetLines = [Data]()
+for await outputLine in outputStreams.stdout {
+	print("dataset found: \( String(data:outputLine, encoding:.utf8) )")
+	datasetLines += outputLine
 }
 
-//configure a line handler for the standard error of the process. lines are captured in the `errors` array
-var errors = [String]()
-zfsProcessInterface.stderrHandler = { errorLine in
-	if let asString = String(data:errorLine, encoding:.utf8) {
-		errors.append(asString)
-	}
+//build the blob of stderr data if any was passed
+var stderrBlob = Data()
+for await stderrChunk in outputStreams.stderr {
+	print("\(stderrChunk.count) bytes were sent through stderr")
+	stderrBlob += stderrChunk
 }
 
-//launch the process
-try zfsProcessInterface.run()
+//retreive the exit code of the process. 
+let exitCode = await zfsProcessInterface.exitCode()
 
-//at this point, the code handlers above will begin firing as data begins streaming in from the process
-
-//wait for the process to exit, capturing its exit code
-let exitCode = zfsProcessInterface.waitForExitCode()
-
-//return if success
 if (exitCode == 0) {
-	return datasetNames
+	//do work based on success
+} else {
+	//do work based on error
 }
 ```
 
-Alternatively, an exit handler can be configured to capture the exit code when your process exits.
-
-```
-zfsProcessInterface.exitHandler = { exitCode in
-	print("\(zfsProcessInterface.pid!) exited with the following code: \(exitCode)")
-}
-```
+NOTE: Given the asynchronous nature of this framework (no thread blocking while waiting for exit codes), and to prevent conflicts with *SwiftSlash*'s internal [process-reaping](https://www.geeksforgeeks.org/zombie-and-orphan-processes-in-c/) mechanism, `ProcessInterface` intentionally hides the spawned process ID from the public-facing API. This helps enforce the runtime contract of Swifts concurrency model (no thread blocking), and also ensures an application developer cannot capture an exit code before *SwiftSlash* can. That being said, `ProcessInterface` still provides functions for sending signals and retrieving exit codes. This addresses the biggest needs to access the PID directly.
 
 ### License
 
