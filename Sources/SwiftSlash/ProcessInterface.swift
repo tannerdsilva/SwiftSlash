@@ -13,6 +13,7 @@ public actor ProcessInterface {
 	public enum Error:Swift.Error {
 		case invalidProcessState
 		case abnormalExit
+		case signalError
 	}
 	
 	public enum Status:UInt8 {
@@ -72,8 +73,8 @@ public actor ProcessInterface {
 			throw Error.invalidProcessState
 		}
 		do {
-			self.status = .running
 			self.signature = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, stdout:stdoutContinuation, stdoutParseMode:self.stdoutParseMode, stderr:stderrContinuation, stderrParseMode:self.stderrParseMode, initialStdin:stdin)
+			self.status = .running
 			await self.signature!.stdinChannel.terminationGroup.setOwningProcess(self)
 			return (stdout:self.stdout, stderr:self.stderr)
 		} catch let error {
@@ -97,7 +98,7 @@ public actor ProcessInterface {
 		} else {
 			return try await withUnsafeThrowingContinuation { [tg] continuation in
 				Task.detached { [tg, continuation] in
-					await tg.whenExited({ exitCode in
+					await tg.whenExited({ [continuation] exitCode in
 						if (exitCode != nil) {
 							continuation.resume(returning:exitCode!)
 						} else {
@@ -114,5 +115,33 @@ public actor ProcessInterface {
 			throw Error.invalidProcessState
 		}
 		await self.signature!.stdinChannel.broadcast(stdin)
+	}
+	
+	public func signal(_ signal:Int32) throws {
+		guard self.status == .running else {
+			throw Error.invalidProcessState
+		}
+		switch kill(self.signature!.worker, signal) {
+			case 0:
+				return
+			default:
+				throw Error.signalError
+		}
+	}
+	
+	public func resume() throws {
+		try self.signal(SIGCONT)
+	}
+	
+	public func suspend() throws {
+		try self.signal(SIGSTOP)
+	}
+	
+	public func terminate() throws {
+		try self.signal(SIGTERM)
+	}
+	
+	public func interrupt() throws {
+		try self.signal(SIGINT)
 	}
 }
