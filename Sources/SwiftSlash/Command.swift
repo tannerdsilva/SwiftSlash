@@ -33,20 +33,23 @@ public struct Command:Hashable, Equatable {
 		self.arguments = ["-c", command]
 	}
 	
-//	public func runSync() throws -> CommandResult {
-//		let procInterface = ProcessInterface(command:self)
-//		var stdoutLines = [Data]()
-//		var stderrLines = [Data]()
-//		procInterface.stderrHandler = { data, _ in
-//			stderrLines.append(data)
-//		}
-//		procInterface.stdoutHandler = { data, _ in
-//			stdoutLines.append(data)
-//		}
-//		_ = try procInterface.run()
-//		let exitCode = try procInterface.waitForExitCode()
-//		return CommandResult(exitCode:exitCode, stdout:stdoutLines, stderr:stderrLines)
-//	}
+	public func runSync() async throws -> CommandResult {
+		let procInterface = ProcessInterface(command:self)
+		let exitCode = try await procInterface.exitCode()
+		//add the stdout task
+		var outLines = [Data]()
+		for await line in await procInterface.stdout! {
+			outLines.append(line)
+		}
+
+		//add the stderr task
+		var errLines = [Data]()
+		for await line in await procInterface.stderr! {
+			errLines.append(line)
+		}
+
+		return CommandResult(exitCode:exitCode, stdout:outLines, stderr:errLines)
+	}
 	
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return (lhs.executable == rhs.executable) && (lhs.arguments == rhs.arguments) && (lhs.environment == rhs.environment)
