@@ -2,6 +2,17 @@
 
 ### Concurrent Shell Framework Built Entirely With Async/Await
 
+## Platform Support
+
+ - Linux
+ 	- Fully supported
+ 	- Tests broken as of `3.0.0` - this is because Apple shipped Swift 5.5 without native support for async functions in `XCTestCase` on the Linux platform. Options are being explored to hack this functionality together again: [see issue #5](https://github.com/tannerdsilva/SwiftSlash/issues/5).
+ 	
+ - MacOS
+ 	- Successful builds in branch `macosCompat`. Buggy at this time, still under development.
+ 	- Functionality falls appart with heavy concurrency (excess of 10 concurrent processes).
+ 	- Native XCTestCase is functional on MacOS Monterey. Tests do not always pass which is why MacOS support has not been tagged in the `master` branch at this time.
+
 ## Why SwiftSlash?
 
 **Efficiency, concurrency, simplicity.**
