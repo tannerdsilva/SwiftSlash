@@ -21,12 +21,12 @@ internal actor ChannelManager {
 				await curReader.captureData()
 			case .readingClosed:
 				let curReader = readers[fh]!
-				await curReader.channelClosed()
 				self.readers.removeValue(forKey:fh)
+				await curReader.channelClosed()
 			case .writingClosed:
 				let curWriter = writers[fh]!
-				await curWriter.terminationGroup.removeHandle(fh:fh)
 				self.writers.removeValue(forKey:fh)
+				await curWriter.terminationGroup.removeHandle(fh:fh)
 				break;
 			case .writableEvent:
 				let curWriter = writers[fh]!
