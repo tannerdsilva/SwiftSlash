@@ -6,13 +6,13 @@ public struct Command:Hashable, Equatable {
 	var arguments:[String]
 	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
 	var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
-	public init?(command:String) {
+	public init(command:String) {
 		guard command.count > 0 else {
-			return nil
+			fatalError("cannot cannot initialize with a string of zero length")
 		}
 		var elements = command.split(separator:" ").compactMap { String($0) }
 		guard elements.count > 1 else {
-			return nil
+			fatalError("could not parse executable")
 		}
 		self.executable = elements.removeFirst()
 		self.arguments = elements
