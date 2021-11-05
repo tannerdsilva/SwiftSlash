@@ -5,14 +5,13 @@
 ## Platform Support
 
  - Linux
- 	- Fully supported
- 	- Tests broken as of `3.0.0` - this is because Apple shipped Swift 5.5 without native support for async functions in `XCTestCase` on the Linux platform. Options are being explored to hack this functionality together again: [see issue #5](https://github.com/tannerdsilva/SwiftSlash/issues/5).
+ 	- Fully supported since tag `1.0.0`
+ 	- Tests broken as of tag `3.0.0` - this is because Apple shipped Swift 5.5 without native support for async functions in `XCTestCase` on the Linux platform.
  	
  - MacOS
- 	- Successful builds in branch `macosCompat`. Buggy at this time, still under development.
- 	- Functionality falls appart with heavy concurrency (excess of 10 concurrent processes).
- 	- Native XCTestCase is functional on MacOS Monterey. Tests do not always pass which is why MacOS support has not been tagged in the `master` branch at this time.
-
+ 	- Fully supported with release tag `3.1.0` or later
+    - Tests passing   
+     
 ## Why SwiftSlash?
 
 **Efficiency, concurrency, simplicity.**
@@ -21,7 +20,7 @@
 
 The Achilles heel of these existing frameworks is their internal use of *Foundation*'s own [*Process*](https://github.com/apple/swift-corelibs-foundation/blob/main/Sources/Foundation/Process.swift) class, which is a memory-heavy class that doesn't account for concurrent or complex use cases. For single, serialized executions, these frameworks will hold water (despite leaking memory). Under heavy use, however, all noted frameworks will struggle to stay afloat due to the shortcomings of *Process*.
 
-*SwiftSlash* was designed intentionally from the ground up to address the shortcomings of these existing frameworks, and as such, deliberately doesn't use the *Process* class. As of version `3.0`, *SwiftSlash* is the first concurrent shell framework to be built entirely with Swift async/await concurrency paradigm [1]. Up to versions `2.2.2`, *SwiftSlash* used Grand Central Dispatch as the internal concurrency paradigm.
+*SwiftSlash* was designed intentionally from the ground up to address the shortcomings of these existing frameworks, and as such, deliberately doesn't use the *Process* class. As of version `3.0`, *SwiftSlash* is the first concurrent shell framework to be built entirely with Swift async/await concurrency paradigm. Up to versions `2.2.2`, *SwiftSlash* used Grand Central Dispatch as the internal concurrency paradigm.
 
 With a fundamentally different engine serving as the heart of *SwiftSlash*, the objective improvements over other frameworks are as follows:
 
@@ -36,6 +35,8 @@ With a fundamentally different engine serving as the heart of *SwiftSlash*, the 
 - `SwiftSlash` deeply implements Swift's async/await concurrency paradigm at a fundamental level (**not** at the surface level). This allows for optimal resource sharing with other concurrent tasks that may be happening in your application.
 
 - `SwiftSlash` automatically [reaps processes](https://www.geeksforgeeks.org/zombie-and-orphan-processes-in-c/) as soon as it is possible to do so, making it impossible for zombie/orphan processes to linger on your system. This means that your application does not necessarily need to wait for exit codes of the processes it launches.
+
+- `SwiftSlash` is aware of the limited resources your process has been allocated by the system (primarily, file descriptors). It will not launch a command that your application does not have the resources to support. In such a case (under heavy concurrent use of SwiftSlash), processes requiring more resources than are available will be queued and launched when resources are freed.
 
 Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API. All of SwiftSlash's functionality can be utilized with a single structure (`Command`) and a single actor (`ProcessInterface`). For added convenience, a third structure exists in the public API to fully encapsulate the result of an exited command: `CommandResult`.
 
@@ -65,7 +66,7 @@ if commandResult.exitCode == 0 {
 
 ```
 /* 
-EXAMPLE: query the system for any zfs datasets that might be imported. write 
+EXAMPLE: query the system for any zfs datasets that might be imported. 
 			stdout: parse as lines
 			stderr: unparsed, raw data will be sent through the stream as it becomes available
 
@@ -75,21 +76,21 @@ EXAMPLE: query the system for any zfs datasets that might be imported. write
 let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
 
 //pass the command structure to a new ProcessInterface. in this example, stdout will be parsed into lines with the lf byte, and stderr will be unparsed (raw data will be passed into the stream)
-let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdoutParseMode:.lf, stderrParseMode:.immediate)
+let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdout:.active(.lf), stderrParseMode:.active(.unparsedRaw))
 
-//launch the process. if any data needs to be passed into stdin upon launch, it can be passed into the launch() function
+//launch the process. if you are running many concurrent processes (using most of the available resources), this is where your process will be queued until there are enough resources to support the launched process.
 let outputStreams = try await zfsProcessInterface.launch()
 
 //handle lines of stdout as they come in
 var datasetLines = [Data]()
-for await outputLine in outputStreams.stdout {
+for await outputLine in await zfsProcessInterface.stdout {
 	print("dataset found: \( String(data:outputLine, encoding:.utf8) )")
 	datasetLines += outputLine
 }
 
 //build the blob of stderr data if any was passed
 var stderrBlob = Data()
-for await stderrChunk in outputStreams.stderr {
+for await stderrChunk in await zfsProcessInterface.stderr {
 	print("\(stderrChunk.count) bytes were sent through stderr")
 	stderrBlob += stderrChunk
 }
@@ -106,8 +107,6 @@ if (exitCode == 0) {
 	//do work based on error
 }
 ```
-
-NOTE: Given the asynchronous nature of this framework (no thread blocking while waiting for exit codes), and to prevent conflicts with *SwiftSlash*'s internal [process-reaping](https://www.geeksforgeeks.org/zombie-and-orphan-processes-in-c/) mechanism, `ProcessInterface` intentionally hides the spawned process ID from the public-facing API. This helps enforce the runtime contract of Swifts concurrency model (no thread blocking), and also ensures an application developer cannot capture an exit code before *SwiftSlash* can. That being said, `ProcessInterface` still provides functions for sending signals and retrieving exit codes. This addresses the biggest needs to access the PID directly.
 
 ### License
 
