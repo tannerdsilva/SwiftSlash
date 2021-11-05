@@ -1,34 +1,49 @@
 import Foundation
 
-internal actor OutboundChannelState:Hashable {
-	internal let fh:Int32
+internal actor OutboundChannelState {
 	fileprivate var outboundBuffer = Data()
-	internal let terminationGroup:TerminationGroup
+	fileprivate let writeContinuation:AsyncStream<Data>.Continuation
+	fileprivate let writeStream:AsyncStream<Data>
+	fileprivate let eventStream:AsyncStream<Int32>
 	
-	nonisolated internal var hashValue:Int {
-		var hasher = Hasher()
-		hasher.combine(fh)
-		return hasher.finalize()
+	internal let continuation:AsyncStream<Int32>.Continuation
+	
+	fileprivate var fh:Int32? = nil	
+	internal func _dataLoop() async {
+		for await newData in writeStream {
+			self.broadcast(newData)
+		}
 	}
-	
-	internal init(fh:Int32, group:TerminationGroup) {
-		self.fh = fh
-		self.terminationGroup = group
+	internal func _eventLoop() async {
+		for await fh in eventStream {
+			if self.fh == nil {
+				self.fh = fh
+			}
+			self.flushDataToHandle()
+		}
+	}
+	internal init(channel:DataChannel.Outbound) {
+		var eventCont:AsyncStream<Int32>.Continuation? = nil
+		let eventStream = AsyncStream<Int32> { cont in
+			eventCont = cont
+		}
+		self.writeStream = channel.stream
+		self.eventStream = eventStream
+		self.continuation = eventCont!
+		self.writeContinuation = channel.continuation
 	}
 	
 	internal func broadcast(_ dataToWrite:Data) {
 		outboundBuffer.append(contentsOf:dataToWrite)
-		self.flushDataToHandle()
+		if (self.fh != nil) {
+			self.flushDataToHandle()
+		}
 	}
-	
-	internal func channelWritableEvent() {
-		self.flushDataToHandle()
-	}
-	
+		
 	fileprivate func flushDataToHandle() {
 		do {
 			while outboundBuffer.count > 0 {
-				let remainingData = try self.fh.writeFileHandle(self.outboundBuffer)
+				let remainingData = try self.fh!.writeFileHandle(self.outboundBuffer)
 				outboundBuffer.removeAll(keepingCapacity:true)
 				if (remainingData.count > 0) {
 					outboundBuffer.append(remainingData)
@@ -37,11 +52,8 @@ internal actor OutboundChannelState:Hashable {
 		} catch _ {}
 	}
 	
-	nonisolated func hash(into hasher:inout Hasher) {
-		hasher.combine(fh)
-	}
-	
-	static func == (lhs:OutboundChannelState, rhs:OutboundChannelState) -> Bool {
-		return lhs.fh == rhs.fh
+	nonisolated internal func terminateLoop() {
+		writeContinuation.finish()
+		continuation.finish()
 	}
 }

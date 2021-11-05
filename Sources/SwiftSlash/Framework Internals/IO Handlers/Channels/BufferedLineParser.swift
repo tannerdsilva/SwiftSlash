@@ -1,7 +1,7 @@
 import Foundation
 
 internal struct BufferedLineParser {
-	internal var type:DataParseMode
+	internal var type:DataChannel.Inbound.ParseMode
 	
 	fileprivate var currentLine = Data()
 	fileprivate var pendingLines = [Data]()
@@ -10,14 +10,14 @@ internal struct BufferedLineParser {
 		self.type = .lf
 	}
 	
-	init(mode:DataParseMode) {
+	init(mode:DataChannel.Inbound.ParseMode) {
 		self.type = mode
 	}
 	
 	@discardableResult mutating func intake(_ dataToIntake:Data) -> Bool {
 		var didFind = false
 		var crLast = false
-		if (self.type == .immediate) {
+		if (self.type == .unparsedRaw) {
 			pendingLines.append(dataToIntake)
 			return true
 		}

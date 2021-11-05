@@ -1,5 +1,7 @@
 import Foundation
+#if os(Linux)
 import Glibc
+#endif
 
 internal enum FileHandleError:Error {
 	case pollingError;
@@ -26,7 +28,7 @@ internal struct PosixPipe:Hashable {
 	var reading:Int32
 	var writing:Int32
 	
-	var isNullValued:Bool { 
+	var isInvalid:Bool { 
 		get {
 			if (reading == -1 && writing == -1) {
 				return true
@@ -50,6 +52,7 @@ internal struct PosixPipe:Hashable {
 				readingValue = fds.pointee
 				writingValue = fds.successor().pointee
 			default:
+				print("PIPE ERROR \(errno) \(EMFILE)")
 				break;
 		}
 		if (nonblockingReads == true) {

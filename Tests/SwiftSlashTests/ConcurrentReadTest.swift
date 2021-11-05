@@ -61,7 +61,7 @@ final class ConcurrentReadTest:XCTestCase {
             }
         }
         let runCommand = Command(bash:"\(readTestURL.path)")
-        let iterations = 10000
+        let iterations = 100
         let successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
             for _ in 0..<iterations {
                 tg.addTask {

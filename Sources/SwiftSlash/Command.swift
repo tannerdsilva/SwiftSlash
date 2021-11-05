@@ -1,5 +1,4 @@
 import Foundation
-import Glibc
 
 public struct Command:Hashable, Equatable {
 	var executable:String
@@ -35,7 +34,7 @@ public struct Command:Hashable, Equatable {
 	
 	public func runSync() async throws -> CommandResult {
 		let procInterface = ProcessInterface(command:self)
-		let exitCode = try await procInterface.exitCode()
+		try await procInterface.launch()
 		//add the stdout task
 		var outLines = [Data]()
 		for await line in await procInterface.stdout {
@@ -47,7 +46,7 @@ public struct Command:Hashable, Equatable {
 		for await line in await procInterface.stderr {
 			errLines.append(line)
 		}
-
+		let exitCode = try await procInterface.exitCode()
 		return CommandResult(exitCode:exitCode, stdout:outLines, stderr:errLines)
 	}
 	

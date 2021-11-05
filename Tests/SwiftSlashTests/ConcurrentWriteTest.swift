@@ -5,9 +5,7 @@ import XCTest
 func testWriteProcess(swift:URL) -> String {
     return """
     #!\(swift.path)
-    import Glibc
     print(readLine()!)
-    exit(0)
     """
 }
 
@@ -34,26 +32,27 @@ final class ConcurrentWriteTest:XCTestCase {
         try! FileManager.default.createDirectory(at:tempDir, withIntermediateDirectories:true)
         let writeTestExe = tempDir.appendingPathComponent("writeExe.swift", isDirectory:false)
         let whichSwift = URL(fileURLWithPath:String(data:try! await Command(bash:"which swift").runSync().stdout[0], encoding:.utf8)!)
-        try! testReadProcess(swift:whichSwift).data(using:.utf8)!.write(to:writeTestExe)
+        try! testWriteProcess(swift:whichSwift).data(using:.utf8)!.write(to:writeTestExe)
         guard try! await Command(bash:"chmod +x \(writeTestExe.path)").runSync().succeeded == true else {
             exit(7)
         }
-        
         @Sendable func singleWriteProcessTest(_ command:Command, _ randomStringToWrite:String) async -> Bool {
                     do {
-                        let pi = ProcessInterface(command:command, stdoutParseMode:.immediate, stderrParseMode:.immediate)
+                        let pi = ProcessInterface(command:command, stdout:.active(.unparsedRaw), stderr:.active(.unparsedRaw))
                         let writtenData = randomStringToWrite.data(using:.utf8)!
                         var returnedDataCapture = Data()
-                        let streams = try await pi.launch(writing:writtenData)
-                        for await data in streams.stdout {
+                        async let exitCode = try pi.exitCode()
+                        await pi.write(stdin:writtenData)
+                        for await data in await pi.stdout {
                             returnedDataCapture += data
                         }
-                        guard try await pi.exitCode() == 0 else {
+                        guard try! await exitCode == 0 else {
                             return false
                         }
                         if (returnedDataCapture == writtenData) {
                             return true
                         } else {
+                            let returnedString = String(data:returnedDataCapture, encoding:.utf8)
                             return false
                         }
                     } catch {
@@ -61,25 +60,25 @@ final class ConcurrentWriteTest:XCTestCase {
                     }
                 }
         let runCommand = Command(bash:"\(writeTestExe.path)")
-        var iterations = 10000
+        var iterations = 250
         var successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
                 
             for _ in 0..<iterations {
                 tg.addTask {
-                    let randomStringToWrite = String.random(length:56000) + "\n"
+                    let randomStringToWrite = String.random(length:750) + "\n"
                     return await singleWriteProcessTest(runCommand, randomStringToWrite)
                 }
             }
-            
             var countSuccess = 0
             for await result in tg {
                 if result == true {
                     countSuccess += 1
                 } else {
                     try? FileManager.default.removeItem(at:tempDir)
-                    XCTFail("written echo test failed")
+                    fatalError("written echo test failed")
                 }
             }
+            await tg.waitForAll()
             return countSuccess
         })
         

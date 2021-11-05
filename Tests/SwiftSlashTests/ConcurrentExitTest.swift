@@ -4,7 +4,11 @@ import XCTest
 func testExitProcess(swift:URL) -> String {
     return """
     #!\(swift.path)
+    #if os(Linux)
     import Glibc
+    #elseif os(macOS)
+    import Darwin
+    #endif
     let randomInt = Int32.random(in:1...255)
     print(randomInt)
     exit(randomInt)
@@ -13,6 +17,7 @@ func testExitProcess(swift:URL) -> String {
 
 final class ConcurrentExitTest:XCTestCase {
     func testConcurrentExits() async {
+
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("xctest_swiftslash", isDirectory:true)
         try? FileManager.default.removeItem(at:tempDir)
         try! FileManager.default.createDirectory(at:tempDir, withIntermediateDirectories:true)
@@ -39,7 +44,7 @@ final class ConcurrentExitTest:XCTestCase {
         }
         
         let runCommand = Command(bash:"\(exitTestURL.path)")
-        let iterations = 10000
+        let iterations = 100
         var successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
             for _ in 0..<iterations {
                 tg.addTask {
