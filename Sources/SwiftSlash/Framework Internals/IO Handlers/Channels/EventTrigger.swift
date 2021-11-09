@@ -174,7 +174,9 @@ internal struct EventTrigger {
             let kqueueResult = kevent(self.queue, nil, 0, kqueueEventsAllocation, allocationSize, nil)
             switch kqueueResult {
                 case -1:
-                    print("KQUEUE ERROR")
+                    if (errno != EINTR) {
+                        fatalError("KQUEUE ERROR")
+                    }
                     break;
                 default:
                     if kqueueResult > 0 {
@@ -182,8 +184,7 @@ internal struct EventTrigger {
                         while (i < kqueueResult) {
                             let currentEvent = kqueueEventsAllocation[i]
                             let kqueueClosed = currentEvent.flags & UInt16(EV_EOF)
-                            let kqueueIn = currentEvent.filter & Int16(EVFILT_READ)
-                            let kqueueOut = currentEvent.filter & Int16(EVFILT_WRITE)
+
                             let curIdent = Int32(currentEvent.ident)
                             if kqueueClosed == 0 {
                                 if currentEvent.filter == Int16(EVFILT_READ) {
