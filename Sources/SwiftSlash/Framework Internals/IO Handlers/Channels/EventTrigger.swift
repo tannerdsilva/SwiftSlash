@@ -53,7 +53,9 @@ internal struct EventTrigger {
 			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
 			switch pollResult {
 				case -1:
-					fatalError("EPOLL ERROR")
+					if (errno != EINTR) {
+						fatalError("EPOLL ERROR")
+					}
 					break;
 				default:
 					if (pollResult > 0) {
