@@ -76,7 +76,7 @@ EXAMPLE: query the system for any zfs datasets that might be imported.
 let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
 
 //pass the command structure to a new ProcessInterface. in this example, stdout will be parsed into lines with the lf byte, and stderr will be unparsed (raw data will be passed into the stream)
-let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdout:.active(.lf), stderrParseMode:.active(.unparsedRaw))
+let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdout:.active(.lf), stderr:.active(.unparsedRaw))
 
 //launch the process. if you are running many concurrent processes (using most of the available resources), this is where your process will be queued until there are enough resources to support the launched process.
 let outputStreams = try await zfsProcessInterface.launch()
@@ -99,7 +99,7 @@ for await stderrChunk in await zfsProcessInterface.stderr {
 zfsProcessInterface.write(stdin:"hello".data(using.utf8)!)
 
 //retreive the exit code of the process. 
-let exitCode = await zfsProcessInterface.exitCode()
+let exitCode = try await zfsProcessInterface.exitCode()
 
 if (exitCode == 0) {
 	//do work based on success
