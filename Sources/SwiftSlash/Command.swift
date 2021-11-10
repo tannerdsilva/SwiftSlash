@@ -1,10 +1,10 @@
 import Foundation
 
 public struct Command:Hashable, Equatable {
-	var executable:String
-	var arguments:[String]
-	var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
-	var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
+	public var executable:String
+	public var arguments:[String]
+	public var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
+	public var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
 	public init(command:String) {
 		guard command.count > 0 else {
 			fatalError("cannot cannot initialize with a string of zero length")
