@@ -1,37 +1,45 @@
 import Foundation
 
+/// Defines a command that is to be executed.
 public struct Command:Hashable, Equatable {
+    
 	public var executable:String
 	public var arguments:[String]
 	public var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
-	public var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
+    public var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
+    
+    /// Initialize from a string-encoded command
+    /// - Parameter command: A string representing an executable (and optionally, the arguments following the executable) that you would like to run. Arguments separated by space
 	public init(command:String) {
 		guard command.count > 0 else {
 			fatalError("cannot cannot initialize with a string of zero length")
 		}
 		var elements = command.split(separator:" ").compactMap { String($0) }
-		guard elements.count > 1 else {
+		guard elements.count >= 1 else {
 			fatalError("could not parse executable")
 		}
 		self.executable = elements.removeFirst()
 		self.arguments = elements
 	}
-	
-	public init(execute:String) {
-		self.executable = execute
-		self.arguments = [String]()
-	}
-	
-	public init(execute:String, arguments:[String]) {
+    
+    /// Initialize with an executable path and arguments
+    /// - Parameters:
+    ///   - execute: The path to the executable which shall be run
+    ///   - arguments: An array of arguments to pass into the executable
+	public init(execute:String, arguments:[String] = [String]()) {
 		self.executable = execute
 		self.arguments = arguments	
 	}
-	
+    
+    /// Initialize with a command to pass into the Bash shell
+    /// - Parameter command: Command string that bash will run
 	public init(bash command:String) {
 		self.executable = "/bin/bash"
 		self.arguments = ["-c", command]
 	}
-	
+    
+    /// Run a command synchronously
+    /// - Returns: Results of the command are captured in a `CommandResult` and returned after the command has finished executing
 	public func runSync() async throws -> CommandResult {
 		let procInterface = ProcessInterface(command:self)
 		try await procInterface.launch()
@@ -61,23 +69,22 @@ public struct Command:Hashable, Equatable {
 	}
 }
 
+/// Contains the result of a `Command` that has run synchronously
 public struct CommandResult {
-	public var succeeded:Bool {
-		get {
-			if exitCode == 0 {
-				return true
-			} else {
-				return false
-			}
-		}
-	}
+    /// A convenience boolean that is set to `true` when `exitCode` is set to `0`
+    public let succeeded:Bool
 	public let exitCode:Int32
 	public let stdout:[Data]
 	public let stderr:[Data]
     
-    public init(exitCode:Int32, stdout:[Data], stderr:[Data]) {
+    internal init(exitCode:Int32, stdout:[Data], stderr:[Data]) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
+        if exitCode == 0 {
+            self.succeeded = true
+        } else {
+            self.succeeded = false
+        }
     }
 }

@@ -1,18 +1,30 @@
 import Foundation
 
+/// DataChannels define how data is piped in and out of the process while it is running.
+///  - Data channels are assigned to a file handle of the launched process
 public struct DataChannel {
-
-	//readable
-	public struct Inbound:Hashable {
+    
+    /// Inbound DataChannels are for configuring channels that the running process will write to.
+    /// - Inbound DataChannels are most commonly used to capture `STDOUT` and `STDERR` of the running process.
+    public struct Inbound:Hashable {
+        /// Used on active inbound channels to define how data is buffered into the AsyncStream
 		public enum ParseMode {
+            /// Separate  AsyncStream data chunks by the CR byte (0xD)
 			case cr
+            /// Separate  AsyncStream data chunks by the LF byte (0xA)
 			case lf
+            /// Separate  AsyncStream data chunks by the occurrence of the CRLF byte sequence (0xD followed by 0xA)
 			case crlf
+            /// Disable bytestream parsing. Data will be transparently passed to the AsyncStream in real time.
 			case unparsedRaw
-		}
+        }
+        /// Defines the configuration for an Inbound data channel
 		public enum Configuration {
+            /// Actively capture the output from this data channel with the specified `ParseMode`. Data from this channel can be consumed through its AsyncStream.
 			case active(ParseMode)
+            /// Close the file handle of the running process at launch time
 			case closed
+            /// Map this file handle to `/dev/null`
 			case nullPipe
 		}
 		
@@ -56,12 +68,16 @@ public struct DataChannel {
 			return lhs.targetHandle == rhs.targetHandle
 		}
 	}
-	
-	//writable
+    
+    /// Outbound DataChannels are for configuring channels that the running process will read from
+    ///  - Outbound DataChannels are most commonly used to write data to `STDIN` of a running process.
 	public struct Outbound:Hashable {
 		public enum Configuration {
+            /// Enable this file handle for data transfer with the running process through its AsyncStream.Continuation
 			case active
+            /// Close the file handle of the running process at launch time
 			case closed
+            /// Map this file handle to `/dev/null`
 			case nullPipe
 		}
 		
@@ -94,6 +110,5 @@ public struct DataChannel {
 		public static func == (lhs:Outbound, rhs:Outbound) -> Bool {
 			return lhs.targetHandle == rhs.targetHandle
 		}
-
 	}
 }

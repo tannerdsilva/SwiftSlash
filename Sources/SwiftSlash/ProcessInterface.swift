@@ -1,5 +1,6 @@
 import Foundation
 
+/// ProcessInterface is the key to managing the lifecycle of any command that needs to be executed.
 public actor ProcessInterface {
 	public enum Error:Swift.Error {
 		case invalidProcessState
@@ -8,7 +9,8 @@ public actor ProcessInterface {
 	}
 	
 	internal var _state:State = .initialized
-	public var state:State {
+	/// The current state of this process' lifecycle
+    public var state:State {
 		get {
 			return _state
 		}
@@ -31,13 +33,22 @@ public actor ProcessInterface {
 			break;
 		}
 	}
+    /// Represents a state in the process lifecycle
 	public enum State:Equatable {
+        /// The process is ready for configuration
 		case initialized
+        /// The process is launching. A process will only linger in this state in cases of extreme concurrency (where your applications maximum file-handle count has been reached). In this case, the process will immediately launch when other file handles are closed.
 		case launching
+        /// The process is running. *SEE DISCLAIMER FOR USAGE DETAILS*
+        ///  - **DISCLAIMER** - Do NOT call `waitpid` against this process' PID under any circumstances. Doing so will interfere with SwiftSlash and its internal process-reaping mechanism. Please use `ChildSignalCatcher` to handle values that SwiftSlash is capturing when it calls `waitpid` internally.
 		case running(pid_t)
+        /// The process is paused.
 		case paused
+        /// The child process raised a signal (enclosed) that caused it to exit.
 		case signaled(Int32)
+        /// The process exited cleanly with the enclosed exit code.
 		case exited(Int32)
+        /// The process failed to launch.
 		case failed
 		
 		public static func == (lhs:State, rhs:State) -> Bool {
@@ -95,12 +106,13 @@ public actor ProcessInterface {
 		}
 	}
 	
-	
-	//outbound writable channels
+	/// Specifies all outbound data channels (mapping to file handles that the launched process will read from)
 	public var outboundChannels:[Int32:DataChannel.Outbound]
 
-	//inbound readable channels
+	/// Specifies all inbound data channels (mapping to file handles that the launched process will write to)
 	public var inboundChannels:[Int32:DataChannel.Inbound]
+    
+    /// Convenience variable to access the async data stream mapped to `STDOUT` handle of the running process
 	public var stdout:AsyncStream<Data> {
 		get {
 			guard let captureChannel = inboundChannels[STDOUT_FILENO] else {
@@ -109,6 +121,7 @@ public actor ProcessInterface {
 			return captureChannel.stream
 		}
 	}
+    /// Convenience variable to access the async data stream mapped to `STDERR` handle of the running process
 	public var stderr:AsyncStream<Data> {
 		get {
 			guard let captureChannel = inboundChannels[STDERR_FILENO] else {
@@ -117,8 +130,16 @@ public actor ProcessInterface {
 			return captureChannel.stream
 		}
 	}
+    
+    /// The command that will be launched as a child process
 	public let command:Command
-		
+    
+    /// Initialize a new ProcessInterface instance.
+    /// - Parameters:
+    ///   - command: The command to launch
+    ///   - stdin: `STDIN` configuration for this process. Default: `.active`
+    ///   - stdout: `STDOUT` configuration for this process. Default: `.active(.lf)`
+    ///   - stderr: `STDERR` configuration for this process. Default: `.active(.lf)`
 	public init(command:Command, stdin:DataChannel.Outbound.Configuration = .active, stdout:DataChannel.Inbound.Configuration = .active(.lf), stderr:DataChannel.Inbound.Configuration = .active(.lf)) {
 		self.command = command
 		//create channels for STDOUT and STDERR
@@ -131,7 +152,8 @@ public actor ProcessInterface {
 			STDIN_FILENO: DataChannel.Outbound(target:STDIN_FILENO)
 		]
 	}
-		
+    
+    /// Launch the command
 	public func launch() async throws {
 		guard case self._state = State.initialized else {
 			throw Error.invalidProcessState
@@ -162,7 +184,12 @@ public actor ProcessInterface {
 				break;
 		}
 	}
-	
+    
+    /// Await the exit code of the process.
+    ///   - The command will launch if it is not already launched
+    ///   - This function will throw an error if the process raised a signal or failed to launch
+    ///   - Multiple concurrent tasks can await an exit code of a single ProcessInterface instance
+    /// - Returns: The exit code of the process
 	public func exitCode() async throws -> Int32 {
 		switch self._state {
 			case .initialized:
@@ -170,6 +197,8 @@ public actor ProcessInterface {
 			case let .exited(code):
 				return code
 			case .signaled:
+                throw Error.processSignaled
+            case .failed:
 				throw Error.processSignaled
 			default:
 			break;
@@ -190,6 +219,7 @@ public actor ProcessInterface {
 		}
 	}
 	
+    /// Convenience function to write data to the STDIN handle of the running process
 	public func write(stdin:Data) {
 		guard let outChannel = outboundChannels[STDIN_FILENO]?.continuation else {
 			fatalError("do not call the write() function when STDIN has not been configured in the outbound handlers")
@@ -197,6 +227,8 @@ public actor ProcessInterface {
 		outChannel.yield(stdin)
 	}
 	
+    /// Sends a signal to the running process
+    ///   - This function will throw an `.invalidProcessState` error if the process is not running
 	public func signal(_ signal:Int32) throws {
 		guard case let .running(rpid) = self._state else {
 			throw Error.invalidProcessState
@@ -209,20 +241,23 @@ public actor ProcessInterface {
 		}
 	}
 
+    /// Convenience function to send the SIGCONT signal to the running process
 	public func resume() throws {
 		try self.signal(SIGCONT)
 	}
-
+    
+    /// Convenience function to send the SIGSTOP signal to the running process
 	public func suspend() throws {
 		try self.signal(SIGSTOP)
 	}
-
+    
+    /// Convenience function to send the SIGTERM signal to the running process
 	public func terminate() throws {
 		try self.signal(SIGTERM)
 	}
-
+    
+    /// Convenience function to send the SIGINT signal to the running process
 	public func interrupt() throws {
 		try self.signal(SIGINT)
 	}
-
 }
