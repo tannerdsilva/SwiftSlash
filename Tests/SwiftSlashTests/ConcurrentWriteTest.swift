@@ -52,7 +52,6 @@ final class ConcurrentWriteTest:XCTestCase {
                         if (returnedDataCapture == writtenData) {
                             return true
                         } else {
-                            let returnedString = String(data:returnedDataCapture, encoding:.utf8)
                             return false
                         }
                     } catch {
@@ -60,8 +59,8 @@ final class ConcurrentWriteTest:XCTestCase {
                     }
                 }
         let runCommand = Command(bash:"\(writeTestExe.path)")
-        var iterations = 250
-        var successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
+        let iterations = 250
+        let successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
                 
             for _ in 0..<iterations {
                 tg.addTask {

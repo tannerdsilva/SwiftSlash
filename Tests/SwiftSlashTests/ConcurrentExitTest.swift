@@ -45,7 +45,7 @@ final class ConcurrentExitTest:XCTestCase {
         
         let runCommand = Command(bash:"\(exitTestURL.path)")
         let iterations = 100
-        var successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
+        let successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
             for _ in 0..<iterations {
                 tg.addTask {
                     return await singleExitProcessTest(runCommand)
