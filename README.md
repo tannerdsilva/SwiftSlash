@@ -2,6 +2,8 @@
 
 ### Concurrent Shell Framework Built Entirely With Async/Await
 
+Now fully documented with `swift-docc`! View the documentation on [the project's website](https://swiftslash.com/documentation/).
+
 ## Platform Support
 
  - Linux
@@ -38,7 +40,7 @@ With a fundamentally different engine serving as the heart of *SwiftSlash*, the 
 
 - `SwiftSlash` is aware of the limited resources your process has been allocated by the system (primarily, file descriptors). It will not launch a command that your application does not have the resources to support. In such a case (under heavy concurrent use of SwiftSlash), processes requiring more resources than are available will be queued and launched when resources are freed.
 
-Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API. All of SwiftSlash's functionality can be utilized with a single structure (`Command`) and a single actor (`ProcessInterface`). For added convenience, a third structure exists in the public API to fully encapsulate the result of an exited command: `CommandResult`.
+Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API. 
 
 ## Getting Started
 

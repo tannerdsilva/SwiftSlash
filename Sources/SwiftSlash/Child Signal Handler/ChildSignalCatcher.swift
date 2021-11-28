@@ -4,7 +4,20 @@ import Glibc
 import Darwin
 #endif
 
+/// ChildSignalCatcher is used to capture exit code and status information from child processes. For nerds only.
+///
+/// **You are advised to NOT interact with the global ChildSignalCatcher unless you know it is necessary - 99% of developers wont need this.**
+///
+/// SwiftSlash asks other code in your application to abide by the following rules:
+///   - Do NOT register a SIGCHLD  handler with the system (as this would override the handler that SwiftSlash registers with the system)
+///   - Do NOT call `waitpid` against any children of your process (as this would interfere with SwiftSlash's ability to reap and terminate processes)
+///
+/// In return for following these rules, SwiftSlash offers the global `ChildSignalCatcher` instance which features:
+///   - Shared access to the same mechanism that SwiftSlash uses for its own process-reaping function.
+///   - Unfiltered access to the raw exit status values of every child PID of your process (whether they be SwiftSlash processes or other children)
+///
 public actor ChildSignalCatcher {
+    /// The global instance for your application
 	public static let global = ChildSignalCatcher()
 	fileprivate typealias MainSignalHandler = @convention(c)(Int32) -> Void
 	fileprivate static let mainHandler:MainSignalHandler = { _ in
@@ -23,8 +36,10 @@ public actor ChildSignalCatcher {
 			}
 		} while true
 	}
-	
+    
+    /// An async code block that handles `SIGCHLD` events with associated values passed as arguments
 	public typealias SignalHandler = (pid_t, Int32) async -> Void
+    /// A unique identifier for hander blocks registered with the `ChildSignalCatcher`
 	public typealias SignalHandle = UInt64
 	
 	fileprivate struct KeyedHandler:Hashable{
@@ -40,7 +55,10 @@ public actor ChildSignalCatcher {
 		}
 	}
 	fileprivate var handlerStack = Set<KeyedHandler>()
-	
+    
+    /// Add a handler to the event stack
+    /// - Parameter handler: the Handler block to execute when your application is sent a SIGCHLD signal
+    /// - Returns: `SignalHandle` representing the unique ID for the registration. This value is used to deregister event handlers in the future.
 	@discardableResult public func add(_ handler:@escaping(SignalHandler)) -> SignalHandle {
 		let newID = SignalHandle.random(in:SignalHandle.min...SignalHandle.max)
 		let newHandler = KeyedHandler(handle:newID, handler:handler)
@@ -60,7 +78,9 @@ public actor ChildSignalCatcher {
 		handlerStack.update(with:newHandler)
 		return newHandler.handle
 	}
-	
+    
+    /// Deregister a code block from the event stack
+    /// - Parameter handle: The unique ID representing the code block that is to be removed from the event handlers stack
 	public func remove(handle:SignalHandle) {
 		self.handlerStack = self.handlerStack.filter({ $0.handle != handle })
 		if (self.handlerStack.count == 0) {
