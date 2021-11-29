@@ -4,7 +4,7 @@ import Glibc
 import Darwin
 #endif
 
-/// ChildSignalCatcher is used to capture exit code and status information from child processes. For nerds only.
+/// Not relevant for most applications. ChildSignalCatcher is used to capture exit code and status information from child processes.
 ///
 /// **You are advised to NOT interact with the global ChildSignalCatcher unless you know it is necessary - 99% of developers wont need this.**
 ///

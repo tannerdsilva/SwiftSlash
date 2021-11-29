@@ -7,7 +7,7 @@ public struct DataChannel {
     /// Inbound DataChannels are for configuring channels that the running process will write to.
     /// - Inbound DataChannels are most commonly used to capture `STDOUT` and `STDERR` of the running process.
     public struct Inbound:Hashable {
-        /// Used on active inbound channels to define how data is buffered into the AsyncStream
+        /// Used on active inbound channels to define how data is buffered and grouped into the AsyncStream
 		public enum ParseMode {
             /// Separate  AsyncStream data chunks by the CR byte (0xD)
 			case cr
@@ -20,7 +20,7 @@ public struct DataChannel {
         }
         /// Defines the configuration for an Inbound data channel
 		public enum Configuration {
-            /// Actively capture the output from this data channel with the specified `ParseMode`. Data from this channel can be consumed through its AsyncStream.
+            /// Actively capture the output from this data channel with the specified ``DataChannel/Inbound/ParseMode``. Data from this channel can be consumed through its `AsyncStream`.
 			case active(ParseMode)
             /// Close the file handle of the running process at launch time
 			case closed
@@ -28,11 +28,15 @@ public struct DataChannel {
 			case nullPipe
 		}
 		
+        /// The file handle that this data channel will be assigned on the running process
 		public var targetHandle:Int32
 		
+        /// The stream of data that the running process is writing to this data stream (only useful on active configurations)
 		public var stream:AsyncStream<Data>
+        
+        /// The configuration for this data channel
 		public var config:Configuration
-		public var parseMode:ParseMode? {
+		internal var parseMode:ParseMode? {
 			get {
 				switch self.config {
 					case let .active(mode):
@@ -42,7 +46,7 @@ public struct DataChannel {
 				}
 			}
 		}
-		public var continuation:AsyncStream<Data>.Continuation
+		internal var continuation:AsyncStream<Data>.Continuation
 		
 		public init(target:Int32, config:Configuration = .active(.lf)) {
 			var continuation:AsyncStream<Data>.Continuation? = nil
@@ -80,11 +84,15 @@ public struct DataChannel {
             /// Map this file handle to `/dev/null`
 			case nullPipe
 		}
-		
+        /// The file handle that this data channel will be assigned on the running process
 		public var targetHandle:Int32
 		
-		public var stream:AsyncStream<Data>
+		internal var stream:AsyncStream<Data>
+        
+        /// The configuration for this data channel
 		public var config:Configuration
+        
+        /// Submits data to enter the input stream of the running process
 		public var continuation:AsyncStream<Data>.Continuation
 		
 		public init(target:Int32, config:Configuration = .active) {

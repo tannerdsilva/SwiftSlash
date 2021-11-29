@@ -2,31 +2,37 @@
 
 High performance concurrent shell framework built from the ground-up with async/await.
 
-Current Version: `3.2.0`
+## About SwiftSlash
+
+Current version: `3.3.0`
 
 #### Platform Support
   - Linux
     - Fully supported in all versions
+    - Unit tests pending `async/await` support from Apple/Swift
 
   - MacOS
-    - Fully supported with release of tag `3.1.0`
+    - Fully supported with version `3.1.0`
+    - Unit tests passing
 
-## Getting Started
+  - Swift
+    - SwiftSlash requires a Swift toolchain version >= `5.5`
 
-``Command`` implements a convenience function `runSync()` which serves as a simple way to execute processes with no setup or I/O handling.
+## Topics
 
-```
-import SwiftSlash
+### Articles
 
-// EXAMPLE: check the systems ZFS version and print the first line of the output
+- <doc:GettingStarted>
 
-let commandResult:CommandResult = try await Command(bash:"zfs --version").runSync()
+### Core API
 
-//check the exit code
-if commandResult.exitCode == 0 {
+- ``Command``
+- ``ProcessInterface``
 
-    //print the first line of output
-    print("Found ZFS version: \( String(data:commandResult.stdout[0], encoding:.utf8) )")
-}
+### Complex I/O
 
-```
+- ``DataChannel``
+
+### Rarely Relevant
+
+- ``ChildSignalCatcher``
