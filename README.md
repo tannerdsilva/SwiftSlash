@@ -2,6 +2,8 @@
 
 ### Concurrent Shell Framework Built Entirely With Async/Await
 
+## [Documentation](https://swiftslash.com/documentation/)
+
 Now fully documented with `swift-docc`! View the documentation on [the project's website](https://swiftslash.com/documentation/).
 
 ## Platform Support
