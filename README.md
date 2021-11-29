@@ -1,21 +1,11 @@
 # 🔥 /SwiftSlash/ 🔥 
 
-### Concurrent Shell Framework Built Entirely With Async/Await
+Concurrent Shell Framework Built Entirely With Async/Await
 
 ## [Documentation](https://swiftslash.com/documentation/)
 
-Now fully documented with `swift-docc`! View the documentation on [the project's website](https://swiftslash.com/documentation/).
+Now fully documented with `swift-docc`!
 
-## Platform Support
-
- - Linux
- 	- Fully supported since tag `1.0.0`
- 	- Tests broken as of tag `3.0.0` - this is because Apple shipped Swift 5.5 without native support for async functions in `XCTestCase` on the Linux platform.
- 	
- - MacOS
- 	- Fully supported with release tag `3.1.0` or later
-    - Tests passing   
-     
 ## Why SwiftSlash?
 
 **Efficiency, concurrency, simplicity.**
