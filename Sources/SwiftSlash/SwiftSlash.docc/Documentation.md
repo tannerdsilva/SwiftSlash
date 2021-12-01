@@ -4,7 +4,7 @@ High performance concurrent shell framework built from the ground-up with async/
 
 ## About SwiftSlash
 
-Current version: `3.3.0`
+Current version: `3.3.1`
 
 #### Platform Support
   - Linux
