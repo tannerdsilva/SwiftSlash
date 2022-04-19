@@ -54,7 +54,7 @@ internal struct EventTrigger {
 			switch pollResult {
 				case -1:
 					if (errno != EINTR) {
-						fatalError("EPOLL ERROR")
+						fatalError("EPOLL ERROR \(errno)")
 					}
 					break;
 				default:
