@@ -1,4 +1,5 @@
 import Foundation
+import ClibSwiftSlash
 
 internal struct CurrentProcessState {
     internal static func clearEnvironmentVariables() -> Int32 {
@@ -11,7 +12,7 @@ internal struct CurrentProcessState {
         }
         return 0
     }
-
+	
 	internal static func getCurrentEnvironmentVariables() -> [String:String] {
 		var i = 0
 		var buildEnv = [String:String]()

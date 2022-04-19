@@ -25,7 +25,7 @@ public struct Command:Hashable, Equatable {
 	public var executable:String
 	public var arguments:[String]
 	public var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
-    public var workingDirectory:URL = CurrentProcessState.getCurrentWorkingDirectory()
+    public var workingDirectory:URL?
     
     /// Initialize from a string-encoded command, with spaces separating the arguments.
     /// - Parameter command: A string representing an executable (and optionally, the arguments following the executable) that you would like to run. Arguments separated by space

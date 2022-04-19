@@ -81,7 +81,8 @@ extension Dictionary where Key == String, Value == String {
 
 internal actor ProcessSpawner {
 	enum Error:Swift.Error {
-		case badAccess
+		case workingDirectory_badAccess
+		case executable_badAccess
 		case internalError
 		case systemForkErrorno(Int32)
 		case pipeError
@@ -370,7 +371,7 @@ internal actor ProcessSpawner {
 		}
 	}
 	fileprivate var pendingLaunchPackages = [PackagedLaunch]()
-	func launch(path:String, args:[String], wd:URL, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>, onBehalfOf interface:ProcessInterface) async throws -> pid_t {
+	func launch(path:String, args:[String], wd:URL?, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>, onBehalfOf interface:ProcessInterface) async throws -> pid_t {
 		var utilized = Double()
 		var limit = Double()
 		guard getfdlimit(&utilized, &limit) == 0 else {
@@ -381,13 +382,13 @@ internal actor ProcessSpawner {
 		do {
 			if utilized > threshold {
 				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
-					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd, env:env, writables:writables, readables:readables, exitContinuation:exitCont))
+					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
 				}
 				try await taskGroup.waitForAll()
 				return result
 			} else {
 				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
-					self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd, env:env, writables:writables, readables:readables, exitContinuation:exitCont))
+					self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
 				}
 				try await taskGroup.waitForAll()
 				return result
@@ -406,9 +407,13 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		throw FileHandleError.pipeOpenError
 	}
 	
-	guard tt_directory_check(ptr:wd) == true && tt_execute_check(ptr:path) == true else {
-		throw ProcessSpawner.Error.badAccess
+	guard tt_directory_check(ptr:wd) == true else {
+		throw ProcessSpawner.Error.workingDirectory_badAccess
 	}
+    
+    guard tt_execute_check(ptr: path) == true else {
+        throw ProcessSpawner.Error.executable_badAccess
+    }
 	
 	let forkResult = cfork()	//spawn the container process
 	
