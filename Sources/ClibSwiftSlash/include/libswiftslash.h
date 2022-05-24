@@ -6,3 +6,4 @@
 pid_t cfork(void);
 
 int getfdlimit(double *utilized, double *limit);
+int getfdlimit_SLOW(double *utilized, double *limit);

@@ -27,26 +27,12 @@ public struct Command:Hashable, Equatable {
 	public var environment:[String:String] = CurrentProcessState.getCurrentEnvironmentVariables()
     public var workingDirectory:URL?
     
-    /// Initialize from a string-encoded command, with spaces separating the arguments.
-    /// - Parameter command: A string representing an executable (and optionally, the arguments following the executable) that you would like to run. Arguments separated by space
-	public init(_ command:String) {
-		guard command.count > 0 else {
-			fatalError("cannot cannot initialize with a string of zero length")
-		}
-		var elements = command.split(separator:" ").compactMap { String($0) }
-		guard elements.count >= 1 else {
-			fatalError("could not parse executable")
-		}
-		self.executable = elements.removeFirst()
-		self.arguments = elements
-	}
-    
     /// Initialize with an executable path and arguments
     /// - Parameters:
     ///   - execute: The path to the executable which shall be run
     ///   - arguments: An array of arguments to pass into the executable
-	public init(execute:String, arguments:[String] = [String]()) {
-		self.executable = execute
+	public init(path executable:String, arguments:[String] = [String]()) {
+		self.executable = executable
 		self.arguments = arguments	
 	}
     
@@ -54,6 +40,13 @@ public struct Command:Hashable, Equatable {
     /// - Parameter command: Command string that bash will run
 	public init(bash command:String) {
 		self.executable = "/bin/bash"
+		self.arguments = ["-c", command]
+	}
+	
+	/// Initialize with a command to pass into the Dash shell
+	/// - Parameter command: Command string that dash will run
+	public init(sh command:String) {
+		self.executable = "/bin/sh"
 		self.arguments = ["-c", command]
 	}
     

@@ -87,6 +87,7 @@ internal actor ProcessSpawner {
 		case systemForkErrorno(Int32)
 		case pipeError
 		case resourceUncertainty
+		case pathNotExecutable(String)
 	}
 		
 	internal static let global = ProcessSpawner()
@@ -371,7 +372,7 @@ internal actor ProcessSpawner {
 		}
 	}
 	fileprivate var pendingLaunchPackages = [PackagedLaunch]()
-	func launch(path:String, args:[String], wd:URL?, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>, onBehalfOf interface:ProcessInterface) async throws -> pid_t {
+	func launch(path:String, args:[String], wd:URL?, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], onBehalfOf interface:ProcessInterface) async throws -> pid_t {
 		var utilized = Double()
 		var limit = Double()
 		guard getfdlimit(&utilized, &limit) == 0 else {
@@ -384,17 +385,14 @@ internal actor ProcessSpawner {
 				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
 					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
 				}
-				try await taskGroup.waitForAll()
 				return result
 			} else {
 				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
 					self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
 				}
-				try await taskGroup.waitForAll()
 				return result
 			}
 		} catch let error {
-			taskGroup.cancelAll()
 			throw error
 		}
 	}
@@ -412,7 +410,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 	}
     
     guard tt_execute_check(ptr: path) == true else {
-        throw ProcessSpawner.Error.executable_badAccess
+        throw ProcessSpawner.Error.pathNotExecutable(String(cString:path))
     }
 	
 	let forkResult = cfork()	//spawn the container process

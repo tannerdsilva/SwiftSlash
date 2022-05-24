@@ -161,7 +161,7 @@ public actor ProcessInterface {
 		self._state = .launching
 		do {
 			let exitPid = try await withThrowingTaskGroup(of:Void.self, returning:pid_t.self, body: { tg in
-				try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, taskGroup:&tg, onBehalfOf:self)
+				try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, onBehalfOf:self)
 			})
 			self._state = .running(exitPid)
 		} catch let error {

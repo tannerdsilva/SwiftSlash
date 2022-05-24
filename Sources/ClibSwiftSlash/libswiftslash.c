@@ -3,6 +3,7 @@
 #include <sys/resource.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <poll.h>
 
 pid_t cfork(void) {
 	return fork();
@@ -60,6 +61,35 @@ uint8_t __internal_environ_i_parse(char *buffer, char **name, size_t *name_len, 
 
 void parse_environ(void (*handler)(char*, size_t, char*, size_t)) {
 //	environ
+}
+
+int getfdlimit_SLOW(double *utilized, double *limit) {
+	struct rlimit rlim;
+	int getlimresult = getrlimit(RLIMIT_NOFILE, &rlim);
+	struct dirent *pDirent;
+	*limit = rlim.rlim_cur;
+	struct pollfd myPoll[rlim.rlim_cur];
+	uint64_t i = 0;
+	while (i < rlim.rlim_cur) {
+		myPoll[i].fd = i;
+		myPoll[i].events = POLLOUT | POLLIN;
+		myPoll[i].revents = 0;
+		i += 1;
+	}
+	int result = poll(myPoll, rlim.rlim_cur, 0);
+	if (result < 0) {
+		return 6;
+	}
+	i = 0;
+	double used = rlim.rlim_cur;
+	while (i < rlim.rlim_cur) {
+		if ((myPoll[i].revents & POLLNVAL) != 0) {
+			used = used - 1;
+		}
+		i += 1;
+	}
+	*utilized = used;
+	return 0;
 }
 
 int getfdlimit(double *utilized, double *limit) {
