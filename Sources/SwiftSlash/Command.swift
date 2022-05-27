@@ -29,27 +29,27 @@ public struct Command:Hashable, Equatable {
     
     /// Initialize with an executable path and arguments
     /// - Parameters:
-    ///   - execute: The path to the executable which shall be run
+    ///   - path: The path to the executable which shall be run
     ///   - arguments: An array of arguments to pass into the executable
 	public init(path executable:String, arguments:[String] = [String]()) {
 		self.executable = executable
 		self.arguments = arguments	
 	}
     
-    /// Initialize with a command to pass into the Bash shell
+    /// Initialize with a command to pass into the Bash shell (`/bin/bash` on common systems)
     /// - Parameter command: Command string that bash will run
 	public init(bash command:String) {
 		self.executable = "/bin/bash"
 		self.arguments = ["-c", command]
 	}
 	
-	/// Initialize with a command to pass into the Dash shell
+	/// Initialize with a command to pass into the Dash shell (`/bin/sh` on common systems)
 	/// - Parameter command: Command string that dash will run
 	public init(sh command:String) {
 		self.executable = "/bin/sh"
 		self.arguments = ["-c", command]
 	}
-    
+	
     /// Run a command synchronously
     /// - Returns: Results of the command are captured in a ``Result`` and returned after the command has finished executing
     public func runSync() async throws -> Command.Result {
