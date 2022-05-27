@@ -26,25 +26,6 @@ extension String {
 
 
 final class ConcurrentWriteTest:XCTestCase {
-	func testClibFDResources() {
-		var trash:Double = 0;
-		var legacyUsed:Double = 0;
-		var newUsed:Double = 0;
-		let startLegacy = Date()
-		guard getfdlimit_SLOW(&legacyUsed, &trash) == 0 else {
-			XCTFail()
-			return
-		}
-		print("\(startLegacy.timeIntervalSinceNow)")
-		let startnew = Date()
-		guard getfdlimit(&newUsed, &trash) == 0 else {
-			XCTFail()
-			return
-		}
-		print("\(startnew.timeIntervalSinceNow)")
-		XCTAssert(legacyUsed == newUsed)
-	}
-	
     func testConcurrentWrites() async {
         //setup
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("xctest_swiftslash", isDirectory:true)
