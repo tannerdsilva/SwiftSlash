@@ -28,19 +28,9 @@ internal struct PosixPipe:Hashable {
 	var reading:Int32
 	var writing:Int32
 	
-	var isInvalid:Bool { 
-		get {
-			if (reading == -1 && writing == -1) {
-				return true
-			} else {
-				return false
-			}
-		}
-	}
-	
 	init(nonblockingReads:Bool = false, nonblockingWrites:Bool = false) throws {
-		var readingValue:Int32 = -1
-		var writingValue:Int32 = -1
+		let readingValue:Int32
+		let writingValue:Int32
 		
 		let fds = UnsafeMutablePointer<Int32>.allocate(capacity:2)
 		defer {
@@ -52,16 +42,19 @@ internal struct PosixPipe:Hashable {
 				readingValue = fds.pointee
 				writingValue = fds.successor().pointee
 			default:
-				print("PIPE ERROR \(errno) \(EMFILE)")
-				break;
+				throw FileHandleError.pipeOpenError
 		}
 		if (nonblockingReads == true) {
 			guard fcntl(readingValue, F_SETFD, O_NONBLOCK) == 0 else {
+				writingValue.closeFileHandle()
+				readingValue.closeFileHandle()
 				throw FileHandleError.fcntlError
 			}
 		}
 		if (nonblockingWrites == true) {
 			guard fcntl(writingValue, F_SETFD, O_NONBLOCK) == 0 else {
+				writingValue.closeFileHandle()
+				readingValue.closeFileHandle()
 				throw FileHandleError.fcntlError
 			}
 		}
@@ -84,7 +77,6 @@ internal struct PosixPipe:Hashable {
 		}
 		return PosixPipe(reading:read, writing:write)
 	}
-	
 	
 	func hash(into hasher:inout Hasher) {
 		hasher.combine(reading)
