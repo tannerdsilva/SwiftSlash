@@ -80,6 +80,13 @@ extension Dictionary where Key == String, Value == String {
 }
 
 internal actor ProcessSpawner {
+	static func launchNew() -> ProcessSpawner {
+		let newSpawner = ProcessSpawner()
+		Task.detached {
+			await newSpawner._mainLoop()
+		}
+		return newSpawner
+	}
 	enum Error:Swift.Error {
 		case workingDirectory_badAccess
 		case executable_badAccess
@@ -90,7 +97,7 @@ internal actor ProcessSpawner {
 		case pathNotExecutable(String)
 	}
 		
-	internal static let global = ProcessSpawner()
+	internal static let global = ProcessSpawner.launchNew()
 	
 	fileprivate let eventTrigger:EventTrigger
 	
@@ -135,16 +142,13 @@ internal actor ProcessSpawner {
 			}
 		}
 		self.eventTrigger = EventTrigger.launchNew()
-		Task.detached {
-			await ProcessSpawner.global._mainLoop()
-		}
 	}
 	fileprivate func _mainLoop() async {
 		for await eventDesc in eventTrigger.eventStream {
-			self.handleEvent(fh:eventDesc.fh, event:eventDesc.event)
+			await self.handleEvent(fh:eventDesc.fh, event:eventDesc.event)
 		}
 	}
-	fileprivate func handleEvent(fh:Int32, event:EventMode) {
+	fileprivate func handleEvent(fh:Int32, event:EventMode) async {
 		switch event {
 			case let .readableEvent(bytes):
 				do {
@@ -170,28 +174,19 @@ internal actor ProcessSpawner {
 				readTrigger?.yield(lastData)
 				readTrigger?.finish()
 				fh.closeFileHandle()
-				continueWithAvailableResources()
+//				await continueWithAvailableResources()
 			case .writingClosed:
 				writerTrigger.removeValue(forKey:fh)?.finish()
 				writerContinuation.removeValue(forKey:fh)?.finish()
 				fh.closeFileHandle()
-				continueWithAvailableResources()
+//				await continueWithAvailableResources()
 			case .writableEvent:
 				writerTrigger[fh]?.yield(fh)
 			break;
 		}
 		
 	}
-	
-	fileprivate func continueWithAvailableResources() {
-		var utilized = Double()
-		var limit = Double()
-		while getfdlimit(&utilized, &limit) == 0 && (pendingLaunchPackages.count) > 0 && (utilized < floor(0.8 * limit)) {
-			let nextItem = self.pendingLaunchPackages.remove(at:0)
-			self.launch(package:nextItem)
-		}
-	}
-	
+
 	fileprivate struct PackagedLaunch {
 		let interface:ProcessInterface
 		let path:String
@@ -200,10 +195,10 @@ internal actor ProcessSpawner {
 		let env:[String:String]
 		let writables:[Int32:DataChannel.Outbound]
 		let readables:[Int32:DataChannel.Inbound]
-		let exitContinuation:UnsafeContinuation<pid_t, Swift.Error>
+//		let exitContinuation:UnsafeContinuation<pid_t, Swift.Error>
 	}
 	
-	fileprivate func launch(package:PackagedLaunch) {
+	fileprivate func launch(package:PackagedLaunch) async throws -> pid_t {
 		var fhReadersToDeregisterIfThrown = Set<Int32>()
 		var fhWritersToDeregisterIfThrown = Set<Int32>()
 		var fhToCloseIfThrown = Set<Int32>()
@@ -219,15 +214,9 @@ internal actor ProcessSpawner {
 				switch curOut.value.config {
 					case .active:
 						let newPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-						guard newPipe.isInvalid == false else {
-							package.exitContinuation.resume(throwing:FileHandleError.pipeOpenError)
-							return
-						}
 						fhToCloseIfThrown.update(with:newPipe.writing)
 						fhToCloseIfThrown.update(with:newPipe.reading)
 						writePipes[curOut.key] = newPipe
-						try eventTrigger.register(writer:newPipe.writing)
-						fhWritersToDeregisterIfThrown.update(with:newPipe.writing)
 						enabledWriters.update(with:newPipe)
 						let newOut = OutboundChannelState(channel:curOut.value)
 						buildOut[curOut.key] = newOut
@@ -238,14 +227,10 @@ internal actor ProcessSpawner {
 						writePipes.updateValue(nil, forKey:curOut.key)
 					case .nullPipe:
 						let newPipe = try PosixPipe.createNullPipe()
-						guard newPipe.isInvalid == false else {
-							package.exitContinuation.resume(throwing:FileHandleError.pipeOpenError)
-							return
-						}
-						writePipes[curOut.key] = newPipe
-						nullPipes.update(with:newPipe)
 						fhToCloseIfThrown.update(with:newPipe.writing)
 						fhToCloseIfThrown.update(with:newPipe.reading)
+						writePipes[curOut.key] = newPipe
+						nullPipes.update(with:newPipe)
 				}
 			}
 			var enabledReaders = Set<PosixPipe>()
@@ -255,10 +240,6 @@ internal actor ProcessSpawner {
 				switch curIn.value.config {
 					case let .active(parseMode):
 						let newPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
-						guard newPipe.isInvalid == false else {
-							package.exitContinuation.resume(throwing:FileHandleError.pipeOpenError)
-							return
-						}
 						fhToCloseIfThrown.update(with:newPipe.writing)
 						fhToCloseIfThrown.update(with:newPipe.reading)
 						readPipes[curIn.key] = newPipe
@@ -267,23 +248,28 @@ internal actor ProcessSpawner {
 						buildIn[curIn.key] = newIn
 						_ = self.readerTrigger.updateValue(newIn.eventContinuation, forKey:newPipe.reading)
 						removeReadersFromSelfIfThrown.update(with:newPipe.reading)
-						try eventTrigger.register(reader:newPipe.reading)
-						fhReadersToDeregisterIfThrown.update(with:newPipe.reading)
 					case .closed:
 						readPipes.updateValue(nil, forKey:curIn.key)
 					case .nullPipe:
 						let newPipe = try PosixPipe.createNullPipe()
-						guard newPipe.isInvalid == false else {
-							package.exitContinuation.resume(throwing:FileHandleError.pipeOpenError)
-							return
-						}
 						readPipes[curIn.key] = newPipe
 						nullPipes.update(with:newPipe)
 						fhToCloseIfThrown.update(with:newPipe.writing)
 						fhToCloseIfThrown.update(with:newPipe.reading)
 				}
 			}
-
+			
+			var includeWriters = Set<Int32>()
+			for writer in enabledWriters {
+				includeWriters.update(with:writer.writing)
+			}
+			var includeReaders = Set<Int32>()
+			for reader in enabledReaders {
+				includeReaders.update(with:reader.reading)
+			}
+			try await eventTrigger.register(readers:includeReaders, writers:includeWriters)
+			fhReadersToDeregisterIfThrown = includeReaders
+			fhWritersToDeregisterIfThrown = includeWriters
 			let lpid = try package.path.withCString({ executablePathPointer -> pid_t in
 				var argBuild = [package.path]
 				argBuild.append(contentsOf:package.args)
@@ -293,7 +279,7 @@ internal actor ProcessSpawner {
 					})
 				})
 			})
-			
+
 			for writer in enabledWriters {
 				writer.reading.closeFileHandle()
 			}
@@ -350,16 +336,10 @@ internal actor ProcessSpawner {
 					}
 				})
 			}		
-			package.exitContinuation.resume(returning:lpid)
+			return lpid
 		} catch let error {
-			for curClose in fhToCloseIfThrown {
-				curClose.closeFileHandle()
-			}
-			for curDeregister in fhReadersToDeregisterIfThrown {
-				try? eventTrigger.deregister(reader:curDeregister)
-			}
-			for curDeregister in fhWritersToDeregisterIfThrown {
-				try? eventTrigger.deregister(writer:curDeregister)
+			if (fhReadersToDeregisterIfThrown.count + fhWritersToDeregisterIfThrown.count) > 0 {
+				try! await eventTrigger.deregister(readers:fhReadersToDeregisterIfThrown, writers: fhWritersToDeregisterIfThrown)
 			}
 			for curFH in removeReadersFromSelfIfThrown {
 				_ = readerTrigger.removeValue(forKey:curFH)
@@ -368,43 +348,41 @@ internal actor ProcessSpawner {
 				_ = writerTrigger.removeValue(forKey:curFH)
 				_ = writerContinuation.removeValue(forKey:curFH)
 			}
-			package.exitContinuation.resume(throwing:error)
+			for curClose in fhToCloseIfThrown {
+				curClose.closeFileHandle()
+			}
+			throw error
 		}
 	}
 	fileprivate var pendingLaunchPackages = [PackagedLaunch]()
 	func launch(path:String, args:[String], wd:URL?, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], onBehalfOf interface:ProcessInterface) async throws -> pid_t {
-		var utilized = Double()
-		var limit = Double()
-		guard getfdlimit(&utilized, &limit) == 0 else {
-			throw Error.resourceUncertainty
-		}
-		let threshold = floor(0.8 * limit)
-
-		do {
-			if utilized > threshold {
-				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
-					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
-				}
-				return result
-			} else {
-				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
-					self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
-				}
-				return result
-			}
-		} catch let error {
-			throw error
-		}
+//		var utilized = Double()
+//		var limit = Double()
+//		guard getfdlimit(&utilized, &limit) == 0 else {
+//			throw Error.resourceUncertainty
+//		}
+//		let threshold = floor(0.8 * limit)
+//
+//		do {
+//			if utilized > threshold {
+//				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
+//					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
+//				}
+//				return result
+//			} else {
+					return try await self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables))
+//				return result
+//			}
+//		} catch let error {
+//			throw error
+//		}
 	}
 }
 
 fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe?], readPipes:[Int32:PosixPipe?]) throws -> pid_t {
 	//used internally for this function to determine when the forked process has successfully initialized
 	let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
-	guard internalNotify.isInvalid == false else {
-		throw FileHandleError.pipeOpenError
-	}
-	
+
 	guard tt_directory_check(ptr:wd) == true else {
 		throw ProcessSpawner.Error.workingDirectory_badAccess
 	}
@@ -446,10 +424,6 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		//assign the writing pipes and reading pipes
 		for reader in readPipes {
 			if (reader.value != nil) {
-				guard reader.value!.isInvalid == false else {
-					_ = try? internalNotify.writing.writeFileHandle("1")
-					exit(50)
-				}
 				guard dup2(reader.value!.writing, reader.key) >= 0 else {
 					_ = try? internalNotify.writing.writeFileHandle("1")
 					exit(50)
@@ -460,10 +434,6 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		}
 		for writer in writePipes {
 			if (writer.value != nil) {
-				guard writer.value!.isInvalid == false else {
-					_ = try? internalNotify.writing.writeFileHandle("1")
-					exit(50)
-				}
 				guard dup2(writer.value!.reading, writer.key) >= 0 else {
 					_ = try? internalNotify.writing.writeFileHandle("1")
 					exit(50)
@@ -504,7 +474,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
         #elseif os(macOS)
         Darwin.execvp(path, args)
         #endif
-		exit(0)
+		exit(66)
 	}
 	
 	switch forkResult {
@@ -534,7 +504,6 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 					shouldLoop = false
 				}
 			} while shouldLoop == true
-			
 			internalNotify.reading.closeFileHandle()
 			
 			guard triggerData.count > 0 else {
