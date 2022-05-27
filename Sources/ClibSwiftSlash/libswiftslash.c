@@ -3,7 +3,7 @@
 #include <sys/resource.h>
 #include <dirent.h>
 #include <stdio.h>
-#include <poll.h>
+#include <string.h>
 
 pid_t cfork(void) {
 	return fork();
@@ -63,35 +63,6 @@ void parse_environ(void (*handler)(char*, size_t, char*, size_t)) {
 //	environ
 }
 
-int getfdlimit_SLOW(double *utilized, double *limit) {
-	struct rlimit rlim;
-	int getlimresult = getrlimit(RLIMIT_NOFILE, &rlim);
-	struct dirent *pDirent;
-	*limit = rlim.rlim_cur;
-	struct pollfd myPoll[rlim.rlim_cur];
-	uint64_t i = 0;
-	while (i < rlim.rlim_cur) {
-		myPoll[i].fd = i;
-		myPoll[i].events = POLLOUT | POLLIN;
-		myPoll[i].revents = 0;
-		i += 1;
-	}
-	int result = poll(myPoll, rlim.rlim_cur, 0);
-	if (result < 0) {
-		return 6;
-	}
-	i = 0;
-	double used = rlim.rlim_cur;
-	while (i < rlim.rlim_cur) {
-		if ((myPoll[i].revents & POLLNVAL) != 0) {
-			used = used - 1;
-		}
-		i += 1;
-	}
-	*utilized = used;
-	return 0;
-}
-
 int getfdlimit(double *utilized, double *limit) {
 	struct rlimit rlim;
 	int getlimresult = getrlimit(RLIMIT_NOFILE, &rlim);
@@ -115,13 +86,25 @@ int getfdlimit(double *utilized, double *limit) {
 			*limit = (double)rlim.rlim_cur;
 			double totalDesc = 0;
 			while ((pDirent = readdir(pDir)) != NULL) {
-				if (pDirent->d_reclen > 0) {
-					switch(pDirent->d_name[0]) {
-						case 46:
-							break;
-						default:
+				switch (pDirent->d_namlen) {
+					case 0:
+						break;
+					case 1:
+						if (strcmp(pDirent->d_name, ".") != 0) {
 							totalDesc = totalDesc + 1;
-					}
+						}
+						break;
+					case 2:
+						if (strcmp(pDirent->d_name, "..") != 0) {
+							totalDesc = totalDesc + 1;
+						}
+						break;
+					case 3:
+						totalDesc = totalDesc + 1;
+						break;
+					default:
+						totalDesc = totalDesc + 1;
+						break;
 				}
 			}
 			closedir(pDir);
