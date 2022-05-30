@@ -9,7 +9,7 @@ Get started using SwiftSlash with the convenient interfaces of ``Command`` and `
 In this case, we will define a ``Command`` that lists every running process on our system.
 
 ```
-let processStatusCommand = Command("ps aux") 
+let processStatusCommand = Command(sh:"ps aux") 
 ```
 
 ## Run a Command
