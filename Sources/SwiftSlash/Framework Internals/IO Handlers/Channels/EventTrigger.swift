@@ -15,43 +15,44 @@ internal struct EventDescription {
 
 #if os(Linux)
 internal actor EventTrigger {
-	static func launchNew() -> Self {
+	static func launchNew() -> EventTrigger {
 		let newET = Self()
 		Task.detached {
-			try! await newET.launchMainLoop()
+			await newET._mainLoop()
 		}
 		return newET
 	}
+
 	enum Error:Swift.Error {
 		case unableToRegister
 		case mainLoopAlreadyLaunched
 	}
-	
-	fileprivate var epoll:Int = epoll_create1(0);
+
+	fileprivate var epoll:Int32 = epoll_create1(0)
 	
 	internal let eventStream:AsyncStream<EventDescription>
 	fileprivate let eventContinuation:AsyncStream<EventDescription>.Continuation
 	
-	fileprivate var mainLoopTask:Task<Void, Never>? = nil
+	fileprivate var loopRunning:Bool = false
 	
 	fileprivate init() {
 		var eventCont:AsyncStream<EventDescription>.Continuation? = nil
 		self.eventStream = AsyncStream<EventDescription> { cont in
-			eventCont = cont!
+			eventCont = cont
 		}
 		self.eventContinuation = eventCont!
 	}
 	
-	internal func launchMainLoop() throws {
-		guard mainLoopTask == nil else {
-			throw Error.mainLoopAlreadyLaunched
-		}
-		self.mainLoopTask = Task.detached {
-			await self._mainLoop()
-		}
+	fileprivate func launchMainLoop() {
+		self.loopRunning = true
+	}
+	fileprivate func closeMainLoop() {
+		self.loopRunning = false
 	}
 	
-	fileprivate func _mainLoop() async {
+	nonisolated fileprivate func _mainLoop() async {
+		await self.launchMainLoop()
+	
 		// buffer for epoll event structures
 		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
 		
@@ -62,64 +63,74 @@ internal actor EventTrigger {
 			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
 			allocationSize = size
 		}
-		
+
 		while Task.isCancelled == false {
-			let pollResult = await withUnsafeContinuation { continuation in
-				continuation.resume(returning:epoll_wait(epoll, epollEventsAllocation, allocationSize, -1))
-			}
+			let pollResult = await withUnsafeContinuation({ [ep = await self.epoll] (eventCont:UnsafeContinuation<Int32, Never>) in
+				eventCont.resume(returning:epoll_wait(ep, epollEventsAllocation, allocationSize, -1))
+			})
 			switch pollResult {
-			case -1:
-				let errnum = errno
-				switch errnum {
-				case EINTR:
-					print("EPOLL ERROR EINTR")
-				case EBADF:
-					print("EPOLL ERROR EBADF")
-				case EFAULT:
-					print("EPOLL ERROR EFAULT")
-				case EINVAL:
-					print("EPOLL ERRNO EINVAL")
+				case -1:
+					let errnum = errno
+					switch errnum {
+					case EINTR:
+						print("EPOLL ERROR EINTR")
+					case EBADF:
+						print("EPOLL ERROR EBADF")
+					case EFAULT:
+						print("EPOLL ERROR EFAULT")
+					case EINVAL:
+						print("EPOLL ERRNO EINVAL")
+					default:
+						print("EPOLL ERRNO \(errnum)")
+					}
 				default:
-					print("EPOLL ERRNO \(errnum)")
-				}
-			default:
-				if pollResult > 0 {
-					var i = 0
-					while i < pollResult {
-						let currentEvent = epollEventsAllocation[i]
-						let pollin = currentEvent.events & UInt32(EPOLLIN.rawValue)
-						let pollhup = currentEvent.events & UInt32(EPOLLHUP.rawValue)
-						let pollout = currentEvent.events & UInt32(EPOLLOUT.rawValue)
-						let pollerr = currentEvent.events & UInt32(EPOLLERR.rawValue)
+					if pollResult > 0 {
+						var i = 0
+						var closeReaders = Set<Int32>()
+						var closeWriters = Set<Int32>()
+						while i < pollResult {
+							let currentEvent = epollEventsAllocation[i]
+							let pollin = currentEvent.events & UInt32(EPOLLIN.rawValue)
+							let pollhup = currentEvent.events & UInt32(EPOLLHUP.rawValue)
+							let pollout = currentEvent.events & UInt32(EPOLLOUT.rawValue)
+							let pollerr = currentEvent.events & UInt32(EPOLLERR.rawValue)
 						
-						if (pollhup != 0) {
-							//reading handle closed
-							try? self.deregister(reader:currentEvent.data.fd)
-							self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readingClosed)))
-						} else if (pollerr != 0) {
-							//writing handle closed
-							try? self.deregister(writer:currentEvent.data.fd)
-							self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writingClosed)))
-						} else if (pollin != 0) {
-							//read data available
-							var byteCount:Int = 0
-							guard ioctl(currentEvent.data.fd, UInt(FIONREAD), &byteCount) == 0 else {
-								fatalError("EventTrigger ioctl error")
+							if (pollhup != 0) {
+								//reading handle closed
+								closeReaders.update(with:currentEvent.data.fd)
+							} else if (pollerr != 0) {
+								//writing handle closed
+								closeWriters.update(with:currentEvent.data.fd)
+							} else if (pollin != 0) {
+								//read data available
+								var byteCount:Int = 0
+								guard ioctl(currentEvent.data.fd, UInt(FIONREAD), &byteCount) == 0 else {
+									fatalError("EventTrigger ioctl error")
+								}
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readableEvent(byteCount))))
+							} else if (pollout != 0) {
+								//writing available
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writableEvent)))
 							}
-							self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readableEvent(byteCount))))
-						} else if (pollout != 0) {
-							//writing available
-							self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writableEvent)))
+							i = i + 1
 						}
-						i = i + 1
+						if (i*2 > allocationSize) {
+							reallocate(size:allocationSize*2)
+						}
+						if (closeWriters.count + closeReaders.count > 0) {
+							try! await self.deregister(readers:closeReaders, writers:closeWriters)
+							for closeReader in closeReaders {
+								self.eventContinuation.yield(EventDescription(fh:closeReader, event:.readingClosed))
+							}
+							for closeWriter in closeWriters {
+								self.eventContinuation.yield(EventDescription(fh:closeWriter, event:.writingClosed))
+							}
+						}
 					}
-					if (i*2 > allocationSize) {
-						reallocate(size:allocationSize*2)
-					}
-				}
+					
 			}
 		}
-		await self.mainLoopTask = nil
+		await self.closeMainLoop()
 	}
 	
 	fileprivate func register(reader:Int32) throws {
@@ -180,7 +191,7 @@ internal actor EventTrigger {
 			throw error
 		}
 	}
-
+	
 	internal func deregister(readers:Set<Int32>, writers:Set<Int32>) throws {
 		for reader in readers {
 			try self.deregister(reader:reader)
@@ -190,7 +201,6 @@ internal actor EventTrigger {
 		}
 	}
 }
-
 /*internal struct EventTrigger {
 	internal static func launchNew() -> EventTrigger {
 		let newET = EventTrigger()
