@@ -86,7 +86,7 @@ int getfdlimit(double *utilized, double *limit) {
 			*limit = (double)rlim.rlim_cur;
 			double totalDesc = 0;
 			while ((pDirent = readdir(pDir)) != NULL) {
-				switch (pDirent->d_namlen) {
+				switch (strlen(pDirent->d_name)) {
 					case 0:
 						break;
 					case 1:
