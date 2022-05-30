@@ -325,7 +325,7 @@ internal actor EventTrigger {
 	static func launchNew() -> EventTrigger {
 		let newET = Self()
 		Task.detached {
-			try! await newET.launchMainLoop()
+			await newET._mainLoop()
 		}
 		return newET
 	}
@@ -340,7 +340,7 @@ internal actor EventTrigger {
 	internal let eventStream:AsyncStream<EventDescription>
 	fileprivate let eventContinuation:AsyncStream<EventDescription>.Continuation
 	
-	fileprivate var mainLoopTask:Task<Void, Never>? = nil
+	fileprivate var loopRunning:Bool = false
 	
 	fileprivate init() {
 		var eventCont:AsyncStream<EventDescription>.Continuation? = nil
@@ -350,16 +350,15 @@ internal actor EventTrigger {
 		self.eventContinuation = eventCont!
 	}
 	
-	internal func launchMainLoop() throws {
-		guard mainLoopTask == nil else {
-			throw Error.mainLoopAlreadyLaunched
-		}
-		self.mainLoopTask = Task.detached {
-			await self._mainLoop()
-		}
+	fileprivate func launchMainLoop() {
+		self.loopRunning = true
+	}
+	fileprivate func closeMainLoop() {
+		self.loopRunning = false
 	}
 	
 	nonisolated fileprivate func _mainLoop() async {
+		await self.launchMainLoop()
 		var kqueueEventsAllocation = UnsafeMutablePointer<kevent>.allocate(capacity:32)
 		var allocationSize:Int32 = 32
 		func reallocate(size:Int32) {
@@ -390,6 +389,8 @@ internal actor EventTrigger {
 				default:
 					if kqueueResult > 0 {
 						var i = 0
+						var closeReaders = Set<Int32>()
+						var closeWriters = Set<Int32>()
 						while (i < kqueueResult) {
 							let currentEvent = kqueueEventsAllocation[i]
 							let kqueueClosed = currentEvent.flags & UInt16(EV_EOF)
@@ -403,11 +404,9 @@ internal actor EventTrigger {
 								}
 							} else {
 								if currentEvent.filter == Int16(EVFILT_READ) {
-									try? await self.deregister(reader: curIdent)
-									self.eventContinuation.yield(EventDescription(fh:curIdent, event: .readingClosed))
+									closeReaders.update(with: curIdent)
 								} else if currentEvent.filter == Int16(EVFILT_WRITE) {
-									try? await self.deregister(writer: curIdent)
-									self.eventContinuation.yield(EventDescription(fh:curIdent, event: .writingClosed))
+									closeWriters.update(with: curIdent)
 								}
 							}
 							i = i + 1
@@ -415,9 +414,19 @@ internal actor EventTrigger {
 						if (i*2 > allocationSize) {
 							reallocate(size:allocationSize*2)
 						}
+						if (closeWriters.count + closeReaders.count > 0) {
+							try! await self.deregister(readers: closeReaders, writers: closeWriters)
+							for closeReader in closeReaders {
+								self.eventContinuation.yield(EventDescription(fh:closeReader, event:.readingClosed))
+							}
+							for closeWriter in closeWriters {
+								self.eventContinuation.yield(EventDescription(fh:closeWriter, event:.writingClosed))
+							}
+						}
 					}
 			}
 		}
+		await self.closeMainLoop()
 	}
 	
 	fileprivate func register(reader:Int32) throws {
