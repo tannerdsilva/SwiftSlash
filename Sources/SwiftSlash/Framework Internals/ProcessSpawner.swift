@@ -356,26 +356,7 @@ internal actor ProcessSpawner {
 	}
 	fileprivate var pendingLaunchPackages = [PackagedLaunch]()
 	func launch(path:String, args:[String], wd:URL?, env:[String:String], writables:[Int32:DataChannel.Outbound], readables:[Int32:DataChannel.Inbound], onBehalfOf interface:ProcessInterface) async throws -> pid_t {
-//		var utilized = Double()
-//		var limit = Double()
-//		guard getfdlimit(&utilized, &limit) == 0 else {
-//			throw Error.resourceUncertainty
-//		}
-//		let threshold = floor(0.8 * limit)
-//
-//		do {
-//			if utilized > threshold {
-//				let result:pid_t = try await withUnsafeThrowingContinuation { exitCont in
-//					self.pendingLaunchPackages.append(PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables, exitContinuation:exitCont))
-//				}
-//				return result
-//			} else {
-					return try await self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables))
-//				return result
-//			}
-//		} catch let error {
-//			throw error
-//		}
+		return try await self.launch(package:PackagedLaunch(interface:interface, path:path, args:args, wd:wd ?? URL(fileURLWithPath:String(cString:getpwuid(getuid())!.pointee.pw_dir)), env:env, writables:writables, readables:readables))
 	}
 }
 
@@ -448,6 +429,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 #elseif os(macOS)
 		let fdPath = "/dev/fd"
 #endif
+		
 		//close any extra file handles
 		guard let openFileHandlesPointer = opendir(fdPath) else {
 			_ = try? internalNotify.writing.writeFileHandle("1")
