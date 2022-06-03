@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <signal.h>
+#include <unistd.h>
 
 #ifdef __linux__
 #include <sys/epoll.h>
