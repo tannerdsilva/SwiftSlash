@@ -101,7 +101,6 @@ void* mainLoop(void *argc) {
 					}
 					i = i + 1;
 				}
-
 #endif
 				if ((i * 2) > et->allocCap) {
 					void* freePTR = et->allocations;
