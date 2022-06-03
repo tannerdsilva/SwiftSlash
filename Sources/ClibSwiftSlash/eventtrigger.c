@@ -167,6 +167,7 @@ int et_w_register(eventtrigger *et, int fh, writehandler wh) {
 #ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
+	regEvent.data.ptr = wh;
 	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
 	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, fh, &regEvent);
 	if (registerResult != 0) {
@@ -193,6 +194,7 @@ int et_r_register(eventtrigger *et, int fh, readhandler rh) {
 #ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
+	regEvent.data.ptr = rh;
 	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
 	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, fh, &regEvent);
 	if (registerResult != 0) {
