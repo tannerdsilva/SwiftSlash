@@ -35,7 +35,7 @@ final class SwiftSlashInternalTests:XCTestCase {
 					usrPtr!.assumingMemoryBound(to:[Data].self).pointee.append(intakeData)
 				}
 				lineDataMerged.withUnsafeBytes({ dataIn in
-					lp_intake(&myLP, dataIn.baseAddress, dataIn.count);
+					lp_intake(&myLP, dataIn.baseAddress!.bindMemory(to:UInt8.self, capacity:patternIn.count), dataIn.count);
 				})
 				lp_close(&myLP);
 			})
