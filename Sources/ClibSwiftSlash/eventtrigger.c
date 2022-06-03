@@ -123,7 +123,7 @@ eventtrigger* et_alloc() {
 
 int et_init(eventtrigger *et) {
 	et->allocCap = 32;
-#ifdef __APPLE_
+#ifdef __APPLE__
 	et->allocations = malloc(sizeof(struct kevent) * et->allocCap);
 	et->pollqueue = kqueue();
 #elif __linux__
