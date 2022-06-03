@@ -2,6 +2,8 @@
 #define CLIBSWIFTSLASH_ET_H
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <pthread.h>
 
 enum handleevent {
 	rclose,

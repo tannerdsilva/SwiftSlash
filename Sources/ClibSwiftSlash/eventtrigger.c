@@ -1,16 +1,16 @@
 #include "eventtrigger.h"
 #include <sys/types.h>
-#include <sys/event.h>
 #include <sys/time.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <unistd.h>
+#include <signal.h>
 
 #ifdef __linux__
 #include <sys/epoll.h>
+#elif __APPLE__
+#include <sys/event.h>
 #endif
 
 void* mainLoop(void *argc) {
@@ -18,7 +18,7 @@ void* mainLoop(void *argc) {
 	while (1) {
 		int i = 0;
 		pthread_testcancel();
-#if __linux__
+#ifdef __linux__
 		const int result = epoll_wait(et->pollqueue, et->allocations, et->allocCap, -1);
 #elif __APPLE__
 		const int result = kevent(et->pollqueue, NULL, 0, et->allocations, et->allocCap, NULL);
@@ -45,7 +45,7 @@ void* mainLoop(void *argc) {
 				break;
 			default:
 				
-#if __linux__
+#ifdef __linux__
 				while (i < result) {
 					if (et->allocations[i].events & EPOLLIN) {
 						//reading closed
@@ -105,7 +105,11 @@ void* mainLoop(void *argc) {
 				if ((i * 2) > et->allocCap) {
 					void* freePTR = et->allocations;
 					et->allocCap = et->allocCap * 2;
+#ifdef __linux__
+					et->allocations = malloc(sizeof(struct epoll_event) * et->allocCap);
+#elif __APPLE__
 					et->allocations = malloc(sizeof(struct kevent) * et->allocCap);
+#endif
 					free(freePTR);
 				}
 				break;
@@ -119,9 +123,13 @@ eventtrigger* et_alloc() {
 
 int et_init(eventtrigger *et) {
 	et->allocCap = 32;
+#ifdef __APPLE_
 	et->allocations = malloc(sizeof(struct kevent) * et->allocCap);
-	
 	et->pollqueue = kqueue();
+#elif __linux__
+	et->allocations = malloc(sizeof(struct epoll_event) * et->allocCap);
+	et->pollqueue = epoll_create1(0);
+#endif
 	if (et->pollqueue == -1) {
 		return errno;
 	}
@@ -156,7 +164,7 @@ int et_close(eventtrigger *et) {
 }
 
 int et_w_register(eventtrigger *et, int fh, writehandler wh) {
-#if __linux__
+#ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
 	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
@@ -165,7 +173,7 @@ int et_w_register(eventtrigger *et, int fh, writehandler wh) {
 		return errno;
 	}
 	return 0;
-#elfi __APPLE__
+#elif __APPLE__
 	struct kevent newEvent;
 	newEvent.ident = fh;
 	newEvent.flags = EV_ADD | EV_CLEAR | EV_EOF;
@@ -182,7 +190,7 @@ int et_w_register(eventtrigger *et, int fh, writehandler wh) {
 }
 
 int et_r_register(eventtrigger *et, int fh, readhandler rh) {
-#if __linux__
+#ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
 	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
@@ -191,7 +199,7 @@ int et_r_register(eventtrigger *et, int fh, readhandler rh) {
 		return errno;
 	}
 	return 0;
-#elfi __APPLE__
+#elif __APPLE__
 	struct kevent newEvent;
 	newEvent.ident = fh;
 	newEvent.flags = EV_ADD | EV_CLEAR | EV_EOF;
@@ -208,7 +216,7 @@ int et_r_register(eventtrigger *et, int fh, readhandler rh) {
 }
 
 int et_w_deregister(eventtrigger *et, int fh) {
-#if __linux__
+#ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
 	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
@@ -217,7 +225,7 @@ int et_w_deregister(eventtrigger *et, int fh) {
 		return errno;
 	}
 	return 0;
-#elfi __APPLE__
+#elif __APPLE__
 	struct kevent newEvent;
 	newEvent.ident = fh;
 	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
@@ -234,7 +242,7 @@ int et_w_deregister(eventtrigger *et, int fh) {
 }
 
 int et_r_deregister(eventtrigger *et, int fh) {
-#if __linux__
+#ifdef __linux__
 	struct epoll_event regEvent;
 	regEvent.data.fd = fh;
 	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
@@ -243,7 +251,7 @@ int et_r_deregister(eventtrigger *et, int fh) {
 		return errno;
 	}
 	return 0;
-#elfi __APPLE__
+#elif __APPLE__
 	struct kevent newEvent;
 	newEvent.ident = fh;
 	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;

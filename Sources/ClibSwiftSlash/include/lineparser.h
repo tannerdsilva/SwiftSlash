@@ -1,7 +1,8 @@
 #ifndef CLIBSWIFTSLASH_LP_H
 #define CLIBSWIFTSLASH_LP_H
 
-#include <unistd.h>
+#include <stdint.h>
+#include <stddef.h>
 
 /*enum lineparse_mode {
 	cr,
