@@ -7,12 +7,75 @@
 #include <errno.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <limits.h>
 
 #ifdef __linux__
 #include <sys/epoll.h>
 #elif __APPLE__
 #include <sys/event.h>
 #endif
+
+
+int et_w_deregister(eventtrigger *et, writerinfo_t *wi) {
+#ifdef __linux__
+	struct epoll_event regEvent;
+	regEvent.data.ptr = wi;
+	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
+	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, wi->fh, &regEvent);
+	if (registerResult != 0) {
+		return errno;
+	}
+	return 0;
+#elif __APPLE__
+	struct kevent newEvent;
+	newEvent.ident = ri->fh;
+	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
+	newEvent.filter = EVFILT_WRITE;
+	newEvent.fflags = 0;
+	newEvent.data = 0;
+	newEvent.udata = NULL;
+	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
+	if (registerResult != 0) {
+		return errno;
+	}
+	return 0;
+#endif
+}
+
+int et_r_deregister(eventtrigger *et, readerinfo_t *ri) {
+#ifdef __linux__
+	struct epoll_event regEvent;
+	regEvent.data.ptr = ri;
+	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
+	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, ri->fh, &regEvent);
+	if (registerResult != 0) {
+		return errno;
+	}
+	return 0;
+#elif __APPLE__
+	struct kevent newEvent;
+	newEvent.ident = ri->fh;
+	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
+	newEvent.filter = EVFILT_READ;
+	newEvent.fflags = 0;
+	newEvent.data = 0;
+	newEvent.udata = NULL;
+	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
+	if (registerResult != 0) {
+		return errno;
+	}
+	return 0;
+#endif
+}
+
+void et_validate_readsize(eventtrigger *et, size_t readsize) {
+	if (readsize > et->bufferCap) {
+		et->bufferCap = et->bufferCap * 2;
+		free(et->readBuffer);
+		et->readBuffer = malloc(et->bufferCap);
+	}
+}
 
 void* mainLoop(void *argc) {
 	eventtrigger* et = ((eventtrigger*)argc);
@@ -48,28 +111,92 @@ void* mainLoop(void *argc) {
 				
 #ifdef __linux__
 				while (i < result) {
-					if (et->allocations[i].events & EPOLLIN) {
+					if (et->allocations[i].events & EPOLLHUP) {
 						//reading closed
-						const size_t readableSize = 0;
-						const int deregisterResult = et_r_deregister(et, et->allocations[i].data.fd);
-						if (deregisterResult == EINTR) {
-							pthread_exit(NULL);
+						
+						//determine how many bytes can be read
+						size_t readableSize = 0;
+						if (ioctl(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, FIONREAD, &readableSize) != 0) {
+							printf("ioctl error %i", ((readerinfo_t*)(et->allocations[i].data.ptr))->fh);
 						}
-						((readhandler)(et->allocations[i].data.ptr))(et->allocations[i].data.fd, readableSize, true);
-					} else if (et->allocations[i].events & EPOLLHUP) {
-						//writing closed
-						const int deregisterResult = et_w_deregister(et, et->allocations[i].data.fd);
-						if (deregisterResult == EINTR) {
-							pthread_exit(NULL);
+						
+						//resize the read buffer if necessary, based on the number of readable bytes for this fh
+						et_validate_readsize(et, readableSize);
+						
+						//read the data
+						size_t readresult;
+						do {
+							readresult = read(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, et->readBuffer, readableSize);
+						} while (readresult == EAGAIN || readresult == EINTR);
+						
+						//deregister the fh from the pollqueue
+						const int deregisterResult = et_r_deregister(et, (readerinfo_t*)et->allocations[i].data.ptr);
+						if (deregisterResult != 0) {
+							printf("DEREG ERROR\n");
 						}
-						((writehandler)(et->allocations[i].data.ptr))(et->allocations[i].data.fd, true);
-					} else if (et->allocations[i].events & EPOLLOUT) {
-						//reading available
-						const size_t readableSize = 0;
-						((readhandler)(et->allocations[i].data.ptr))(et->allocations[i].data.fd, readableSize, false);
+						
+						//close the file handle
+						int closeResult;
+						do {
+							closeResult = close(((readerinfo_t*)et->allocations[i].data.ptr)->fh);
+						} while (closeResult == EINTR);
+						if (closeResult < 0) {
+							printf("CLOSE FAILED\n");
+						}
+						
+						//call the handler
+						if (readresult >= 0) {
+							(((readerinfo_t*)(et->allocations[i].data.ptr))->handler)(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, et->readBuffer, readresult, true);
+						} else {
+							printf("READ RESULT ERROR\n");
+						}
 					} else if (et->allocations[i].events & EPOLLERR) {
+						//writing closed
+						
+						//deregister the fh from the pollqueue
+						const int deregisterResult = et_w_deregister(et, ((writerinfo_t*)(et->allocations[i].data.ptr)));
+						if (deregisterResult != 0) {
+							printf("DEREG ERROR\n");
+						}
+						
+						//close the file handle
+						int closeResult;
+						do {
+							closeResult = close(((writerinfo_t*)et->allocations[i].data.ptr)->fh);
+						} while (closeResult == EINTR);
+						if (closeResult < 0) {
+							printf("CLOSE FAILED\n");
+						}
+						
+						//call the handler
+						(((writerinfo_t*)(et->allocations[i].data.ptr))->handler)(((writerinfo_t*)(et->allocations[i].data.ptr))->fh, true);
+					} else if (et->allocations[i].events & EPOLLIN) {
+						//reading available
+						
+						//determine how many bytes can be read
+						size_t readableSize = 0;
+						if (ioctl(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, FIONREAD, &readableSize) != 0) {
+							printf("ioctl error %i", ((readerinfo_t*)(et->allocations[i].data.ptr))->fh);
+						}
+						
+						//resize the read buffer if necessary, based on the number of readable bytes for this fh
+						et_validate_readsize(et, readableSize);
+						
+						//read the data
+						size_t readresult;
+						do {
+							readresult = read(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, et->readBuffer, readableSize);
+						} while (readresult == EAGAIN || readresult == EINTR);
+						
+						
+						if (readresult >= 0) {
+							(((readerinfo_t*)(et->allocations[i].data.ptr))->handler)(((readerinfo_t*)(et->allocations[i].data.ptr))->fh, et->readBuffer, readableSize, false);
+						} else {
+							printf("READ RESULT ERROR\n");
+						}
+					} else if (et->allocations[i].events & EPOLLOUT) {
 						//writing available
-						((writehandler)(et->allocations[i].data.ptr))(et->allocations[i].data.fd, false);
+						(((writerinfo_t*)(et->allocations[i].data.ptr))->handler)(((writerinfo_t*)(et->allocations[i].data.ptr))->fh, false);
 					}
 					i = i + 1;
 				}
@@ -131,15 +258,23 @@ int et_init(eventtrigger *et) {
 	et->pollqueue = epoll_create1(0);
 #endif
 	if (et->pollqueue == -1) {
+		free(et->allocations);
 		return errno;
 	}
+	
+	et->readBuffer = malloc(PIPE_BUF);
+	et->bufferCap = PIPE_BUF;
+	
 	pthread_t newthread;
 	int newThreadResult = pthread_create(&newthread, NULL, mainLoop, et);
 	if (newThreadResult != 0) {
 		close(et->pollqueue);
+		free(et->allocations);
+		free(et->readBuffer);
 		return newThreadResult;
 	}
 	et->mainLoop = newthread;
+	return 0;
 }
 
 int et_close(eventtrigger *et) {
@@ -159,17 +294,18 @@ int et_close(eventtrigger *et) {
 	if (closeResult != 0) {
 		return closeResult;
 	}
+	free(et->readBuffer);
 	free(et->allocations);
 	free(et);
+	return 0;
 }
 
-int et_w_register(eventtrigger *et, int fh, writehandler wh) {
+int et_w_register(const eventtrigger *et, const writerinfo_t *wi) {
 #ifdef __linux__
 	struct epoll_event regEvent;
-	regEvent.data.fd = fh;
-	regEvent.data.ptr = wh;
+	regEvent.data.ptr = (void*)wi;
 	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
-	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, fh, &regEvent);
+	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, wi->fh, &regEvent);
 	if (registerResult != 0) {
 		return errno;
 	}
@@ -190,13 +326,12 @@ int et_w_register(eventtrigger *et, int fh, writehandler wh) {
 #endif
 }
 
-int et_r_register(eventtrigger *et, int fh, readhandler rh) {
+int et_r_register(const eventtrigger *et, const readerinfo_t *ri) {
 #ifdef __linux__
 	struct epoll_event regEvent;
-	regEvent.data.fd = fh;
-	regEvent.data.ptr = rh;
+	regEvent.data.ptr = (void*)ri;
 	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
-	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, fh, &regEvent);
+	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_ADD, ri->fh, &regEvent);
 	if (registerResult != 0) {
 		return errno;
 	}
@@ -209,58 +344,6 @@ int et_r_register(eventtrigger *et, int fh, readhandler rh) {
 	newEvent.fflags = 0;
 	newEvent.data = 0;
 	newEvent.udata = rh;
-	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
-	if (registerResult != 0) {
-		return errno;
-	}
-	return 0;
-#endif
-}
-
-int et_w_deregister(eventtrigger *et, int fh) {
-#ifdef __linux__
-	struct epoll_event regEvent;
-	regEvent.data.fd = fh;
-	regEvent.events = EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLET;
-	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, fh, &regEvent);
-	if (registerResult != 0) {
-		return errno;
-	}
-	return 0;
-#elif __APPLE__
-	struct kevent newEvent;
-	newEvent.ident = fh;
-	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
-	newEvent.filter = EVFILT_WRITE;
-	newEvent.fflags = 0;
-	newEvent.data = 0;
-	newEvent.udata = NULL;
-	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
-	if (registerResult != 0) {
-		return errno;
-	}
-	return 0;
-#endif
-}
-
-int et_r_deregister(eventtrigger *et, int fh) {
-#ifdef __linux__
-	struct epoll_event regEvent;
-	regEvent.data.fd = fh;
-	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
-	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, fh, &regEvent);
-	if (registerResult != 0) {
-		return errno;
-	}
-	return 0;
-#elif __APPLE__
-	struct kevent newEvent;
-	newEvent.ident = fh;
-	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
-	newEvent.filter = EVFILT_READ;
-	newEvent.fflags = 0;
-	newEvent.data = 0;
-	newEvent.udata = NULL;
 	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
 	if (registerResult != 0) {
 		return errno;

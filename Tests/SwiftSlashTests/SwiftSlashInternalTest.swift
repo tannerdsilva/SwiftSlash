@@ -51,11 +51,21 @@ final class SwiftSlashInternalTests:XCTestCase {
 		var et = et_alloc()!;
 		et_init(et);
 		let newPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true);
-		et_r_register(et, newPipe.reading) { fh, readSize, isClosed in
-			print("attempting to read \(readSize) bytes")
+		print("registering \(newPipe.reading)");
+		
+		var readerinfo = readerinfo_t(fh:newPipe.reading, handler:{ rh, readbuff, readSize, isClosed in
+			let asData = Data(bytes:readbuff!, count:readSize)
+			let asString = String(data:asData, encoding:.utf8)
+			print("fool \(readSize) \(isClosed)\n\t ->\(asString)")
+		})
+		let regResult = et_r_register(et, &readerinfo)
+		print("register result: \(regResult)")
+		for i in 0..<10 {
+			let writeString = "hello this is a test\n"
+			write(newPipe.writing, writeString, writeString.count);
+			sleep(1);
 		}
-		let writeString = "hello this is a test\n"
-		write(newPipe.writing, writeString, writeString.count);
+		close(newPipe.writing);
 		sleep(5);
 		print("trying to close")
 		et_close(et);
