@@ -3,21 +3,19 @@
 #include <string.h>
 #include <stdio.h>
 
-void lineparser_resize_up(lineparser_t *parser, size_t newsize) {
+void lineparser_resize_up(lineparser_t *parser) {
+	parser->buffsize = parser->buffsize * 2;
+	
 	// make the new buffer with a doubled buffer size
-	uint8_t *newBuf = malloc(newsize);
+	uint8_t *newBuf = malloc(parser->buffsize);
 	
 	// copy the data to the new buffer
 	memcpy(newBuf, parser->intakebuff, parser->occupied);
 	
-	void* freebuff = parser->intakebuff;
+	free(parser->intakebuff);
 	
 	// assign the new values to the parser
-	parser->buffsize = newsize;
 	parser->intakebuff = newBuf;
-	
-	// free the old buffer from memory
-	free(freebuff);
 }
 
 // prepares the line parser to parse the next line. clears the previous line from the buffer
@@ -46,8 +44,8 @@ extern lineparser_t*_Nonnull lp_init(const uint8_t*_Nullable match, const uint8_
 // send data into the line parser
 void lp_intake(lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data, size_t data_len, const usr_ptr_t usrPtr, datahandler dh) {
 	// resize the parser to fit the data, if necessary
-	if ((parser->occupied + data_len) > parser->buffsize) {
-		lineparser_resize_up(parser, parser->occupied + data_len);
+	while ((parser->occupied + data_len) > parser->buffsize) {
+		lineparser_resize_up(parser);
 	}
 	
 	// install the data in the intake buffer
