@@ -6,12 +6,18 @@
 #include <pthread.h>
 #include "writerchain.h"
 #include "lineparser.h"
+#include "libswiftslash.h"
+#include "terminationgroup.h"
 
-typedef void*_Nullable usr_ptr_t;
 typedef void(*_Nonnull readpipeline)(const uint8_t*_Nonnull, const size_t, const bool, usr_ptr_t);
 typedef void(*_Nonnull writepipeline)(const bool, const usr_ptr_t);
 
-// event trigger
+/*
+ event trigger
+ ----------
+ memory relationship: heap allocated object
+ -	no deallocator - this object is designed to only have one instance that is initialized internally in the framework
+ */
 typedef struct eventtrigger {
 	// pipeline handlers
 	readpipeline rpipe;
@@ -37,9 +43,15 @@ typedef struct eventtrigger {
 } eventtrigger_t;
 typedef eventtrigger_t*_Nonnull eventtrigger_ptr_t;
 
-// writer info
+/*
+ writer info
+ ----------------
+ memory relationship: heap allocated object
+ -	external users of this structure need to call its corresponding `unhold` function when they no longer need the object in memory
+ */
 typedef struct writerinfo {
 	eventtrigger_ptr_t et;
+	terminationgroup_ptr_t tg;
 	int fh;
 	usr_ptr_t usrPtr;
 	_Atomic (chaintail) chain;
@@ -54,9 +66,13 @@ writerinfo_ptr_t wi_init();
 void wi_unhold(const writerinfo_ptr_t);
 void wi_write(const writerinfo_ptr_t, const uint8_t*_Nullable, const size_t);
 
-// reader info
+/* reader info
+ memory relationship: heap allocated object
+ -	external users of this structure need to call its corresponding `unhold` function when they no longer need the object in memory
+*/
 typedef struct readerinfo {
 	eventtrigger_ptr_t et;
+	terminationgroup_ptr_t tg;
 	int fh;
 	_Atomic usr_ptr_t usrPtr;
 	lineparser_t lp;

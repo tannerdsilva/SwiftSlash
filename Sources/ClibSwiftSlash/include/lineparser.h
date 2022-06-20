@@ -24,6 +24,10 @@ typedef struct lineparser {
 
 extern lineparser_t lp_init(const uint8_t*_Nullable match, const uint8_t matchlen);
 extern void lp_intake(lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data, size_t data_len, const usr_ptr_t usrPtr, datahandler dh);
+
+// remove the lineparser from memory, firing the data handler (if necessary) to handle the remaining data in the input buffer.
 extern void lp_close(lineparser_t*_Nonnull parser, usr_ptr_t usrPtr, datahandler dh);
+
+// remove the lineparser from memory without 
 extern void lp_close_dataloss(lineparser_t*_Nonnull parser);
 #endif

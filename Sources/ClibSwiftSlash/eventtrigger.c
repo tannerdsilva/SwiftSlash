@@ -18,8 +18,10 @@
 #endif
 
 // initialize writer info
-writerinfo_ptr_t wi_init() {
+writerinfo_ptr_t wi_init(terminationgroup_ptr_t tg) {
 	writerinfo_ptr_t pointer = malloc(sizeof(writerinfo_t));
+	pointer->tg = tg;
+	tg_increment(tg);
 	pointer->chain = NULL;
 	pointer->fh = -1;
 	pointer->isWritable = false;
@@ -27,6 +29,7 @@ writerinfo_ptr_t wi_init() {
 	pointer->isHeld = true;
 	return pointer;
 }
+
 void wi_unhold(writerinfo_ptr_t info) {
 	chaintail loadedChain = atomic_load_explicit(&info->chain, memory_order_acquire);
 	if (info->isHeld == true) {
@@ -42,6 +45,7 @@ void wi_unhold(writerinfo_ptr_t info) {
 }
 void wi_close(writerinfo_ptr_t info) {
 	chaintail loadedChain = atomic_load_explicit(&info->chain, memory_order_acquire);
+	tg_decrement(info->tg);
 	if (info->isWritable == true) {
 		info->isWritable = false;
 	}
@@ -82,19 +86,23 @@ void wi_write(writerinfo_ptr_t info, const uint8_t *buff, const size_t bufflen) 
 	atomic_store_explicit(&info->chain, loadedChain, memory_order_release);
 }
 
-readerinfo_ptr_t ri_init() {
+readerinfo_ptr_t ri_init(terminationgroup_ptr_t tg) {
 	readerinfo_ptr_t pointer = malloc(sizeof(readerinfo_t));
 	pointer->fh = -1;
 	pointer->isOpen = false;
 	pointer->isHeld = true;
+	tg_increment(tg);
+	pointer->tg = tg;
 	atomic_store(&pointer->usrPtr, NULL);
 	return pointer;
 }
+
 void ri_close(const readerinfo_ptr_t ri) {
 	usr_ptr_t loadedPtr = atomic_load_explicit(&ri->usrPtr, memory_order_acquire);
 	if (ri->isOpen == true) {
 		ri->isOpen = false;
 	}
+	tg_decrement(ri->tg);
 	if (ri->isHeld == false) {
 		atomic_store_explicit(&ri->usrPtr, loadedPtr, memory_order_release);
 		free(ri);

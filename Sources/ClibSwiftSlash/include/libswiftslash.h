@@ -8,7 +8,9 @@
 #include "lineparser.h"
 #include <unistd.h>
 
+typedef void*_Nullable usr_ptr_t;
+
 pid_t cfork(void);
-int getfdlimit(double *utilized, double *limit);
+int getfdlimit(double*_Nonnull utilized, double*_Nonnull limit);
 
 #endif
