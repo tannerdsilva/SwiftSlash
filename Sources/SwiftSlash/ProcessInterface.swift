@@ -1,4 +1,5 @@
 import Foundation
+import ClibSwiftSlash
 
 /// ProcessInterface is the key to managing the lifecycle of any command that needs to be executed.
 public actor ProcessInterface {
@@ -9,6 +10,7 @@ public actor ProcessInterface {
 	}
 	
 	internal var _state:State = .initialized
+	
 	/// The current state of this process' lifecycle
     public var state:State {
 		get {
@@ -161,7 +163,7 @@ public actor ProcessInterface {
 		self._state = .launching
 		do {
 			let exitPid = try await withThrowingTaskGroup(of:Void.self, returning:pid_t.self, body: { tg in
-				try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, onBehalfOf:self)
+				try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, onBehalfOf:self)
 			})
 			self._state = .running(exitPid)
 		} catch let error {
@@ -221,10 +223,10 @@ public actor ProcessInterface {
 	
     /// Convenience function to write data to the STDIN handle of the running process
 	public func write(stdin:Data) {
-		guard let outChannel = outboundChannels[STDIN_FILENO]?.continuation else {
+		guard let outChannel = outboundChannels[STDIN_FILENO] else {
 			fatalError("do not call the write() function when STDIN has not been configured in the outbound handlers")
 		}
-		outChannel.yield(stdin)
+		outChannel.write(stdin);
 	}
 	
     /// Sends a signal to the running process

@@ -74,12 +74,14 @@ final class SwiftSlashInternalTests:XCTestCase {
 		}
 		var eventtrigger = et_alloc()
 		et_init(eventtrigger, helloWorld, helloWriter)
-		et_r_register(eventtrigger, newPipe.reading, nil, 0, nil, ri);
-		
+		var tg = tg_init(nil, { _, _, _, _ in });
+		ri_assign_tg(ri, tg);
 		let writerInfo = wi_init();
+		et_r_register(eventtrigger, newPipe.reading, nil, 0, nil, ri);
 		defer {
 			wi_unhold(writerInfo);
 		}
+		wi_assign_tg(writerInfo, tg);
 		et_w_register(eventtrigger, newPipe.writing, nil, writerInfo);
 		await withTaskGroup(of:Void.self, body: { tg in
 			
@@ -87,15 +89,17 @@ final class SwiftSlashInternalTests:XCTestCase {
 				tg.addTask {
 					print("launching task...")
 					for i in 0..<2 {
-						let randomString = String.random(length:512) + "\n"
+						let randomString = String.random(length:512)
 						Data(randomString.utf8).withUnsafeBytes { byteBuff in
 							wi_write(writerInfo, byteBuff.baseAddress?.assumingMemoryBound(to: UInt8.self), byteBuff.count);
 						}
 					}
 				}
 			}
+			await tg.waitForAll();
 		})
-		wi_unhold(writerInfo);
+		
+		
 	}
 	
 	func testQueue() async throws {

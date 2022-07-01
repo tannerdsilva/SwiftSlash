@@ -67,6 +67,8 @@ typedef struct writerinfo {
 	eventtrigger_ptr_t et;
 	terminationgroup_ptr_t tg;
 	int fh;
+	char fhStr[32];
+	uint8_t fhStrLen;
 	usr_ptr_t usrPtr;
 	chaintail chain;
 	bool isWritable;
@@ -90,6 +92,8 @@ typedef struct readerinfo {
 	eventtrigger_ptr_t et;
 	terminationgroup_ptr_t tg;
 	int fh;
+	char fhStr[32];
+	uint8_t fhStrLen;
 	usr_ptr_t usrPtr;
 	lineparser_t lp;
 	bool isOpen;
@@ -110,8 +114,8 @@ int et_close(eventtrigger_ptr_t);
 int et_w_register(const eventtrigger_ptr_t, const int fh, const usr_ptr_t userPointer, const writerinfo_ptr_t);
 int et_r_register(const eventtrigger_ptr_t, const int fh, const uint8_t*_Nullable matchpat, const uint8_t matchpatlen, const usr_ptr_t userPointer, const readerinfo_ptr_t);
 
-int et_w_deregister(const eventtrigger_ptr_t et, const int fh);
-int et_r_deregister(const eventtrigger_ptr_t et, const int fh);
+int et_w_deregister(const eventtrigger_ptr_t et, const int fh, const bool shouldLock);
+int et_r_deregister(const eventtrigger_ptr_t et, const int fh, const bool shouldLock);
 
 void memcmpTest();
 #endif

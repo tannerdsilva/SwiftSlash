@@ -29,53 +29,63 @@ writerinfo_ptr_t wi_init() {
 	return pointer;
 }
 void wi_unhold(writerinfo_ptr_t info) {
+	// acquire the tlock
 	pthread_ptr_t expectedPtr = NULL;
 	const pthread_t tid = pthread_self();
 	while (atomic_compare_exchange_weak_explicit(&info->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
 		usleep(500);
 		expectedPtr = NULL;
 	}
+	// set held to false
 	if (info->isHeld == true) {
 		info->isHeld = false;
 	}
+	// if open is also false, then trelease the writerinfo struct from memory
 	if (info->isOpen == false) {
 		wc_close(&info->chain);
 		free(info);
 		return;
 	}
+	// release the tlock
 	atomic_store_explicit(&info->tlock, NULL, memory_order_release);
 }
 void wi_close(writerinfo_ptr_t info) {
+	// acquire the tlock
 	pthread_ptr_t expectedPtr = NULL;
 	const pthread_t tid = pthread_self();
 	while (atomic_compare_exchange_weak_explicit(&info->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
 		usleep(500);
 		expectedPtr = NULL;
 	}
+	// set writable to false
 	if (info->isWritable == true) {
 		info->isWritable = false;
 	}
+	// set open to false
 	if (info->isOpen == true) {
 		info->isOpen = false;
 	}
+	// if held is also false, then release the writerinfo struct from memory
 	if (info->isHeld == false) {
 		wc_close(&info->chain);
 		free(info);
 		return;
 	}
+	// release the tlock
 	atomic_store_explicit(&info->tlock, NULL, memory_order_release);
 }
 void wi_open(const writerinfo_ptr_t info, const int fh, const eventtrigger_ptr_t et, const usr_ptr_t usrPtr) {
 	// acquire lock
 	pthread_ptr_t expectedPtr = NULL;
 	const pthread_t tid = pthread_self();
-	while(atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
+	while(atomic_compare_exchange_weak_explicit(&info->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
 		usleep(500);
 		expectedPtr = NULL;
 	}
 	
 	// assign values
 	info->fh = fh;
+	info->fhStrLen = sprintf(info->fhStr, "%i", fh);
 	info->usrPtr = usrPtr;
 	info->isOpen = true;
 	info->et = et;
@@ -115,7 +125,10 @@ void wi_write(writerinfo_ptr_t info, const uint8_t *buff, const size_t bufflen) 
 		expectedPtr = NULL;
 	}
 	
+	// append the data to the buffer
 	wc_append(&info->chain, buff, bufflen);
+	
+	// if the handle is writable, flush the buffer
 	if (info->isWritable == true) {
 		int err;
 		wc_flush(&info->chain, info->fh, &err);
@@ -179,16 +192,20 @@ void ri_unhold(const readerinfo_ptr_t info) {
 		atomic_store_explicit(&info->tlock, NULL, memory_order_release);
 	}
 }
-void ri_open(const readerinfo_ptr_t ri, const int fh, const eventtrigger_ptr_t et, const usr_ptr_t usrPtr) {
+void ri_open(const readerinfo_ptr_t ri, const int fh, const eventtrigger_ptr_t et, const uint8_t*_Nullable matchpat, const uint8_t matchpatlen, const usr_ptr_t usrPtr) {
 	// acquire lock
 	pthread_ptr_t expectedPtr = NULL;
 	const pthread_t tid = pthread_self();
-	while(atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
+	while(atomic_compare_exchange_weak_explicit(&ri->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
 		usleep(500);
 		expectedPtr = NULL;
 	}
+	ri->fhStrLen = sprintf(ri->fhStr, "%i", fh);
+	ri->fh = fh;
 	ri->isOpen = true;
-
+	ri->et = et;
+	ri->lp = lp_init(matchpat, matchpatlen);
+	atomic_store_explicit(&ri->tlock, NULL, memory_order_release);
 }
 void ri_assign_tg(const readerinfo_ptr_t ri, const terminationgroup_ptr_t tg) {
 	ri->tg = tg;
@@ -201,28 +218,37 @@ void lphandler(const uint8_t*_Nonnull inbuff, const size_t bufflen, usr_ptr_t us
 	((readerinfo_ptr_t)usrPtr)->et->rpipe(inbuff, bufflen, false, ((readerinfo_ptr_t)usrPtr)->usrPtr);
 }
 
-int et_w_deregister(const eventtrigger_ptr_t et, const int fh) {
-	pthread_ptr_t expectedPtr = NULL;
-	// acquire a tlock
-	const pthread_t tid = pthread_self();
-	while (atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
-		usleep(500);
-		expectedPtr = NULL;
+int et_w_deregister(const eventtrigger_ptr_t et, const int fh, const bool shouldLock) {
+
+	if (shouldLock == true) {
+		pthread_ptr_t expectedPtr = NULL;
+		// acquire a tlock
+		const pthread_t tid = pthread_self();
+		while (atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false && (*expectedPtr) != tid) {
+			usleep(500);
+			expectedPtr = NULL;
+		}
 	}
 	
-	writerinfo_ptr_t wi = hashmap_get(&et->enabledHandles, (const char*)&fh, sizeof(int));
+	char fhStr[24];
+	int size = sprintf(fhStr, "%i", fh);
+	writerinfo_ptr_t wi = hashmap_get(&et->enabledHandles, fhStr, size);
 	
 	if (wi != NULL) {
 		// remove the writerinfo from the hashmap
-		if (hashmap_remove(&et->enabledHandles, (const char*)&fh, sizeof(int)) != 0) {
-			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		if (hashmap_remove(&et->enabledHandles, fhStr, size) != 0) {
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
 			return 1;
 		}
 		
 		// decrement the active count on the termination group
 		if (tg_decrement(wi->tg) != 0) {
-			hashmap_put(&et->enabledHandles, wi_fhPtr(wi), sizeof(int), wi);
-			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			hashmap_put(&et->enabledHandles, fhStr, size, wi);
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
 			return 1;
 		}
 		
@@ -245,52 +271,103 @@ int et_w_deregister(const eventtrigger_ptr_t et, const int fh) {
 		
 		// handle the potential scenario where the registration failed
 		if (deregisterResult != 0) {
-			hashmap_put(&et->enabledHandles, wi_fhPtr(wi), sizeof(int), wi);
+			hashmap_put(&et->enabledHandles, fhStr, size, wi);
 			tg_increment(wi->tg);
-			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
 			return errno;
 		}
 		
 		// mark the writerinfo as closed
 		wi_close(wi);
-		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		if (shouldLock == true) {
+			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		}
 		return 0;
 	} else {
-		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		// no writerinfo found in hashmap, return
+		if (shouldLock == true) {
+			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		}
 		return 1;
 	}
 }
 
-int et_r_deregister(const eventtrigger_ptr_t et, const int fh) {
-	pthread_ptr_t expectedPtr = NULL;
-	// acquire a tlock
-	const pthread_t tid = pthread_self();
-	while (atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
-		usleep(500);
-		expectedPtr = NULL;
+int et_r_deregister(const eventtrigger_ptr_t et, const int fh, const bool shouldLock) {
+	if (shouldLock == true) {
+		pthread_ptr_t expectedPtr = NULL;
+		// acquire a tlock
+		const pthread_t tid = pthread_self();
+		while (atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false && (*expectedPtr) != tid) {
+			usleep(500);
+			expectedPtr = NULL;
+		}
 	}
 	
+	char fhStr[24];
+	int size = sprintf(fhStr, "%i", fh);
+	readerinfo_ptr_t ri = hashmap_get(&et->enabledHandles, fhStr, size);
+	
+	if (ri != NULL) {
+		// remove the readerinfo from the hashmap
+		if (hashmap_remove(&et->enabledHandles, fhStr, size) != 0) {
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
+			return 1;
+		}
+		
+		// decrement the active count on the termination group
+		if (tg_decrement(ri->tg) != 0) {
+			hashmap_put(&et->enabledHandles, fhStr, size, ri);
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
+			return 1;
+		}
+		
+		// platform specific implementations
 #ifdef __linux__
-	struct epoll_event regEvent;
-	regEvent.data.fh = fh;
-	regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
-	int registerResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, fh, &regEvent);
+		struct epoll_event regEvent;
+		regEvent.data.fh = fh;
+		regEvent.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
+		int deregisterResult = epoll_ctl(et->pollqueue, EPOLL_CTL_DEL, fh, &regEvent);
 #elif __APPLE__
-	struct kevent newEvent;
-	newEvent.ident = fh;
-	newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
-	newEvent.filter = EVFILT_READ;
-	newEvent.fflags = 0;
-	newEvent.data = 0;
-	newEvent.udata = NULL;
-	int registerResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
+		struct kevent newEvent;
+		newEvent.ident = fh;
+		newEvent.flags = EV_DELETE | EV_CLEAR | EV_EOF;
+		newEvent.filter = EVFILT_READ;
+		newEvent.fflags = 0;
+		newEvent.data = 0;
+		newEvent.udata = NULL;
+		int deregisterResult = kevent(et->pollqueue, &newEvent, 1, NULL, 0, NULL);
 #endif
-	if (registerResult != 0) {
-		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
-		return errno;
+		
+		// handle the potential scenario where the registration failed
+		if (deregisterResult != 0) {
+			hashmap_put(&et->enabledHandles, fhStr, size, ri);
+			tg_increment(ri->tg);
+			if (shouldLock == true) {
+				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+			}
+			return errno;
+		}
+		
+		ri_close(ri);
+		
+		if (shouldLock == true) {
+			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		}
+		return 0;
+		
+	} else {
+		// no readerinfo found in hashmap, return
+		if (shouldLock == true) {
+			atomic_store_explicit(&et->tlock, NULL, memory_order_release);
+		}
+		return 1;
 	}
-	atomic_store_explicit(&et->tlock, NULL, memory_order_release);
-	return 0;
 }
 
 void et_validate_readsize(eventtrigger_ptr_t et, size_t readsize) {
@@ -333,7 +410,7 @@ void _wClose(writerinfo_ptr_t ptr) {
 	int fhCapture = ptr->fh;
 	int deregisterResult;
 	do {
-		deregisterResult = et_w_deregister(ptr->et, ptr);
+		deregisterResult = et_w_deregister(ptr->et, ptr->fh, false);
 	} while (deregisterResult == EINTR);
 	
 	// fire the writer pipeline
@@ -360,9 +437,9 @@ void _rClose(readerinfo_ptr_t ptr, const size_t rsize) {
 	} while ((readresult < 0) && (errno == EAGAIN || errno == EINTR));
 	
 	// handle the data that was just read
-	if (readresult >= 0) {
+	if (readresult > 0) {
 		lp_intake(&ptr->lp, ptr->et->readBuffer, readresult, ptr, lphandler);
-	} else {
+	} else if (readresult != 0) {
 		printf("READ RESULT ERROR\n");
 	}
 	
@@ -376,7 +453,7 @@ void _rClose(readerinfo_ptr_t ptr, const size_t rsize) {
 	int fhCap = ptr->fh;
 	int deregisterResult;
 	do {
-		deregisterResult = et_r_deregister(ptr->et, fhCap);
+		deregisterResult = et_r_deregister(ptr->et, fhCap, false);
 	} while (deregisterResult == EINTR);
 	
 	// close the file handle
@@ -432,8 +509,11 @@ void* mainLoop(void *argc) {
 					usleep(500);
 					expectedPtr = NULL;
 				}
+				
+				char fhBuff[32];
 #ifdef __linux__
 				while (i < result) {
+					uint8_t strSize = sprintf(fhBuff, "%lu", et->allocations[i].data.fh);
 					if (et->allocations[i].events & EPOLLHUP) {
 						//reading closed
 						
@@ -465,19 +545,18 @@ void* mainLoop(void *argc) {
 				}
 
 #elif __APPLE__
-				
-				
 				while (i < result) {
+					uint8_t strSize = sprintf(fhBuff, "%lu", et->allocations[i].ident);
 					if ((et->allocations[i].flags & EV_EOF) == 0) {
 						if (et->allocations[i].filter == EVFILT_READ) {
 							// reading available
-							readerinfo_ptr_t rip = hashmap_get(&et->enabledHandles, (const char*)(&et->allocations[i].ident), _so_int);
+							readerinfo_ptr_t rip = hashmap_get(&et->enabledHandles, fhBuff, strSize);
 							if (rip != NULL) {
 								_rAvail(rip, et->allocations[i].data);
 							}
 						} else if (et->allocations[i].filter == EVFILT_WRITE) {
 							// writing available
-							writerinfo_ptr_t wip = hashmap_get(&et->enabledHandles, (const char*)(&et->allocations[i].ident), _so_int);
+							writerinfo_ptr_t wip = hashmap_get(&et->enabledHandles, fhBuff, strSize);
 							if (wip != NULL) {
 								_wAvail(wip);
 							}
@@ -485,12 +564,12 @@ void* mainLoop(void *argc) {
 					} else {
 						if (et->allocations[i].filter == EVFILT_READ) {
 							// reading closed
-							readerinfo_ptr_t rip = hashmap_get(&et->enabledHandles, (const char*)(&et->allocations[i].ident), _so_int);
+							readerinfo_ptr_t rip = hashmap_get(&et->enabledHandles, fhBuff, strSize);
 							if (rip != NULL) {
 								_rClose(rip, et->allocations[i].data);
 							}
 						} else if (et->allocations[i].filter == EVFILT_WRITE) {
-							writerinfo_ptr_t wip = hashmap_get(&et->enabledHandles, (const char*)(&et->allocations[i].ident), _so_int);
+							writerinfo_ptr_t wip = hashmap_get(&et->enabledHandles, fhBuff, strSize);
 							if (wip != NULL) {
 								// writing closed
 								_wClose(wip);
@@ -604,7 +683,7 @@ int et_w_register(const eventtrigger_ptr_t et, const int fh, const usr_ptr_t usr
 	wi_open(writerinfo, fh, et, usrPtr);
 	
 	// install the readerinfo in the hashmap
-	if (hashmap_put(&et->enabledHandles, wi_fhPtr(writerinfo), sizeof(int), writerinfo) != 0) {
+	if (hashmap_put(&et->enabledHandles, writerinfo->fhStr, writerinfo->fhStrLen, writerinfo) != 0) {
 		wi_close(writerinfo);
 		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
 		return 1;
@@ -613,7 +692,7 @@ int et_w_register(const eventtrigger_ptr_t et, const int fh, const usr_ptr_t usr
 	// increment the termination group
 	if (tg_increment(writerinfo->tg) != 0) {
 		wi_close(writerinfo);
-		hashmap_remove(&et->enabledHandles, wi_fhPtr(writerinfo), sizeof(int));
+		hashmap_remove(&et->enabledHandles, writerinfo->fhStr, writerinfo->fhStrLen);
 		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
 		return 1;
 	}
@@ -637,7 +716,7 @@ int et_w_register(const eventtrigger_ptr_t et, const int fh, const usr_ptr_t usr
 	if (registerResult != 0) {
 		tg_decrement(writerinfo->tg);
 		wi_close(writerinfo);
-		hashmap_remove(&et->enabledHandles, wi_fhPtr(writerinfo), sizeof(int));
+		hashmap_remove(&et->enabledHandles, writerinfo->fhStr, writerinfo->fhStrLen);
 		// release lock
 		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
 		return errno;
@@ -656,15 +735,15 @@ int et_r_register(const eventtrigger_ptr_t et, const int fh, const uint8_t*_Null
 	// acquire a tlock
 	const pthread_t tid = pthread_self();
 	while (atomic_compare_exchange_weak_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
-		usleep(1000);
+		usleep(500);
 		expectedPtr = NULL;
 	}
 
 	// mark the readerinfo as open
-	ri_open(readerinfo, fh, et, usrPtr);
+	ri_open(readerinfo, fh, et, matchpat, matchpatlen, usrPtr);
 	
 	// install the readerinfo in the hashmap
-	if (hashmap_put(&et->enabledHandles, ri_fhPtr(readerinfo), sizeof(int), readerinfo) != 0) {
+	if (hashmap_put(&et->enabledHandles, readerinfo->fhStr, readerinfo->fhStrLen, readerinfo) != 0) {
 		lp_close_dataloss(&readerinfo->lp);
 		ri_close(readerinfo);
 		atomic_store_explicit(&et->tlock, NULL, memory_order_release);
@@ -700,7 +779,7 @@ int et_r_register(const eventtrigger_ptr_t et, const int fh, const uint8_t*_Null
 	// check the result of the registration
 	if (registerResult != 0) {
 		tg_decrement(readerinfo->tg);
-		hashmap_remove(&et->enabledHandles, ri_fhPtr(readerinfo), sizeof(int));
+		hashmap_remove(&et->enabledHandles, readerinfo->fhStr, readerinfo->fhStrLen);
 		
 		// purge the lineparser that was just created
 		lp_close_dataloss(&readerinfo->lp);
