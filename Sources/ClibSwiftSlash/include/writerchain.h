@@ -5,8 +5,8 @@
 //  Created by Tanner Silva on 6/7/22.
 //
 
-#ifndef CLIBSWIFTSLASH
-#define CLIBSWIFTSLASH
+#ifndef CLIBSWIFTSLASH_WC_H
+#define CLIBSWIFTSLASH_WC_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -30,4 +30,4 @@ void wc_flush(chaintail*_Nonnull, const int, int*_Nonnull);
 // deinitialize a given writerchain
 void wc_close(chaintail*_Nonnull);
 
-#endif /* writerchain_c_h */
+#endif /* CLIBSWIFTSLASH_WC_H */
