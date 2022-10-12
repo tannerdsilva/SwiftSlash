@@ -10,12 +10,35 @@
 #include <sys/ioctl.h>
 #include <limits.h>
 #include <stdatomic.h>
+#include <time.h>
 
 #ifdef __linux__
 #include <sys/epoll.h>
 #elif __APPLE__
 #include <sys/event.h>
 #endif
+
+
+# ifdef DEBUG
+
+// debug variable to help detect when writerinfo objects may be leaked
+_Atomic uint64_t wi_leak = 0;
+uint64_t _leakval_wi() {
+	return atomic_load_explicit(&wi_leak, memory_order_acquire);
+}
+
+// debug variable to help detect when readerinfo objects may be leaked
+_Atomic uint64_t ri_leak = 0;
+uint64_t _leakval_ri() {
+	return atomic_load_explicit(&ri_leak, memory_order_acquire);
+}
+
+// function to help determine the number of microseconds between two timevals
+//	-	`past` must be a date that is further back in time than the `further` variable
+uint64_t useconds_elapsed(const struct timeval past, const struct timeval further) {
+	return ((further.tv_sec - past.tv_sec) * 1000000) + (further.tv_usec - past.tv_usec);
+}
+# endif
 
 // initialize writer info
 writerinfo_ptr_t wi_init() {
@@ -26,6 +49,9 @@ writerinfo_ptr_t wi_init() {
 	pointer->isOpen = false;
 	pointer->isHeld = true;
 	atomic_store_explicit(&pointer->tlock, NULL, memory_order_release);
+# ifdef DEBUG
+	atomic_fetch_add_explicit(&wi_leak, 1, memory_order_acq_rel);
+# endif
 	return pointer;
 }
 void wi_unhold(writerinfo_ptr_t info) {
@@ -44,6 +70,9 @@ void wi_unhold(writerinfo_ptr_t info) {
 	if (info->isOpen == false) {
 		wc_close(&info->chain);
 		free(info);
+# ifdef DEBUG
+		atomic_fetch_sub_explicit(&wi_leak, 1, memory_order_acq_rel);
+# endif
 		return;
 	}
 	// release the tlock
@@ -69,6 +98,9 @@ void wi_close(writerinfo_ptr_t info) {
 	if (info->isHeld == false) {
 		wc_close(&info->chain);
 		free(info);
+# ifdef DEBUG
+		atomic_fetch_sub_explicit(&wi_leak, 1, memory_order_acq_rel);
+# endif
 		return;
 	}
 	// release the tlock
@@ -154,6 +186,9 @@ readerinfo_ptr_t ri_init() {
 	pointer->isHeld = true;
 	pointer->usrPtr = NULL;
 	atomic_store_explicit(&pointer->tlock, NULL, memory_order_release);
+# ifdef DEBUG
+	atomic_fetch_add_explicit(&ri_leak, 1, memory_order_acq_rel);
+# endif
 	return pointer;
 }
 void ri_close(const readerinfo_ptr_t info) {
@@ -170,6 +205,9 @@ void ri_close(const readerinfo_ptr_t info) {
 	
 	// release lock if this ri is not getting free'd from memory
 	if (info->isHeld == false) {
+# ifdef DEBUG
+		atomic_fetch_sub_explicit(&ri_leak, 1, memory_order_acq_rel);
+# endif
 		free(info);
 	} else {
 		atomic_store_explicit(&info->tlock, NULL, memory_order_release);
@@ -187,6 +225,9 @@ void ri_unhold(const readerinfo_ptr_t info) {
 		info->isHeld = false;
 	}
 	if (info->isOpen == false) {
+# ifdef DEBUG
+		atomic_fetch_sub_explicit(&ri_leak, 1, memory_order_acq_rel);
+# endif
 		free(info);
 	} else {
 		atomic_store_explicit(&info->tlock, NULL, memory_order_release);
@@ -205,6 +246,7 @@ void ri_open(const readerinfo_ptr_t ri, const int fh, const eventtrigger_ptr_t e
 	ri->isOpen = true;
 	ri->et = et;
 	ri->lp = lp_init(matchpat, matchpatlen);
+	ri->usrPtr = usrPtr;
 	atomic_store_explicit(&ri->tlock, NULL, memory_order_release);
 }
 void ri_assign_tg(const readerinfo_ptr_t ri, const terminationgroup_ptr_t tg) {
@@ -386,7 +428,7 @@ void _wAvail(writerinfo_ptr_t ptr) {
 }
 
 // reading available
-void _rAvail(readerinfo_ptr_t ptr, const size_t rsize) {
+uint64_t _rAvail(readerinfo_ptr_t ptr, const size_t rsize) {
 	// resize the read buffer
 	et_validate_readsize(ptr->et, rsize);
 	
@@ -396,12 +438,21 @@ void _rAvail(readerinfo_ptr_t ptr, const size_t rsize) {
 		readresult = read(ptr->fh, ptr->et->readBuffer, rsize);
 	} while ((readresult < 0) && (errno == EAGAIN || errno == EINTR));
 	
+	struct timeval startparse;
+	gettimeofday(&startparse, NULL);
+	
 	// feed the newly captured data into the line parser
 	if (readresult >= 0) {
 		lp_intake(&ptr->lp, ptr->et->readBuffer, readresult, ptr, lphandler);
 	} else {
 		printf("READ RESULT ERROR %i\n", errno);
 	}
+	
+	struct timeval endparse;
+	gettimeofday(&endparse, NULL);
+	
+	uint64_t elapsed = useconds_elapsed(startparse, endparse);
+	return elapsed;
 }
 
 // writing closed
@@ -477,12 +528,21 @@ void* mainLoop(void *argc) {
 	while (1) {
 		int i = 0;
 		pthread_testcancel();
+		
+//		printf("[ET] \t - \t WAITING FOR EVENTS...\n");
+		struct timeval startWait;
+		gettimeofday(&startWait, NULL);
 #ifdef __linux__
 		const int result = epoll_wait(et->pollqueue, et->allocations, et->allocCap, -1);
 #elif __APPLE__
 		const int result = kevent(et->pollqueue, NULL, 0, et->allocations, et->allocCap, NULL);
 #endif
+		struct timeval endWait;
+		gettimeofday(&endWait, NULL);
+		uint64_t elapsed = useconds_elapsed(startWait, endWait);
+//		printf("[ET] \t - \t - \t DONE. WAITED FOR %llu microseconds.\n", elapsed);
 		uint8_t state;
+		int ii = 0;
 		switch (result) {
 			case -1:
 				switch (errno) {
@@ -506,11 +566,17 @@ void* mainLoop(void *argc) {
 			default:
 				// acquire a lock
 				while (atomic_compare_exchange_strong_explicit(&et->tlock, &expectedPtr, &tid, memory_order_acq_rel, memory_order_relaxed) == false) {
-					usleep(500);
+					usleep(10);
 					expectedPtr = NULL;
+					ii += 1;
 				}
+				struct timeval lockgettime;
+				gettimeofday(&lockgettime, NULL);
+				elapsed = useconds_elapsed(endWait, lockgettime);
 				
+//				printf("[ET] \t - \t - \t LOCK ACQUIRED WITH %i ITERATIONS IN %llu MICROSECONDS.\n", ii, elapsed);
 				char fhBuff[32];
+				uint64_t totalParsingTime = 0;
 #ifdef __linux__
 				while (i < result) {
 					uint8_t strSize = sprintf(fhBuff, "%lu", et->allocations[i].data.fh);
@@ -552,7 +618,7 @@ void* mainLoop(void *argc) {
 							// reading available
 							readerinfo_ptr_t rip = hashmap_get(&et->enabledHandles, fhBuff, strSize);
 							if (rip != NULL) {
-								_rAvail(rip, et->allocations[i].data);
+								totalParsingTime += _rAvail(rip, et->allocations[i].data);
 							}
 						} else if (et->allocations[i].filter == EVFILT_WRITE) {
 							// writing available
@@ -579,6 +645,12 @@ void* mainLoop(void *argc) {
 					i = i + 1;
 				}
 #endif
+				
+				struct timeval loopend;
+				gettimeofday(&loopend, NULL);
+				elapsed = useconds_elapsed(lockgettime, loopend);
+				
+				printf("[ET] \t - \t - \t - \t LOOP COMPLETED %llu / %llu\n", totalParsingTime, elapsed);
 				atomic_store_explicit(&et->tlock, NULL, memory_order_release);
 				
 				if ((i * 2) > et->allocCap) {
@@ -627,6 +699,10 @@ int et_init(eventtrigger_ptr_t et, readpipeline rp, writepipeline wp) {
 		free(et->readBuffer);
 		return newThreadResult;
 	}
+	struct sched_param loopPri = {
+		.sched_priority = 99
+	};
+	pthread_setschedparam(newthread, SCHED_FIFO, &loopPri);
 	et->mainLoop = newthread;
 	et->rpipe = rp;
 	et->wpipe = wp;

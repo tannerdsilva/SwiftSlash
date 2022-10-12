@@ -4,7 +4,7 @@ import XCTest
 func testReadProcess(swift:URL) -> String {
     return """
 #!\(swift.path)
-for i in 0..<10000 {
+for i in 0..<25000 {
     print("\\(i)")
 }
 defer {
@@ -51,7 +51,7 @@ final class ConcurrentReadTest:XCTestCase {
                         }
                     }
                 }
-                if integerLines.count == 10000 && didFindExit == true {
+                if integerLines.count == 25000 && didFindExit == true {
                     return true
                 } else {
                     return false
@@ -61,7 +61,7 @@ final class ConcurrentReadTest:XCTestCase {
             }
         }
         let runCommand = Command(bash:"\(readTestURL.path)")
-        let iterations = 100
+        let iterations = 1000
         let successfulAmount = await withTaskGroup(of:Bool.self, returning:Int.self, body: { tg in
             for _ in 0..<iterations {
                 tg.addTask {

@@ -9,7 +9,6 @@ void lc_init() {
 	hashmap_create(16, &newLC->heapstore);
 	atomic_store_explicit(&newLC->tlock, NULL, memory_order_release);
 	lifecyclestore_global = newLC;
-	return newLC;
 }
 
 int lc_launch(terminationgroup_ptr_t tg) {

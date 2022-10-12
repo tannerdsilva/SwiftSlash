@@ -15,6 +15,12 @@ func helloWriter(_ isClosed:Bool, _ usrPtr:UnsafeMutableRawPointer?) {
 }
 
 final class SwiftSlashInternalTests:XCTestCase {
+	func testWorkSwarmLifecycle() {
+		var ws = workswarm_t()
+		let initCode = ws_init(&ws);
+		let closeCode = ws_close(&ws);
+		XCTAssert(closeCode == 0 && initCode == 0);
+	}
 	func testFDResourceUtilization() {
 		var getUsed:Double = 0;
 		var getTotal:Double = 0;
@@ -87,7 +93,6 @@ final class SwiftSlashInternalTests:XCTestCase {
 			
 			for i in 0..<500 {
 				tg.addTask {
-					print("launching task...")
 					for i in 0..<2 {
 						let randomString = String.random(length:512)
 						Data(randomString.utf8).withUnsafeBytes { byteBuff in
@@ -100,41 +105,5 @@ final class SwiftSlashInternalTests:XCTestCase {
 		})
 		
 		
-	}
-	
-	func testQueue() async throws {
-		let et = et_alloc();
-		et_init(et, helloWorld, helloWriter);
-		let newPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true);
-		var buildStrings = [String]()
-		var writeStrings = [String]()
-		var matchPat = Data([10])
-		print("registering \(newPipe.reading)");
-		withUnsafeMutablePointer(to:&buildStrings) { unsafePtr in
-			matchPat.withUnsafeBytes({ matchPatBytes in
-				let ri = ri_init();
-				et_r_register(et, newPipe.reading, matchPatBytes.baseAddress?.assumingMemoryBound(to: UInt8.self), 1, nil, ri);
-			})
-			
-			var writebuff:chaintail? = nil;
-			for i in 0..<10 {
-				let writeString = "hello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\nhello this is a test\n"
-				for i in 0...1000 {
-					wc_append(&writebuff, writeString, writeString.count);
-				}
-				var possibleerr:Int32 = 0;
-				wc_flush(&writebuff, newPipe.writing, &possibleerr);
-	//			write(newPipe.writing, writeString, writeString.count);
-				writeStrings.append(writeString)
-				sleep(1);
-			}
-		}
-		print("about to close writing");
-		close(newPipe.writing);
-		sleep(5);
-		print("trying to close")
-		et_close(et);
-		print("close completed")
-		XCTAssert(buildStrings == writeStrings);
 	}
 }

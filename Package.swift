@@ -2,6 +2,9 @@
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
+import Foundation
+
+fileprivate let cpuCount = ProcessInfo.processInfo.processorCount
 
 let package = Package(
     name: "SwiftSlash",
@@ -26,7 +29,8 @@ let package = Package(
             dependencies: ["ClibSwiftSlash"]),
         .target(
         	name: "ClibSwiftSlash",
-        	dependencies: []),
+			dependencies: [],
+			cSettings:[.define("SS_CPUNUM", to:"\(cpuCount)")]),
         .testTarget(
             name: "SwiftSlashTests",
             dependencies: ["SwiftSlash"]),

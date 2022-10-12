@@ -95,13 +95,14 @@ func readPipeline(_ buff:UnsafePointer<UInt8>, _ buffSize:size_t, _ isClosed:Boo
 		if let hasDCI = dci {
 			let createData = Data(bytes:buff, count:buffSize);
 			let asString = String(data:createData, encoding:.utf8)
-			print("r item \(asString)")
 			hasDCI.continuation.yield(createData)
 		} else {
 			print("r item- noDCI \(buffSize)")
 		}
 	} else {
-		print("r item closing")
+		if let hasDCI = dci {
+			hasDCI.continuation.finish()
+		}
 	}
 	
 	/*
@@ -116,7 +117,7 @@ func readPipeline(_ buff:UnsafePointer<UInt8>, _ buffSize:size_t, _ isClosed:Boo
 }
 
 func writePipeline(_ isClosed:Bool, _ usrPtr:UnsafeMutableRawPointer?) {
-	print("lets ride \(isClosed)");
+	
 }
 
 internal actor ProcessSpawner {
@@ -186,6 +187,10 @@ internal actor ProcessSpawner {
 
 		let newTG = tg_init(retainedPI, { retPI, pid, stat, code in
 			let pi = Unmanaged<ProcessInterface>.fromOpaque(retPI!).takeRetainedValue()
+			Task.detached {
+				try await pi.processExited(code: code)
+			}
+			
 		})
 		
 		var fhToCloseIfThrown = Set<Int32>()

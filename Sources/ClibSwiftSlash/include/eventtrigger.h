@@ -10,6 +10,11 @@
 #include "terminationgroup.h"
 #include "hashmap.h"
 
+# ifdef DEBUG
+uint64_t _leakval_wi();
+uint64_t _leakval_ri();
+# endif
+
 typedef void(*_Nonnull readpipeline)(const uint8_t*_Nonnull, const size_t, const bool, usr_ptr_t);
 typedef void(*_Nonnull writepipeline)(const bool, const usr_ptr_t);
 

@@ -91,6 +91,7 @@ public struct DataChannel {
 		
 		deinit {
 			ri_unhold(ri);
+			self.continuation.finish()
 		}
 	}
     

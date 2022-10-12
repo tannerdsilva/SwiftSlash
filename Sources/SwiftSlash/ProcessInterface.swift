@@ -162,9 +162,7 @@ public actor ProcessInterface {
 		}
 		self._state = .launching
 		do {
-			let exitPid = try await withThrowingTaskGroup(of:Void.self, returning:pid_t.self, body: { tg in
-				try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, onBehalfOf:self)
-			})
+			let exitPid = try await ProcessSpawner.global.launch(path:self.command.executable, args:self.command.arguments, wd:self.command.workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser, env:self.command.environment, writables:self.outboundChannels, readables:self.inboundChannels, onBehalfOf:self)
 			self._state = .running(exitPid)
 		} catch let error {
 			self._state = .failed
@@ -218,6 +216,30 @@ public actor ProcessInterface {
 					break;
 				}
 			}
+		}
+	}
+	
+	internal func processExited(code:Int32) throws {
+		switch self._state {
+		case .running(_):
+			self._state = .exited(code)
+			for exitWaiter in self.exitStack {
+				exitWaiter(.exited(code))
+			}
+		default:
+			throw Error.invalidProcessState
+		}
+	}
+	
+	internal func processSignaled(code:Int32) throws {
+		switch self._state {
+		case .running(_):
+			self._state = .signaled(code)
+			for exitWaiter in self.exitStack {
+				exitWaiter(.signaled(code))
+			}
+		default:
+			throw Error.invalidProcessState
 		}
 	}
 	

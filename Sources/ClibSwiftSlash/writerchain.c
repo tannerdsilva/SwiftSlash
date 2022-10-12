@@ -34,6 +34,7 @@ void wc_append(chaintail *base, const uint8_t* data, const size_t datalen) {
 	}
 }
 
+
 void wc_flush(chaintail *base, const int fd, int *err) {
 	if ((*base) == NULL) {
 		(*err) = 0;
