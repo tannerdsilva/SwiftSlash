@@ -27,10 +27,11 @@ void wcl_push_i(workchain_link_aptr_t *_Nonnull head, workchain_link_ptr_t newLi
 }
 
 // external (base) push function
-void wcl_push(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonnull head, const usr_ptr_t usrPtr) {
+void wcl_push(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonnull head, const usr_ptr_t usrPtr, const work_item_ptr_f work_func) {
 	// define the new link in the heap
 	const workchain_link_t newLink = {
 		.usrPtr = usrPtr,
+		.work_func = work_func,
 		.next = NULL
 	};
 	workchain_link_ptr_t newLinkPtr = memcpy(malloc(sizeof(workchain_link_t)), &newLink, sizeof(workchain_link_t));
@@ -45,28 +46,34 @@ void wcl_push(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonn
 	} else {
 		// base already assigned, so place this new link by recursively traversing the head pointer until we reach a NULL pointer
 		wcl_push_i(head, newLinkPtr);
+		
+		// push to the head.
 		atomic_store_explicit(head, newLinkPtr, memory_order_release);
 	}
 }
 
 // external pop function
-uint8_t wcl_pop(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonnull head, usr_ptr_t *_Nonnull usrPtr) {
-	// assign the next link to the current base location
+uint8_t wcl_pop(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonnull head, usr_ptr_t *_Nonnull usrPtr, work_item_ptr_f*_Nullable work_func) {
+	// check if the base is NULL or if it actually points to something
 	workchain_link_ptr_t expectedBase = atomic_load_explicit(base, memory_order_acquire);
+	
 	if (expectedBase != NULL) {
 		workchain_link_ptr_t nextLink = atomic_load_explicit(&expectedBase->next, memory_order_acquire);
 		while (atomic_compare_exchange_strong_explicit(base, &expectedBase, nextLink, memory_order_acq_rel, memory_order_relaxed) == false) {
 			nextLink = atomic_load_explicit(&expectedBase->next, memory_order_acquire);
-			usleep(10);
 		}
 		(*usrPtr) = expectedBase->usrPtr;
+		(*work_func) = expectedBase->work_func;
+		
 		free(expectedBase);
 # ifdef DEBUG
 		atomic_fetch_sub_explicit(&wcl_leak, 1, memory_order_acq_rel);
 # endif
+
 		return 0;
 	} else {
 		(*usrPtr) = NULL;
+		(*work_func) = NULL;
 		return 1;
 	}
 }
@@ -74,25 +81,22 @@ uint8_t wcl_pop(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_No
 // close a work chain link and potentially all the data that is within it
 void wcl_close(workchain_link_aptr_t *_Nonnull base, workchain_link_aptr_t *_Nonnull head, close_handler_f ch) {
 	usr_ptr_t foundPtr = NULL;
-	while (wcl_pop(base, head, &foundPtr) == 0) {
+	while (wcl_pop(base, head, &foundPtr, NULL) == 0) {
 		ch(foundPtr);
 	}
 }
 
 // ===================================================================
 
-typedef struct work_item {
-	const usr_ptr_t usrPtr;
-	const work_item_f work;
-} work_item_t;
-typedef work_item_t* work_item_ptr_t;
-
-int workitem_init(const usr_ptr_t usrPtr, const work_item_f work);
-
 // function that handles the locked mutex scenario for the pthread cancellation state
 static void worker_cancel_cleanup(void *ptr) {
-	pthread_mutex_t *swarm_mutex;
-	pthread_mutex_unlock(swarm_mutex);
+#ifdef DEBUG
+	pthread_t tid = pthread_self();
+	printf("[ %p ] \t - \t thread cancelled\n", tid);
+#endif
+	
+	work_thread_t *worker = ptr;
+	pthread_mutex_unlock(worker->mutex);
 }
 
 typedef enum worker_status {
@@ -108,7 +112,7 @@ void* workLoop(void *ptr) {
 	work_thread_t *worker = ptr;
 	
 	// install the cleanup handler that will handle the mutex if this thread is cancelled
-	pthread_cleanup_push(worker_cancel_cleanup, &worker->mutex);
+	pthread_cleanup_push(worker_cancel_cleanup, &worker);
 
 # ifdef DEBUG
 	pthread_t tid = pthread_self();
@@ -119,13 +123,14 @@ void* workLoop(void *ptr) {
 	while (true) {
 
 		// acquires the next job or blocks until one becomes available
+		work_item_ptr_f workerFunc;
 		pthread_mutex_lock(worker->mutex);
-		while (wcl_pop(worker->base, worker->head, &stackPtr) != 0) {
+		while (wcl_pop(worker->base, worker->head, &stackPtr, &workerFunc) != 0) {
 			pthread_cond_wait(worker->condition, worker->mutex);
 		}
 		
 # ifdef DEBUG
-		printf("[ %p ] \t - \t work acquired", tid);
+		printf("[ %p ] \t - \t work acquired\n", tid);
 # endif
 		
 		// pop the work off the stack before releasing lock
@@ -142,7 +147,7 @@ void* workLoop(void *ptr) {
 	
 	pthread_cleanup_pop(0);
 	pthread_exit(NULL);
-	return;
+	return NULL;
 }
 
 int ws_init(workswarm_ptr_t ws) {
@@ -225,3 +230,6 @@ int ws_close(workswarm_ptr_t ws) {
 	return errval;
 }
 
+int ws_submit(workswarm_ptr_t ws, const usr_ptr_t usrPtr, const work_item_f work) {
+	
+}
