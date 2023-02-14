@@ -407,7 +407,7 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 	}
 	
 	guard tt_directory_check(ptr:wd) == true else {
-		print("failed to evaluate wd")
+		print("failed to evaluate wd \(String(cString:wd))")
 		throw ProcessSpawner.Error.badAccess
 	}
 	guard tt_execute_check(ptr:path) == true else {
