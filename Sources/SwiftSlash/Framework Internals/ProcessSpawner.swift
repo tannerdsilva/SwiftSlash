@@ -406,12 +406,10 @@ fileprivate func tt_spawn(path:UnsafePointer<Int8>, args:UnsafeMutablePointer<Un
 		throw FileHandleError.pipeOpenError
 	}
 	
-//	guard tt_directory_check(ptr:wd) == true else {
-//		print("failed to evaluate wd \(String(cString:wd))")
-//		throw ProcessSpawner.Error.badAccess
-//	}
+	guard tt_directory_check(ptr:wd) == true else {
+		throw ProcessSpawner.Error.badAccess
+	}
 	guard tt_execute_check(ptr:path) == true else {
-		print("failed to evaluate path")
 		throw ProcessSpawner.Error.badAccess
 	}
 	let forkResult = cfork()	//spawn the container process
