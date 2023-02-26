@@ -1,5 +1,7 @@
 # 🔥 /SwiftSlash/ 🔥 
 
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftannerdsilva%2FSwiftSlash%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/tannerdsilva/SwiftSlash) [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftannerdsilva%2FSwiftSlash%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/tannerdsilva/SwiftSlash)
+
 Concurrent Shell Framework Built Entirely With Async/Await
 
 ## [Documentation](https://swiftslash.com/documentation/)
@@ -90,7 +92,7 @@ for await stderrChunk in await zfsProcessInterface.stderr {
 }
 
 //data can be written to stdin after a process is launched, like so...
-zfsProcessInterface.write(stdin:"hello".data(using.utf8)!)
+zfsProcessInterface.write(stdin:"hello".data(using:.utf8)!)
 
 //retreive the exit code of the process. 
 let exitCode = try await zfsProcessInterface.exitCode()

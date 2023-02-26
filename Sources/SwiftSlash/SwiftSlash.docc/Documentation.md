@@ -4,16 +4,16 @@ High performance concurrent shell framework built from the ground-up with async/
 
 ## About SwiftSlash
 
-Current version: `3.3.1`
+This version: `3.4.0`
+
+Oldest recommend version: `3.3.1`
 
 #### Platform Support
   - Linux
-    - Fully supported in all versions
-    - Unit tests pending `async/await` support from Apple/Swift
+    - Full support
 
   - MacOS
-    - Fully supported with version `3.1.0`
-    - Unit tests passing
+    - Full support
 
   - Swift
     - SwiftSlash requires a Swift toolchain version >= `5.5`

@@ -18,6 +18,7 @@ public struct DataChannel {
             /// Disable bytestream parsing. Data will be transparently passed to the AsyncStream in real time.
 			case unparsedRaw
         }
+		
         /// Defines the configuration for an Inbound data channel
 		public enum Configuration {
             /// Actively capture the output from this data channel with the specified ``DataChannel/Inbound/ParseMode``. Data from this channel can be consumed through its `AsyncStream`.
