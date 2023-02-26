@@ -136,7 +136,7 @@ public actor ProcessInterface {
     
     /// Initialize a new ProcessInterface instance.
     /// - Parameters:
-    ///   - command: The command to launch
+    ///   - command: The Command to launch
     ///   - stdin: `STDIN` configuration for this process. Default: `.active`
     ///   - stdout: `STDOUT` configuration for this process. Default: `.active(.lf)`
     ///   - stderr: `STDERR` configuration for this process. Default: `.active(.lf)`

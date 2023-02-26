@@ -309,10 +309,10 @@ internal actor ProcessSpawner {
 				await withTaskGroup(of:Void.self, returning:Void.self, body: { tg in
 					for curIn in buildIn {
 						tg.addTask { [curIn = curIn.value] in
-							await withTaskCancellationHandler(handler: {
-								curIn.terminateLoop()
-							}, operation: {
+							await withTaskCancellationHandler(operation: {
 								await curIn._mainLoop()
+							}, onCancel: {
+								curIn.terminateLoop()
 							})
 						}
 					}
@@ -320,9 +320,7 @@ internal actor ProcessSpawner {
 					for curOut in buildOut {
 						tg.addTask { [curOut = curOut.value] in
 							await withTaskGroup(of:Void.self, returning:Void.self, body: { outTG in
-								await withTaskCancellationHandler(handler: {
-									curOut.terminateLoop()
-								}, operation: {
+								await withTaskCancellationHandler(operation: {
 									outTG.addTask {
 										await curOut._dataLoop()
 									}
@@ -330,6 +328,8 @@ internal actor ProcessSpawner {
 										await curOut._eventLoop()
 									}
 									await outTG.waitForAll()
+								}, onCancel: {
+									curOut.terminateLoop()
 								})
 							})
 						}

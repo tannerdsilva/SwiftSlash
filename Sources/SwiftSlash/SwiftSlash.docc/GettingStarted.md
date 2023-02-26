@@ -4,12 +4,12 @@ Get started using SwiftSlash with the convenient interfaces of ``Command`` and `
 
 ## Define a Command
 
-``Command`` defines the executable that SwiftSlash is going to run, as well as the parameters surrounding its execution (such as arguments, working directory and environment variables).
+``Command`` defines the executable that SwiftSlash is going to run.
 
-In this case, we will define a ``Command`` that lists every running process on our system.
+In this case, we will define a ``Command`` that lists every running process on our system. On the MacOS and Linux, this can be done with the "ps" command by passing a single argument "aux".
 
 ```
-let processStatusCommand = Command("ps aux") 
+let processStatusCommand = try Command("ps", arguments:["aux"]) 
 ```
 
 ## Run a Command
@@ -27,7 +27,7 @@ let processResult = try await processStatusCommand.runSync()
 ## Complete Example
 
 ```
-let commandResult = try await Command("zfs --version").runSync()
+let commandResult = try await Command("zfs", arguments:["--version"]).runSync()
 if (commandResult.exitCode == 0) {
     let versionData = commandResult.stdout[0]
 }

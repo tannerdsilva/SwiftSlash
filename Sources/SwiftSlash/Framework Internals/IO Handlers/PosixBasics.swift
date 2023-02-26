@@ -3,7 +3,7 @@ import Foundation
 import Glibc
 #endif
 
-internal enum FileHandleError:Error {
+internal enum FileHandleError:Swift.Error {
 	case pollingError;
 	case readAllocationError;
 	
