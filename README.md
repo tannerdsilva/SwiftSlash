@@ -80,7 +80,8 @@ try await zfsProcessInterface.launch()
 //handle lines of stdout as they come in
 var datasetLines = [Data]()
 for await outputLine in await zfsProcessInterface.stdout {
-	print("dataset found: \( String(data:outputLine, encoding:.utf8) )")
+	guard let outputLineString = String(data: outputLine, encoding: .utf8) else { continue }
+	print("dataset found: \(outputLineString)")
 	datasetLines.append(outputLine)
 }
 
