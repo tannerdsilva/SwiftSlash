@@ -50,7 +50,35 @@ public struct Command {
 		self.environment = environment
 		self.workingDirectory = workingDirectory
 	}
-    
+
+
+	/// Convenience initializer to initialize with an executable's `URL`.
+	/// - Parameters:
+	///   - executableURL: The URL for the executable to run.
+	///   - arguments: An array of arguments to pass into the executable.
+	///   - environment: The environment variables that will be assigned before the process begins running.
+	///   - workingDirectory: The working directory that the process will have when it is launched.
+	public init(
+		executableURL: URL,
+		arguments: [String] = [],
+		environment: [String: String] = CurrentProcessState.getCurrentEnvironmentVariables(),
+		workingDirectory: URL = CurrentProcessState.getCurrentWorkingDirectory()
+	) {
+		let absolutePath: String
+		if #available(macOS 13, *) {
+			absolutePath = executableURL.path()
+		} else {
+			absolutePath = executableURL.path
+		}
+
+		self.init(
+			absolutePath: absolutePath,
+			arguments: arguments,
+			environment: environment,
+			workingDirectory: workingDirectory
+		)
+	}
+
 	/// Initialize with an executable name and arguments.
 	/// - This initializer does __not__ use a system shell to launch the work.
 	/// - Parameters:
