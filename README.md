@@ -1,4 +1,4 @@
-# 🔥 /SwiftSlash/ 🔥 
+# 🔥 /SwiftSlash/ 🔥
 
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftannerdsilva%2FSwiftSlash%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/tannerdsilva/SwiftSlash) [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Ftannerdsilva%2FSwiftSlash%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/tannerdsilva/SwiftSlash)
 
@@ -34,13 +34,13 @@ With a fundamentally different engine serving as the heart of *SwiftSlash*, the 
 
 - `SwiftSlash` is aware of the limited resources your process has been allocated by the system (primarily, file descriptors). It will not launch a command that your application does not have the resources to support. In such a case (under heavy concurrent use of SwiftSlash), processes requiring more resources than are available will be queued and launched when resources are freed.
 
-Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API. 
+Lastly, SwiftSlash is extremely straightforward to use, since it implements a rigorously simple public API.
 
 ## Getting Started
 
 `Command` implements a convenience function `runSync()` which serves as a simple way to execute processes with no setup or I/O handling.
 
-```
+```swift
 import SwiftSlash
 
 // EXAMPLE: check the systems ZFS version and print the first line of the output
@@ -60,9 +60,9 @@ if commandResult.exitCode == 0 {
 
 `ProcessInterface` is a powerful yet flexible class that serves as the base API for the SwfitSlash framework. Whether your process requires synchronous or asynchronous handling of parsed or unparsed data, `ProcessInterface` provides a consistent platform for defining such requirements.
 
-```
-/* 
-EXAMPLE: query the system for any zfs datasets that might be imported. 
+```swift
+/*
+EXAMPLE: query the system for any zfs datasets that might be imported.
 			stdout: parse as lines
 			stderr: unparsed, raw data will be sent through the stream as it becomes available
 
@@ -75,13 +75,13 @@ let zfsDatasetsCommand:Command = Command(bash:"zfs list -t dataset")
 let zfsProcessInterface = ProcessInterface(command:zfsDatasetsCommand, stdout:.active(.lf), stderr:.active(.unparsedRaw))
 
 //launch the process. if you are running many concurrent processes (using most of the available resources), this is where your process will be queued until there are enough resources to support the launched process.
-let outputStreams = try await zfsProcessInterface.launch()
+try await zfsProcessInterface.launch()
 
 //handle lines of stdout as they come in
 var datasetLines = [Data]()
 for await outputLine in await zfsProcessInterface.stdout {
 	print("dataset found: \( String(data:outputLine, encoding:.utf8) )")
-	datasetLines += outputLine
+	datasetLines.append(outputLine)
 }
 
 //build the blob of stderr data if any was passed
@@ -94,7 +94,7 @@ for await stderrChunk in await zfsProcessInterface.stderr {
 //data can be written to stdin after a process is launched, like so...
 zfsProcessInterface.write(stdin:"hello".data(using:.utf8)!)
 
-//retreive the exit code of the process. 
+//retrieve the exit code of the process.
 let exitCode = try await zfsProcessInterface.exitCode()
 
 if (exitCode == 0) {
