@@ -1,4 +1,4 @@
-#include "libswiftslash.h"
+#include "include/CSwiftSlash.h"
 
 #include <sys/resource.h>
 #include <dirent.h>
@@ -6,6 +6,10 @@
 
 pid_t cfork(void) {
 	return fork();
+}
+
+int getErrno() {
+	return errno;
 }
 
 int getfdlimit(double *utilized, double *limit) {
