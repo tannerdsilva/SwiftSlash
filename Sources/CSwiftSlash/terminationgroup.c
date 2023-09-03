@@ -115,4 +115,4 @@ pid_ptr_t tg_pid_ptr(terminationgroup_ptr_t tg) {
 int tg_dealloc(terminationgroup_ptr_t tg) {
 	free(tg);
 	return 0;
-}
+} 

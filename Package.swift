@@ -26,7 +26,10 @@ let package = Package(
 				"CSwiftSlash"
 			]),
         .target(
-        	name:"CSwiftSlash"),
+        	name:"CSwiftSlash",
+			cSettings: [
+				.define("_GNU_SOURCE", to:"1", .when(platforms:[.linux])),
+			]),
         .testTarget(
             name: "SwiftSlashTests",
             dependencies: ["SwiftSlash"]),
