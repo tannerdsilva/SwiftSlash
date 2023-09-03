@@ -1,4 +1,5 @@
-#include "eventtrigger.h"
+#include "include/eventtrigger.h"
+
 #include <sys/types.h>
 #include <sys/time.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <limits.h>
 #include <stdatomic.h>
 #include <time.h>
+#include <pthread.h>
 
 #ifdef __linux__
 #include <sys/epoll.h>

@@ -1,22 +1,23 @@
 #ifndef CLIBSWIFTSLASH_ET_H
 #define CLIBSWIFTSLASH_ET_H
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <pthread.h>
+
 #include "writerchain.h"
 #include "lineparser.h"
-#include "libswiftslash.h"
 #include "terminationgroup.h"
-#include "hashmap.h"
+#include "htable.h"
 
 # ifdef DEBUG
 uint64_t _leakval_wi();
 uint64_t _leakval_ri();
 # endif
 
-typedef void(*_Nonnull readpipeline)(const uint8_t*_Nonnull, const size_t, const bool, usr_ptr_t);
-typedef void(*_Nonnull writepipeline)(const bool, const usr_ptr_t);
+typedef void(^_Nonnull readpipeline)(const uint8_t*_Nonnull, const size_t, const bool);
+typedef void(^_Nonnull writepipeline)(const bool);
 
 // various states that a process can be in
 typedef enum eventtriggerstate {
@@ -26,6 +27,8 @@ typedef enum eventtriggerstate {
 	ets_failed = 3
 } eventtrigger_state_t;
 
+struct readerinfo
+
 /*
  event trigger
  ----------
@@ -34,12 +37,12 @@ typedef enum eventtriggerstate {
  */
 typedef const pthread_t _Nullable *_Nullable pthread_ptr_t;
 typedef struct eventtrigger {
-	struct hashmap_s enabledHandles;
+	struct htable enabledHandles;
 	_Atomic pthread_ptr_t tlock;
 	
 	// pipeline handlers
-	readpipeline rpipe;
-	writepipeline wpipe;
+	struct readpipeline rpipe;
+	struct writepipeline wpipe;
 	
 	// primary pollqueue handle
 	int pollqueue;
@@ -99,8 +102,6 @@ typedef struct readerinfo {
 	int fh;
 	char fhStr[32];
 	uint8_t fhStrLen;
-	usr_ptr_t usrPtr;
-	lineparser_t lp;
 	bool isOpen;
 	bool isHeld;
 } readerinfo_t;
