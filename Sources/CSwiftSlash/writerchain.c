@@ -7,20 +7,6 @@
 #include <errno.h>
 #include <stdio.h>
 
-bool wc_append(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const data_ptr_t data, const size_t datalen) {
-	const struct writerchain newchain = {
-		.data = memcpy(malloc(datalen), data, datalen),
-		.datasize = datalen,
-		.written = 0,
-		.next = NULL
-	};
-	const writerchain_ptr_t newentry = memcpy(malloc(sizeof newchain), &newchain, sizeof(newchain));
-	writerchain_ptr_t current = NULL;
-	do {
-		current = wc_append_wc_ptr(base, tail, newentry);
-	} while (current == false);
-}
-
 /// @brief internal function. appends a pre-allocated writerchain_ptr_t to a given writerchain.
 /// @param base the base of the chain to append to.
 /// @param tail the tail of the chain to append to.
@@ -42,7 +28,7 @@ bool wc_append_wc_ptr(const writerchain_aptr_ptr_t base, const writerchain_aptr_
 		writeTo = &currentTailEntry->next;
 	}
 
-	// attempt to store.
+	// attempt to store the new value to the end of the chain.
 	bool storeResult = atomic_compare_exchange_strong_explicit(writeTo, &expected, newentry, memory_order_acq_rel, memory_order_relaxed);
 	if (storeResult == true) {
 		
@@ -58,38 +44,26 @@ bool wc_append_wc_ptr(const writerchain_aptr_ptr_t base, const writerchain_aptr_
 	return storeResult;
 }
 
+void wc_append(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const data_ptr_t data, const size_t datalen) {
+	const struct writerchain newchain = {
+		.data = memcpy(malloc(datalen), data, datalen),
+		.datasize = datalen,
+		.written = 0,
+		.next = NULL
+	};
+	const writerchain_ptr_t newentry = memcpy(malloc(sizeof newchain), &newchain, sizeof(newchain));
+	bool current = false;
+	do {
+		current = wc_append_wc_ptr(base, tail, newentry);
+	} while (current == false);
+}
+
 /// should only be handled in 8 bit values.
 typedef enum wc_flush_signal {
 	wc_flush_success_exit = 0,	// indicates success with no need to retry the current entry or iterate to the next. causes an exit.
 	wc_flush_success_continue = 1,	// indicates success with the current entry and that we should proceed to the next entry. causes a new iteration on the next chain item, if it exists.
 	wc_flush_failure = 3,		// indicates failure with the current entry.
 } wc_flush_signal_t;
-
-bool wc_flush(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const int fd, const err_ptr_t err) {
-	(*err) = 0;
-
-	// iterate until either failure or exit is called.
-	unsigned int succ = 0;
-	while (true) {
-		switch (wc_flush_single(base, tail, fd, err)) {
-			case wc_flush_success_exit:
-				return true;
-			case wc_flush_success_continue:
-				succ += 1;
-				continue;
-			case wc_flush_failure:
-				// any number of successful flushes is a success.
-				if (succ > 0) {
-					return true;
-				}
-				// do not cascade a failure when the buffer is full.
-				if (*err == EAGAIN || *err == EWOULDBLOCK) {
-					return true;
-				}
-				return false;
-		}
-	}
-}
 
 /// @brief internal function that moves the base and tail pointers to the next entry.
 /// @param current the pre-loaded atomic pointer to the current entry.
@@ -118,7 +92,6 @@ void wc_move_next(const writerchain_ptr_t current, const writerchain_aptr_ptr_t 
 /// @param err a pointer to an integer that will be set to the error code if the function returns false.
 /// @return a signal indicating whether the flush was successful, and if so, whether to proceed to the next entry or exit.
 wc_flush_signal_t wc_flush_single(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const int fd, const err_ptr_t err) {
-	
 	// load the base entry.
 	writerchain_ptr_t getbase = atomic_load_explicit(base, memory_order_acquire);
 	if (getbase == NULL) {
@@ -154,6 +127,32 @@ wc_flush_signal_t wc_flush_single(const writerchain_aptr_ptr_t base, const write
 		// all of the bytes have already been flushed so we need to proceed to the next entry.
 		wc_move_next(getbase, base, tail);
 		return wc_flush_success_continue;
+	}
+}
+
+bool wc_flush(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const int fd, const err_ptr_t err) {
+	(*err) = 0;
+
+	// iterate until either failure or exit is called.
+	unsigned int succ = 0;
+	while (true) {
+		switch (wc_flush_single(base, tail, fd, err)) {
+			case wc_flush_success_exit:
+				return true;
+			case wc_flush_success_continue:
+				succ += 1;
+				continue;
+			case wc_flush_failure:
+				// any number of successful flushes is a success.
+				if (succ > 0) {
+					return true;
+				}
+				// do not cascade a failure when the buffer is full.
+				if (*err == EAGAIN || *err == EWOULDBLOCK) {
+					return true;
+				}
+				return false;
+		}
 	}
 }
 

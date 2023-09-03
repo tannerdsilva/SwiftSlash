@@ -38,8 +38,7 @@ typedef struct writerchain {
 /// @param tail the tail of the chain to append to. the pointed to value may be NULL, and this is how a new chain is created.
 /// @param data the data to append.
 /// @param datalen the length of the data to append.
-/// @return boolean indicating whether the append was successful.
-bool wc_append(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const data_ptr_t data, const size_t datalen);
+void wc_append(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const data_ptr_t data, const size_t datalen);
 
 /// @brief flushes as much of the chain to the file handle as possible
 /// @param base the pointer to the base of the chain to flush.
