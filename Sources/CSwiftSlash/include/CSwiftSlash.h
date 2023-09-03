@@ -9,6 +9,7 @@
 
 #include "htable.h"
 #include "lineparser.h"
+#include "writerchain.h"
 #include "terminationgroup.h"
 
 pid_t cfork(void);
