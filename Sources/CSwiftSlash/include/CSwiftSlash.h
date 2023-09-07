@@ -12,6 +12,10 @@
 #include "writerchain.h"
 #include "terminationgroup.h"
 
+#if __linux
+#include <sys/epoll.h>
+#endif
+
 pid_t cfork(void);
 int getErrno();
 

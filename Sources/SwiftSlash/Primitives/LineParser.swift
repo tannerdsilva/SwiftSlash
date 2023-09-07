@@ -21,7 +21,7 @@ internal struct LineParser {
 	}
 
 	/// the line parser.
-	internal var lp:lineparser_t
+	private var lp:lineparser_t
 	/// the output mode of the line parser.
 	internal let outMode:Output
 
