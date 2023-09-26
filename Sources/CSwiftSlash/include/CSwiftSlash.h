@@ -11,12 +11,16 @@
 #include "lineparser.h"
 #include "writerchain.h"
 #include "terminationgroup.h"
+// #include "eventtrigger.h"
+#include "writerinfo.h"
+#include "future.h"
 
 #if __linux
 #include <sys/epoll.h>
 #endif
 
 pid_t cfork(void);
+
 int getErrno();
 
 int getfdlimit(double*_Nonnull utilized, double*_Nonnull limit);

@@ -19,9 +19,8 @@ void lineparser_resize_up(lineparser_t *parser) {
 	free(oldbuff);
 }
 
-/// prepares the line parser to parse the next line. clears the previous line from the buffer.
-/// parameters:
-/// 	- parser: the line parser to trim
+/// @brief prepares the line parser to parse the next line. clears the previous line from the buffer.
+/// @param parser the line parser to trim
 void lineparser_trim(lineparser_t *parser) {
 	// copy the data to the beginning of the buffer.
 	memcpy(parser->intakebuff, parser->intakebuff + parser->i, parser->buffsize - parser->i);
@@ -29,10 +28,6 @@ void lineparser_trim(lineparser_t *parser) {
 	parser->i = 0;
 }
 
-/// initialize a line parser
-/// parameters:
-/// 	- match: the pattern to match against. if this is NULL, the line parser will not match against any pattern.
-/// 	- matchlen: the length of the pattern to match against. if this is 0, the line parser will not match against any pattern.
 extern lineparser_t lp_init(const uint8_t*_Nullable match, const uint8_t matchlen) {
 	lineparser_t newparser = {
 		.buffsize = 1024,

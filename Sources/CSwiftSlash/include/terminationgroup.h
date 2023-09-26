@@ -41,13 +41,14 @@ typedef struct terminationgroup {
 	const tg_handler_f th;
 } terminationgroup_t;
 typedef terminationgroup_t*_Nonnull terminationgroup_ptr_t;
+typedef terminationgroup_t*_Nullable terminationgroup_optr_t;
 
-/// initialize a new termination group.
-/// - returns: a pointer to a newly allocated termination group.
+/// @brief initialize a new termination group.
+/// @return a pointer to a newly allocated termination group.
 terminationgroup_ptr_t tg_init(const tg_handler_f);
 
 // channel count management
-/// increment the channel count of a termination group.
+/// @brief increment the channel count of a termination group.
 int tg_increment(terminationgroup_ptr_t);
 /// decrement the channel count of a termination group.
 int tg_decrement(terminationgroup_ptr_t);

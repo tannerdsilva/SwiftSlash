@@ -15,7 +15,7 @@ internal struct LineParser {
 	/// the output mode of the line parser.
 	internal enum Output {
 		/// the line parser will yield the parsed lines to the given continuation.
-		// case continuation(AsyncStream<[Bytes]>.Continuation)
+		case continuation(AsyncStream<[Bytes]>.Continuation)
 		/// the line parser will handle the parsed lines with the given handler.
 		case handler(([Bytes]) -> Void)
 	}
@@ -41,8 +41,7 @@ internal struct LineParser {
 	}
 
 	/// handles the given data.
-	/// - parameters:
-	///		- data: the data to handle.
+	///	- parameter data: the data to handle.
 	internal mutating func handle(_ data:inout [UInt8]) {
 		var result = [[UInt8]]()
 		lp_intake(&self.lp, &data, data.count, { data, length in
@@ -53,14 +52,15 @@ internal struct LineParser {
 			result.append(asArray)
 		})
 		switch self.outMode {
-		// case .continuation(let continuation):
-		// 	continuation.yield(result)
+		case .continuation(let continuation):
+			continuation.yield(result)
 		case .handler(let handler):
 			handler(result)
 		}
 	}
 
 	/// finishes the line parser. after calling this function, the line parser will not accept any more data. any attempts to call `handle(_:)` will result in undefined behavior.
+	/// - parameter discardingBufferedData: whether or not to discard any buffered data. if this is set to `true`, any buffered data will be discarded. if this is set to `false`, any buffered data will be passed to the configured output.
 	internal mutating func finish(discardingBufferedData:Bool = false) {
 		if discardingBufferedData {
 			lp_close_dataloss(&self.lp)
@@ -71,12 +71,12 @@ internal struct LineParser {
 					memcpy(buffer.baseAddress!, data, length)
 					count = length
 				})
-				buildItems.append(asArray)
+			buildItems.append(asArray)
 			})
 			if buildItems.count > 0 {
 				switch self.outMode {
-				// case .continuation(let continuation):
-				// 	continuation.yield(buildItems)
+				case .continuation(let continuation):
+					continuation.yield(buildItems)
 				case .handler(let handler):
 					handler(buildItems)
 				}

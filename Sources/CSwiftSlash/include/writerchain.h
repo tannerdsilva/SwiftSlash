@@ -1,18 +1,12 @@
 #ifndef CLIBSWIFTSLASH_WC_H
 #define CLIBSWIFTSLASH_WC_H
 
-#include <stdint.h>
 #include <stddef.h>
-#include <stdbool.h>
+#include <pthread.h>
 
-/// a pointer to an integer, an integer which signifies error codes.
-typedef int*_Nonnull err_ptr_t;
+#include "future.h"
 
-/// a pointer to an unsigned integer, an integer which signifies a count of successful operations.
-typedef uint32_t*_Nonnull succ_ptr_t;
-
-/// a pointer to a data byte buffer.
-typedef uint8_t*_Nonnull data_ptr_t;
+#include "types.h"
 
 // forward declaration of the writerchain structure.
 struct writerchain;
@@ -32,24 +26,43 @@ typedef struct writerchain {
     const size_t datasize;
     _Atomic size_t written;
     writerchain_aptr_t next;
+	const bool futureInitialized;
+	future_int64_t future;
 } writerchain_t;
 
+/// a structure that stores the base and tail of the writerchain.
+typedef struct writerchainpair {
+	writerchain_aptr_ptr_t base;
+	writerchain_aptr_ptr_t tail;
+} writerchainpair_t;
+
+typedef writerchainpair_t*_Nonnull writerchainpair_ptr_t;
+
+/// @brief initializes a writerchainpair
+writerchainpair_t wcp_init(void);
+
+/// @brief deinitializes a writerchainpair
+void wcp_close(const writerchainpair_ptr_t chain);
+
+/// @brief appends data to a writerchain.
 /// @param base the pointer to a chain to append to. the pointed to value may be NULL, and this is how a new chain is created.
-/// @param tail the tail of the chain to append to. the pointed to value may be NULL, and this is how a new chain is created.
-/// @param data the data to append.
+/// @param chain the chain to append the data to.
+/// @param data the data to append to the chain.
 /// @param datalen the length of the data to append.
-void wc_append(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const data_ptr_t data, const size_t datalen);
+void wc_append(const writerchainpair_ptr_t chain, const data_ptr_t data, const size_t datalen);
 
-/// @brief flushes as much of the chain to the file handle as possible
-/// @param base the pointer to the base of the chain to flush.
-/// @param tail the tail of the chain to flush.
-/// @param fd the file handle to flush to
-/// @param err the error code to set if an error occurs
-/// @return boolean indicating whether there was a critical error.
-bool wc_flush(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail, const int fd, const err_ptr_t err);
+/// @brief appends data to a writerchain and returns a future that will be completed when the data is written.
+/// @param chain the pointer to a chain to append to.
+/// @param data the data to append to the chain.
+/// @param datalen the length of the data to append.
+future_int64_ptr_t wc_append_future(const writerchainpair_ptr_t chain, const data_ptr_t data, const size_t datalen);
 
-/// @brief deinitialize a given writerchain
-/// @param base the chain to deinitialize
-void wc_close(const writerchain_aptr_ptr_t base, const writerchain_aptr_ptr_t tail);
+/// @brief flushes as much of the chain to the file handle as possible.
+/// @param chain the chain to flush.
+/// @param fd the file handle to flush to.
+/// @param err a pointer to an integer that will be set to the error code of the final write operation, if it failed.
+/// @return boolean indicating whether the write operation was successful.
+/// @note this function may assign a value for err even though it returns true.
+bool wc_flush(const writerchainpair_ptr_t chain, const int fd, const err_ptr_t err);
 
 #endif /* CLIBSWIFTSLASH_WC_H */
