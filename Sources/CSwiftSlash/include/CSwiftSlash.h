@@ -1,7 +1,6 @@
 #ifndef CSWIFTSLASH_MASTER_H
 #define CSWIFTSLASH_MASTER_H
 
-
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -11,7 +10,6 @@
 #include "lineparser.h"
 #include "writerchain.h"
 #include "terminationgroup.h"
-// #include "eventtrigger.h"
 #include "writerinfo.h"
 #include "future.h"
 

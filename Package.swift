@@ -1,37 +1,79 @@
 // swift-tools-version:5.5
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
 import PackageDescription
+
+#if SWIFTSLASH_LOG_ENABLE
+
+// this lists the dependencies that are needed to build this package.
+// - note: this is the value for this variable when logging is ENABLED.
+let packageDependencies:[Package.Dependency] = [
+	.package(
+		url:"https://github.com/apple/swift-log.git",
+		from:"1.0.0"
+	)
+]
+
+// this is the main library that is exposed to the user.
+// - note: this is the value for this variable when logging is ENABLED.
+let publicSwiftSlashTarget:Target = .target(
+	name:"SwiftSlash",
+	dependencies:[
+		.product(name:"Logging", package:"swift-log"),
+		"CSwiftSlash"
+	]
+)
+
+#else
+
+// this lists the depencies that are needed to build this package.
+// - note: this is the value for this variable when logging is DISABLED.
+let packageDependencies:[Package.Dependency] = []
+
+let publicSwiftSlashTarget:Target = .target(
+	name:"SwiftSlash",
+	dependencies:[
+		"CSwiftSlash"
+	]
+)
+
+#endif
+
+// this is the c library that facilitates the system calls that are needed to make SwiftSlash operable.
+let internalClibTarget:Target = .target(
+	name:"CSwiftSlash",
+	cSettings: [
+		.define("_GNU_SOURCE", to:"1", .when(platforms:[.linux])),
+	]
+)
+
+// this is the target that is used to test the SwiftSlash library.
+let internalTestTarget:Target = .testTarget(
+	name:"SwiftSlashTests",
+	dependencies:[
+		"SwiftSlash"
+	]
+)
+
+// this is the list of targets that are used to build this package.
+let packageTargets = [
+	publicSwiftSlashTarget,
+	internalClibTarget,
+	internalTestTarget
+]
+
+// this is the main package definition.
 let package = Package(
     name:"SwiftSlash",
     platforms:[
         .macOS(.v12)
     ],
     products:[
-        // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
         	name:"SwiftSlash",
-            targets:["SwiftSlash"])
+            targets:[
+				"SwiftSlash"
+			]
+		)
     ],
-    dependencies:[
-		.package(url:"https://github.com/apple/swift-log.git", from:"1.0.0")
-	],
-    targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages which this package depends on.
-        .target(
-            name: "SwiftSlash",
-            dependencies:[
-				.product(name:"Logging", package:"swift-log"),
-				"CSwiftSlash"
-			]),
-        .target(
-        	name:"CSwiftSlash",
-			cSettings: [
-				.define("_GNU_SOURCE", to:"1", .when(platforms:[.linux])),
-			]),
-        .testTarget(
-            name: "SwiftSlashTests",
-            dependencies: ["SwiftSlash"]),
-    ]
+    dependencies:packageDependencies,
+    targets:packageTargets
 )
