@@ -12,15 +12,14 @@
 #include "terminationgroup.h"
 #include "writerinfo.h"
 #include "future.h"
+#include "workthread.h"
 
 #if __linux
 #include <sys/epoll.h>
 #endif
 
 pid_t cfork(void);
-
 int getErrno();
-
 int getfdlimit(double*_Nonnull utilized, double*_Nonnull limit);
 
 #endif

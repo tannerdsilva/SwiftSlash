@@ -34,11 +34,12 @@ class FutureTests: XCTestCase {
 				})
 			}
 		}
-		future_int64_t_destroy(&future)
-        
-        // Check if the future has completed and the result is set correctly
+
+		// Check if the future has completed and the result is set correctly
 		XCTAssert(completionResult.0 == 0)
 		XCTAssert(completionResult.1 == 42)
+
+		future_int64_t_destroy(&future)	
     }
     
     // func testDoubleBroadcastCompletion() async {
