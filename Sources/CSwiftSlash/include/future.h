@@ -5,7 +5,6 @@
 
 #include <pthread.h>
 
-
 // status values.
 typedef enum future_status {
 	// pending status (future not fufilled)

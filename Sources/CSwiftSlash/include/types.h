@@ -1,5 +1,5 @@
-#ifndef CLIBSWIFTSLASH_TYPES_H
-#define CLIBSWIFTSLASH_TYPES_H
+#ifndef _CLIBSWIFTSLASH_TYPES_H
+#define _CLIBSWIFTSLASH_TYPES_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -14,4 +14,4 @@ typedef uint8_t*_Nonnull data_ptr_t;
 /// an abstract pointer type.
 typedef void*_Nullable ptr_t;
 
-#endif // CLIBSWIFTSLASH_TYPES_H
+#endif // _CLIBSWIFTSLASH_TYPES_H
