@@ -1,35 +1,34 @@
-#include "include/lineparser.h"
+// LICENSE MIT
+// copyright (c) tanner silva 2024. all rights reserved.
+#include "include/_cswiftslash_lineparser.h"
 #include <stdlib.h>
 #include <string.h>
 
 /// line parsers may only scale in one direction. this function doubles the size of the buffer so that additional data may be stored.
 /// parameters:
 /// 	- parser: the line parser to resize
-void lineparser_resize_up(lineparser_t *parser) {
+void lineparser_resize_up(_cswiftslash_lineparser_t *parser) {
 	// double the size of the buffer
 	parser->buffsize = parser->buffsize * 2;
-
 	// capture the old buffer so it may be freed
 	void *oldbuff = parser->intakebuff;
-	
 	// copy the data to the new buffer
 	parser->intakebuff = memcpy(malloc(parser->buffsize), parser->intakebuff, parser->occupied);
-	
 	// free the old buffer.
 	free(oldbuff);
 }
 
 /// @brief prepares the line parser to parse the next line. clears the previous line from the buffer.
 /// @param parser the line parser to trim
-void lineparser_trim(lineparser_t *parser) {
+void _cswiftslash_lineparser_trim(_cswiftslash_lineparser_t *parser) {
 	// copy the data to the beginning of the buffer.
 	memcpy(parser->intakebuff, parser->intakebuff + parser->i, parser->buffsize - parser->i);
 	parser->occupied = parser->occupied - parser->i;
 	parser->i = 0;
 }
 
-extern lineparser_t lp_init(const uint8_t*_Nullable match, const uint8_t matchlen) {
-	lineparser_t newparser = {
+_cswiftslash_lineparser_t _cswiftslash_lineparser_init(const uint8_t*_Nullable match, const uint8_t matchlen) {
+	_cswiftslash_lineparser_t newparser = {
 		.buffsize = 1024,
 		.intakebuff = malloc(1024),
 		.i = 0,
@@ -44,7 +43,7 @@ extern lineparser_t lp_init(const uint8_t*_Nullable match, const uint8_t matchle
 }
 
 // send data into the line parser
-void lp_intake(lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data, size_t data_len, const lp_handler_f dh) {
+void _cswiftslash_lineparser_intake(_cswiftslash_lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data, size_t data_len, const _cswiftslash_lineparser_handler_f dh) {
 	if (parser->matchsize > 0) {
 		// resize the parser to fit the data, if necessary
 		while ((parser->occupied + data_len) > parser->buffsize) {
@@ -62,7 +61,7 @@ void lp_intake(lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data,
 					parser->matched = 0;
 					parser->i = parser->i + 1;
 					dh(parser->intakebuff, parser->i - parser->matchsize);
-					lineparser_trim(parser);
+					_cswiftslash_lineparser_trim(parser);
 				} else {
 					parser->i = parser->i + 1;
 				}
@@ -77,7 +76,7 @@ void lp_intake(lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data,
 }
 
 // close the line parser from memory
-void lp_close(lineparser_t*_Nonnull parser, const lp_handler_f dh) {
+void _cswiftslash_lineparser_close(_cswiftslash_lineparser_t*_Nonnull parser, const _cswiftslash_lineparser_handler_f dh) {
 	if (parser->occupied > 0) {
 		dh(parser->intakebuff, parser->occupied);
 	}
@@ -87,7 +86,7 @@ void lp_close(lineparser_t*_Nonnull parser, const lp_handler_f dh) {
 	}
 }
 
-void lp_close_dataloss(lineparser_t*_Nonnull parser) {
+void _cswiftslash_lineparser_close_dataloss(_cswiftslash_lineparser_t*_Nonnull parser) {
 	free(parser->intakebuff);
 	if (parser->matchsize > 0) {
 		free(parser->match);

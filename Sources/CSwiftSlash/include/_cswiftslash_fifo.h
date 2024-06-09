@@ -1,3 +1,5 @@
+// LICENSE MIT
+// copyright (c) tanner silva 2024. all rights reserved.
 #ifndef _CSWIFTSLASH_FIFO_H
 #define _CSWIFTSLASH_FIFO_H
 
@@ -22,7 +24,7 @@ typedef struct _cswiftslash_fifo_link {
 	_cswiftslash_fifo_link_aptr_t next;
 } _cswiftslash_fifo_link_t;
 
-/// structure representing a pair of pointers to the head and tail of a fifo, enabling efficient management and access to the chain.
+/// structure representing a pair of pointers to the head and tail of a fifo, enabling efficient management and access to both ends of the chain.
 typedef struct _cswiftslash_fifo_linkpair {
 	/// pointer to the base (head) of the chain, serving as the entry point.
 	_cswiftslash_fifo_link_aptr_t base;

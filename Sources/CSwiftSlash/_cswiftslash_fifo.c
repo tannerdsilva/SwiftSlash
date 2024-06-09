@@ -1,3 +1,5 @@
+// LICENSE MIT
+// copyright (c) tanner silva 2024. all rights reserved.
 #include "include/_cswiftslash_fifo.h"
 #include <pthread.h>
 #include <stdatomic.h>

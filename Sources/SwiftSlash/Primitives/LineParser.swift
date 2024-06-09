@@ -21,7 +21,7 @@ internal struct LineParser {
 	}
 
 	/// the line parser.
-	private var lp:lineparser_t
+	private var lp:_cswiftslash_lineparser_t
 	/// the output mode of the line parser.
 	internal let outMode:Output
 
@@ -32,10 +32,10 @@ internal struct LineParser {
 	internal init(configuration:Configuration, output:Output) {
 		switch configuration {
 		case .noSeparator:
-			self.lp = lp_init(nil, 0);
+			self.lp = _cswiftslash_lineparser_init(nil, 0);
 			self.outMode = output
 		case .withSeparator(let separator):
-			self.lp = lp_init(separator, UInt8(separator.count));
+			self.lp = _cswiftslash_lineparser_init(separator, UInt8(separator.count));
 			self.outMode = output
 		}
 	}
@@ -44,7 +44,7 @@ internal struct LineParser {
 	///	- parameter data: the data to handle.
 	internal mutating func handle(_ data:inout [UInt8]) {
 		var result = [[UInt8]]()
-		lp_intake(&self.lp, &data, data.count, { data, length in
+		_cswiftslash_lineparser_intake(&self.lp, &data, data.count, { data, length in
 			let asArray = Array<UInt8>(unsafeUninitializedCapacity: length, initializingWith: { buffer, count in
 				memcpy(buffer.baseAddress!, data, length)
 				count = length
@@ -63,10 +63,10 @@ internal struct LineParser {
 	/// - parameter discardingBufferedData: whether or not to discard any buffered data. if this is set to `true`, any buffered data will be discarded. if this is set to `false`, any buffered data will be passed to the configured output.
 	internal mutating func finish(discardingBufferedData:Bool = false) {
 		if discardingBufferedData {
-			lp_close_dataloss(&self.lp)
+			_cswiftslash_lineparser_close_dataloss(&self.lp)
 		} else {
 			var buildItems = [Bytes]()
-			lp_close(&self.lp, { data, length in
+			_cswiftslash_lineparser_close(&self.lp, { data, length in
 				let asArray = Array<UInt8>(unsafeUninitializedCapacity: length, initializingWith: { buffer, count in
 					memcpy(buffer.baseAddress!, data, length)
 					count = length
