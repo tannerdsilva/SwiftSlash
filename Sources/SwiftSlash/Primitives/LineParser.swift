@@ -77,7 +77,7 @@ internal struct LineParser:~Copyable {
 					memcpy(buffer.baseAddress!, data, length)
 					count = length
 				})
-			buildItems.append(asArray)
+				buildItems.append(asArray)
 			})
 			if buildItems.count > 0 {
 				switch self.outMode {

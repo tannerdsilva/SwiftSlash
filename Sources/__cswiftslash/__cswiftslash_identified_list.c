@@ -11,7 +11,7 @@
 #include <limits.h>
 #include <sys/types.h>
 
-_cswiftslash_identified_list_pair_t _cswiftslash_identified_list_init_keyed() {
+_cswiftslash_identified_list_pair_t _cswiftslash_identified_list_init() {
 	_cswiftslash_identified_list_pair_t newVar = {
 		.base = NULL,
 		.element_count = 0,
@@ -21,7 +21,7 @@ _cswiftslash_identified_list_pair_t _cswiftslash_identified_list_init_keyed() {
 	return newVar;
 }
 
-void _cswiftslash_identified_list_close_keyed(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f) {
+void _cswiftslash_identified_list_close(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f) {
 	// iterate through the list and free all entries
 	_cswiftslash_identified_list_ptr_t current = atomic_load_explicit(&list->base, memory_order_acquire);
 	while (current != NULL) {

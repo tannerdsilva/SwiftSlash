@@ -5,7 +5,7 @@ class LineParserTests: XCTestCase {
 
 	// Test handling data with no separator configuration.
 	func testHandleDataWithNoSeparator() {
-		var lines = [Bytes]()
+		var lines = [[UInt8]]()
 		let output: LineParser.Output = .handler { newLines in
 			lines.append(contentsOf:newLines)
 		}
@@ -19,7 +19,7 @@ class LineParserTests: XCTestCase {
 
 	// Test handling data with separator configuration.
 	func testHandleDataWithSeparator() {
-		var lines = [Bytes]()
+		var lines = [[UInt8]]()
 		let output: LineParser.Output = .handler { newLines in
 			lines.append(contentsOf: newLines)
 		}
@@ -33,7 +33,7 @@ class LineParserTests: XCTestCase {
 
 	// Test handling data with multi-character separator configuration.
 	func testHandleDataWithMultiCharacterSeparator() {
-		var lines = [Bytes]()
+		var lines = [[UInt8]]()
 		let output: LineParser.Output = .handler { newLines in
 			lines.append(contentsOf: newLines)
 		}
@@ -47,7 +47,7 @@ class LineParserTests: XCTestCase {
 
 	// Test handling random-length data with random single-byte separator.
 	func testHandleRandomDataWithRandomSingleByteSeparator() {
-		var lines = [Bytes]()
+		var lines = [[UInt8]]()
 		let output: LineParser.Output = .handler { newLines in
 			lines.append(contentsOf: newLines)
 		}
@@ -67,7 +67,7 @@ class LineParserTests: XCTestCase {
 
 	// Test handling random-length data with random multi-byte separator.
 	func testHandleRandomDataWithRandomMultiByteSeparator() {
-		var lines = [Bytes]()
+		var lines = [[UInt8]]()
 		let output: LineParser.Output = .handler { newLines in
 			lines.append(contentsOf: newLines)
 		}

@@ -47,13 +47,13 @@ typedef _cswiftslash_identified_list_pair_t*_Nonnull _cswiftslash_identified_lis
 // initialization and deinitialization.
 
 /// initializes a new atomic list pair instance.
-/// @return a new atomic list pair instance. this instance must be deallocated with ``_cswiftslash_identified_list_close_keyed``
-_cswiftslash_identified_list_pair_t _cswiftslash_identified_list_init_keyed();
+/// @return a new atomic list pair instance. this instance must be deallocated with ``_cswiftslash_identified_list_close``
+_cswiftslash_identified_list_pair_t _cswiftslash_identified_list_init();
 
 /// deallocates memory of the atomic list pair instance. any remaining elements in the list will be deallocated.
 /// @param list pointer to the atomic list pair instance to be deallocated.
 /// @param consumer_f function used to process the data pointer before it is orphaned in the heap forever
-void _cswiftslash_identified_list_close_keyed(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f);
+void _cswiftslash_identified_list_close(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f);
 
 // data handling.
 
