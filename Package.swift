@@ -1,6 +1,4 @@
-// swift-tools-version:5.5
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
+// swift-tools-version:5.9
 import PackageDescription
 let package = Package(
     name:"SwiftSlash",
@@ -8,28 +6,23 @@ let package = Package(
         .macOS(.v12)
     ],
     products:[
-        // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
         	name:"SwiftSlash",
             targets:["SwiftSlash"])
     ],
     dependencies:[
-		.package(url:"https://github.com/apple/swift-log.git", from:"1.0.0")
+		.package(url:"https://github.com/apple/swift-log.git", "1.0.0"..<"2.0.0") // supports all known major releases of swift-log
 	],
     targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
             name: "SwiftSlash",
             dependencies:[
 				.product(name:"Logging", package:"swift-log"),
-				"CSwiftSlash"
+				"__cswiftslash"
 			]),
         .target(
-        	name:"CSwiftSlash",
-			cSettings: [
-				.define("_GNU_SOURCE", to:"1", .when(platforms:[.linux])),
-			]),
+        	name:"__cswiftslash",
+			cSettings: []),
         .testTarget(
             name: "SwiftSlashTests",
             dependencies: ["SwiftSlash"]),

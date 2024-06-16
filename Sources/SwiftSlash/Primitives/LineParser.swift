@@ -1,23 +1,29 @@
-import CSwiftSlash
+import __cswiftslash
+
+#if os(Linux)
+import Glibc
+#elseif os(macOS)
+import Darwin
+#endif
 
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
-internal struct LineParser {
+internal struct LineParser:~Copyable {
 
 	/// the configuration of the line parser.
 	internal enum Configuration {
 		/// no parsing. data will be passed as soon as it is provided by the kernel.
 		case noSeparator
 		/// parse lines separated by the given separator.
-		case withSeparator(Bytes)
+		case withSeparator([UInt8])
 	}
 
 	/// the output mode of the line parser.
 	internal enum Output {
 		/// the line parser will yield the parsed lines to the given continuation.
-		case continuation(AsyncStream<[Bytes]>.Continuation)
+		case continuation(AsyncStream<[[UInt8]]>.Continuation)
 		/// the line parser will handle the parsed lines with the given handler.
-		case handler(([Bytes]) -> Void)
+		case handler(([[UInt8]]) -> Void)
 	}
 
 	/// the line parser.
@@ -65,7 +71,7 @@ internal struct LineParser {
 		if discardingBufferedData {
 			_cswiftslash_lineparser_close_dataloss(&self.lp)
 		} else {
-			var buildItems = [Bytes]()
+			var buildItems = [[UInt8]]()
 			_cswiftslash_lineparser_close(&self.lp, { data, length in
 				let asArray = Array<UInt8>(unsafeUninitializedCapacity: length, initializingWith: { buffer, count in
 					memcpy(buffer.baseAddress!, data, length)

@@ -1,7 +1,7 @@
 // LICENSE MIT
 // copyright (c) tanner silva 2024. all rights reserved.
-#include "_cswiftslash_identified_list.h"
-#include "_cswiftslash_types.h"
+#include "__cswiftslash_identified_list.h"
+#include "__cswiftslash_types.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>

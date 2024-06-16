@@ -3,7 +3,7 @@
 #ifndef _CSWIFTSLASH_FIFO_H
 #define _CSWIFTSLASH_FIFO_H
 
-#include "_cswiftslash_types.h"
+#include "__cswiftslash_types.h"
 #include <sys/types.h>
 #include <pthread.h>
 
