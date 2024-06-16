@@ -19,10 +19,10 @@ internal final class AtomicList<T>:@unchecked Sendable {
 
 	private final class Contained {
 		private let store:T
-		internal init(store:T) {
+		fileprivate init(store:T) {
 			self.store = store
 		}
-		internal func takeStored() -> T {
+		fileprivate func takeStored() -> T {
 			return store
 		}
 	}
