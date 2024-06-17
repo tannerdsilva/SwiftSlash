@@ -24,6 +24,8 @@ internal struct LineParser:~Copyable {
 		case continuation(AsyncStream<[[UInt8]]>.Continuation)
 		/// the line parser will handle the parsed lines with the given handler.
 		case handler(([[UInt8]]) -> Void)
+
+		case nasync(NAsyncStream<Array<[UInt8]>>)
 	}
 
 	/// the line parser.
@@ -49,7 +51,7 @@ internal struct LineParser:~Copyable {
 	/// handles the given data.
 	///	- parameter data: the data to handle.
 	internal mutating func handle(_ data:inout [UInt8]) {
-		var result = [[UInt8]]()
+		var result = Array<[UInt8]>()
 		_cswiftslash_lineparser_intake(&self.lp, &data, data.count, { data, length in
 			let asArray = Array<UInt8>(unsafeUninitializedCapacity: length, initializingWith: { buffer, count in
 				memcpy(buffer.baseAddress!, data, length)
@@ -62,6 +64,8 @@ internal struct LineParser:~Copyable {
 			continuation.yield(result)
 		case .handler(let handler):
 			handler(result)
+		case .nasync(let nas):
+			nas.yield(result)
 		}
 	}
 
@@ -85,6 +89,8 @@ internal struct LineParser:~Copyable {
 					continuation.yield(buildItems)
 				case .handler(let handler):
 					handler(buildItems)
+				case .nasync(let nas):
+					nas.yield(buildItems)
 				}
 			}
 		}
