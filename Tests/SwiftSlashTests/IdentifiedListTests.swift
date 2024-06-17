@@ -1,60 +1,37 @@
 import XCTest
 @testable import SwiftSlash
 
-fileprivate final class WhenDeinitTool<T> {
-	private var deinitClosure: (() -> Void)?
-	fileprivate var value:T
-	init(_ value:T, deinitClosure: @escaping () -> Void) {
-		self.deinitClosure = deinitClosure
-		self.value = value
-	}
-	
-	deinit {
-		deinitClosure?()
-	}
-}
-
-extension WhenDeinitTool:Equatable, Hashable where T:Hashable, T:Equatable {
-	static func == (lhs: WhenDeinitTool<T>, rhs: WhenDeinitTool<T>) -> Bool {
-		return lhs.value == rhs.value
-	}
-	
-	func hash(into hasher: inout Hasher) {
-		hasher.combine(value)
-	}
-}
-
 class AtomicListTests: XCTestCase {
-    func testMemoryLifecycle() {
-        var atomicList:AtomicList<WhenDeinitTool<Int>>? = AtomicList<WhenDeinitTool<Int>>()
+	func testMemoryLifecycle() {
+		var atomicList:AtomicList<WhenDeinitTool<Int>>? = AtomicList<WhenDeinitTool<Int>>()
 
 		var deinitCount = 0
 		func didDeinit() {
 			deinitCount += 1
 		}
-        
-        // Insert elements
-        let key1 = atomicList!.insert(WhenDeinitTool(10, deinitClosure: didDeinit))
-        let key2 = atomicList!.insert(WhenDeinitTool(20, deinitClosure: didDeinit))
-        let key3 = atomicList!.insert(WhenDeinitTool(30, deinitClosure: didDeinit))
-        
-        // Check if elements are inserted correctly
-        var result: [UInt64:Int] = [:]
-        atomicList!.forEach { k, value in
-            result[k] = value.value
-        }
-        XCTAssertEqual(result, [key1: 10, key2: 20, key3: 30])
-        
-        // Remove an element
-        let removedValue = atomicList!.remove(key2)?.value
-        XCTAssertEqual(removedValue, 20)
-        
-        // Check if the removed element is no longer present
-        result = [:]
-        atomicList!.forEach { k, value in
-            result[k] = value.value
-        }
-        XCTAssertEqual(result, [key1: 10, key3: 30])
+		
+		// Insert elements
+		let key1 = atomicList!.insert(WhenDeinitTool(10, deinitClosure: didDeinit))
+		let key2 = atomicList!.insert(WhenDeinitTool(20, deinitClosure: didDeinit))
+		let key3 = atomicList!.insert(WhenDeinitTool(30, deinitClosure: didDeinit))
+		
+		// Check if elements are inserted correctly
+		var result: [UInt64:Int] = [:]
+		atomicList!.forEach { k, value in
+			result[k] = value.value
+		}
+		XCTAssertEqual(result, [key1: 10, key2: 20, key3: 30])
+		
+		// Remove an element
+		let removedValue = atomicList!.remove(key2)?.value
+		XCTAssertEqual(removedValue, 20)
+		
+		// Check if the removed element is no longer present
+		result = [:]
+		atomicList!.forEach { k, value in
+			result[k] = value.value
+		}
+		XCTAssertEqual(result, [key1: 10, key3: 30])
 
 		// Check if the deinit closure is called
 		XCTAssertEqual(deinitCount, 1)
@@ -64,7 +41,7 @@ class AtomicListTests: XCTestCase {
 
 		// Check if the deinit closure is called for the remaining elements
 		XCTAssertEqual(deinitCount, 3)
-    }
+	}
     
     func testRemoveNonExistingKey() {
         let atomicList = AtomicList<String>()

@@ -7,7 +7,7 @@ internal final class AtomicList<T>:@unchecked Sendable {
 	
 	deinit {
 		_cswiftslash_identified_list_close(list_store_ptr, { key, ptr in
-			Unmanaged<Contained>.fromOpaque(ptr).release()
+			_ = Unmanaged<Contained>.fromOpaque(ptr).takeRetainedValue()
 		})
 		list_store_ptr.deallocate()
 	}
