@@ -102,29 +102,6 @@ extension FIFO {
 	internal func makeAsyncIterator() -> AsyncIterator {
 		return AsyncIterator(self)
 	}
-	/// call this function to become the exclusive producer for a FIFO. the returned object will be used to produce data for the FIFO.
-	internal func makeContinuation() -> Continuation {
-		return Continuation(fifo:self)
-	}
-
-	internal struct Continuation:Sendable {
-		private let fifo:FIFO<T>
-		internal init(fifo:FIFO<T>) {
-			self.fifo = fifo
-		}
-
-		internal func yield(_ data:T) {
-			fifo.yield(data)
-		}
-
-		internal func finish() {
-			fifo.finish()
-		}
-
-		internal func finish(throwing err:Swift.Error) {
-			fifo.finish(throwing:err)
-		}
-	}
 
 	internal struct AsyncIterator:AsyncIteratorProtocol {
 	    internal mutating func next() async throws -> T? {

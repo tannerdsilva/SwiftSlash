@@ -9,9 +9,6 @@ class FIFOTests: XCTestCase {
             deinitCount += 1
         }
 
-        // Create a continuation for producing data
-        var producer = fifo!.makeContinuation()
-        
         // Create an async task for consuming data
         let consumerTask = Task { [fifo] in
 			var fifoIterator = fifo!.makeAsyncIterator()
@@ -27,12 +24,12 @@ class FIFOTests: XCTestCase {
         }
         
         // Produce data wrapped in WhenDeinitTool
-        producer.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
-        producer.yield(WhenDeinitTool(2, deinitClosure:didDeinit))
-        producer.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
-        producer.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
-        producer.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
-        producer.finish()
+        fifo!.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
+        fifo!.yield(WhenDeinitTool(2, deinitClosure:didDeinit))
+        fifo!.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
+        fifo!.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
+        fifo!.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
+        fifo!.finish()
         
         // Wait for the consumer task to complete
         await consumerTask.result
