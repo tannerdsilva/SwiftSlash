@@ -25,7 +25,7 @@ class FIFOTests: XCTestCase {
         
         // Produce data wrapped in WhenDeinitTool
         fifo!.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
-        fifo!.yield(WhenDeinitTool(2, deinitClosure:didDeinit))
+        fifo!.yield(WhenDeinitTool(2, deinitClosure: didDeinit))
         fifo!.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
         fifo!.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
         fifo!.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
@@ -66,7 +66,7 @@ class FIFOTests: XCTestCase {
         }
 
 		var fifoIterator:FIFO<WhenDeinitTool<Int>>.AsyncIterator? = fifo!.makeAsyncIterator()
-		var consumer = Task { [fi = fifoIterator!] in
+		let consumer = Task { [fi = fifoIterator!] in
 			var fifoIterator = fi
 			do {
 				var result: [Int] = []
