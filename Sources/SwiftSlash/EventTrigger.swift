@@ -184,8 +184,6 @@ internal struct PThread:~Copyable {
 		self.pt_primitive = pthread
 	}
 
-
-
 	internal consuming func cancel() {
 		guard pthread_cancel(pt_primitive.pointee) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
