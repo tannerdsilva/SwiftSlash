@@ -177,10 +177,12 @@ internal struct PThread:~Copyable {
 	internal init(logger:consuming Logger, _ f:@escaping (borrowing Logger) throws -> Void) throws {
 		let pthread = UnsafeMutablePointer<pthread_t>.allocate(capacity:1)
 		let configPtr = Unmanaged.passRetained(PThread.ContainedConfiguration(logger, run:f))
+		#if os(Linux)
 		guard pthread_create(pthread, nil, { Self.mainWrapper($0!) }, configPtr.toOpaque()) != 0 && pthread != nil else {
 			_ = configPtr.takeRetainedValue()
 			throw LaunchError()
 		}
+		#endif
 		self.pt_primitive = pthread
 	}
 
