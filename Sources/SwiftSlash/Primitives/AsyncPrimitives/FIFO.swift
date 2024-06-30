@@ -7,6 +7,7 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 	private let stream:_Concurrency.AsyncStream<Void>
 	private let continuation:_Concurrency.AsyncStream<Void>.Continuation
 	private let datachain_primitive_ptr:UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>
+	
 	internal init() {
 		let newPointer = UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>.allocate(capacity:1)
 		newPointer.initialize(to:_cswiftslash_fifo_init())
@@ -18,7 +19,7 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 	}
 
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized.
-	internal func yield(_ element:T) {
+	internal borrowing func yield(_ element:consuming T) {
 		let um = Unmanaged.passRetained(ContainedItem(element))
 		#if DEBUG
 		var i:UInt8 = 0
@@ -44,11 +45,11 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 				default:
 					fatalError("unexpected return value from _cwskit_dc_pass")
 			}
-		} while true
+		} while Task.isCancelled == false
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	internal func finish(throwing finishingError:Swift.Error) {
+	internal borrowing func finish(throwing finishingError:consuming Swift.Error) {
 		let resultElement = Unmanaged.passRetained(ContainedResult(.failure(finishingError)))
 		guard _cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()
@@ -58,7 +59,7 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	internal func finish() {
+	internal borrowing func finish() {
 		let resultElement = Unmanaged.passRetained(ContainedResult(.success(())))
 		guard _cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()

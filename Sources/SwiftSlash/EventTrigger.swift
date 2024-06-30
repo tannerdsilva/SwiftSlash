@@ -19,6 +19,7 @@ public protocol EventTrigger {
 	func register(writer:Int32) throws
 	func deregister(reader:Int32) throws
 	func deregister(writer:Int32) throws
+	
 	associatedtype EventTriggerHandle
 
 	static func run() async throws

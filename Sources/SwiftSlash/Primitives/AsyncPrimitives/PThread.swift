@@ -13,7 +13,12 @@ internal struct PThread:~Copyable {
 	internal struct LaunchError:Swift.Error {}
 	
 	/// thrown when an operation cannot be completed because the pthread is in an invalid state.
-	internal struct InvalidModeError:Swift.Error {}
+	internal struct InvalidModeError:Swift.Error {
+		internal let mode:PThreadOperationMode
+		internal init(mode:PThreadOperationMode) {
+			self.mode = mode
+		}
+	}
 
 	/// main function that handles the unwrapping of the logger before calling the main function.
 	private static func mainWrapper(_ ptr:UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
@@ -41,8 +46,17 @@ internal struct PThread:~Copyable {
 
 	internal struct PThreadOperationMode:OptionSet {
 		internal let rawValue:UInt8
+
+		/// this is the explicit value of the mode byte when the pthread is dead.
+		internal static let dead: PThreadOperationMode = PThreadOperationMode(rawValue:0)
+
+		/// this flag is enabled when the pthread is running.
 		internal static let running = PThreadOperationMode(rawValue:1)
+
+		/// this flag is enabled when the pthread has been sent a cancel signal.
 		internal static let canceled = PThreadOperationMode(rawValue:1 << 1)
+
+		/// this flag is enabled when the pthread has a pending join. after the join, 
 		internal static let joining = PThreadOperationMode(rawValue:2 << 1)
 	}
 	private var mode:_cswiftslash_atomic_uint8_t
@@ -67,37 +81,52 @@ internal struct PThread:~Copyable {
 		_cswiftslash_auint8_store(&mode, PThreadOperationMode.running.rawValue)
 	}
 
-	internal consuming func cancel() throws {
-		infiniteLoop: repeat {
-			// check existing mode
-			var existingMode = _cswiftslash_auint8_load(&mode)
-			switch existingMode {
+	internal mutating func cancel() throws {
+		var existingMode = _cswiftslash_auint8_load(&mode)
+		switch existingMode {
 
-			case PThreadOperationMode.running.rawValue:
-				// running mode, try to set to canceled mode
-				guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.canceled.rawValue) else {
-					// mode changed, loop again to check new mode
-					continue infiniteLoop
+		case PThreadOperationMode.running.rawValue:
+			// running mode, try to set to canceled mode
+			guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.canceled.rawValue) else {
+				// check if it was already canceled
+				if (existingMode & PThreadOperationMode.canceled.rawValue != 0) || (existingMode & PThreadOperationMode.running.rawValue == 0) {
+					return
 				}
-			default:
-				throw InvalidModeError()
+				throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
 			}
+		default:
+			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
+		}
 
-			// success, cancel the pthread
-			#if os(Linux)
-			guard pthread_cancel(pt_primitive.pointee) == 0 else {
-				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
-			}
-			#elseif os(macOS)
-			guard pthread_cancel(pt_primitive.pointee!) == 0 else {
-				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
-			}
-			#endif
-
-		} while Task.isCancelled == false
+		// success, cancel the pthread
+		#if os(Linux)
+		guard pthread_cancel(pt_primitive.pointee) == 0 else {
+			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
+		}
+		#elseif os(macOS)
+		guard pthread_cancel(pt_primitive.pointee!) == 0 else {
+			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
+		}
+		#endif
 	}
 
-	deinit {
+	internal consuming func join() throws {
+		var existingMode = _cswiftslash_auint8_load(&mode)
+		switch existingMode {
+		case PThreadOperationMode.running.rawValue:
+			// running mode, try to set to joining mode
+			guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.joining.rawValue) else {
+				// check if it was already canceled
+				if (existingMode & PThreadOperationMode.canceled.rawValue != 0) || (existingMode & PThreadOperationMode.running.rawValue == 0) {
+					return
+				}
+				throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
+			}
+		default:
+			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
+		}
+
+		// success, join the pthread
 		#if os(Linux)
 		var retPtr:UnsafeMutableRawPointer? = nil
 		guard pthread_join(pt_primitive.pointee, &retPtr) == 0 else {
@@ -113,6 +142,43 @@ internal struct PThread:~Copyable {
 		_ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
 		pt_primitive.deallocate()
 		#endif
+	}
+
+	deinit {
+		// do any remaining cleanup
+		var finalMode = mode
+
+		// if the pthread is not canceled, cancel it
+		if _cswiftslash_auint8_load(&finalMode) & PThreadOperationMode.canceled.rawValue == 0 {
+			#if os(Linux)
+			guard pthread_cancel(pt_primitive.pointee) == 0 else {
+				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
+			}
+			#elseif os(macOS)
+			guard pthread_cancel(pt_primitive.pointee!) == 0 else {
+				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
+			}
+			#endif
+		}
+
+		// if the pthread is not joined, join it
+		if _cswiftslash_auint8_load(&finalMode) & PThreadOperationMode.joining.rawValue == 0 {
+			#if os(Linux)
+			var retPtr:UnsafeMutableRawPointer? = nil
+			guard pthread_join(pt_primitive.pointee, &retPtr) == 0 else {
+				fatalError("pthread_join error \(errno) from \(#file):\(#line)")
+			}
+			_ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
+			pt_primitive.deallocate()
+			#elseif os(macOS)
+			var retPtr:UnsafeMutableRawPointer? = nil
+			guard pthread_join(pt_primitive.pointee!, &retPtr) == 0 else {
+				fatalError("pthread_join error \(errno) from \(#file):\(#line)")
+			}
+			_ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
+			pt_primitive.deallocate()
+			#endif
+		}
 	}
 }
 
