@@ -3,32 +3,35 @@ import XCTest
 import Logging
 
 class PThreadTests: XCTestCase {
-    // func testPThreadCancellation() throws {
-    //     let expectation = XCTestExpectation(description: "PThread cancellation")
+    func testPThreadCancellation() async throws {
+        let expectation = XCTestExpectation(description: "PThread cancellation")
+        expectation.isInverted = true
+        let logger = Logger(label: "testLogger")
+        var pthread = try await PThread(logger: logger) { logger in
+            // Simulate a long-running task
+            sleep(5)
+            expectation.fulfill()
+        }
+		try await pthread.start()
         
-    //     let logger = Logger(label: "testLogger")
-    //     var pthread = try PThread(logger: logger) { logger in
-    //         // Simulate a long-running task
-    //         sleep(5)
-    //         expectation.fulfill()
-    //     }
+        // Cancel the pthread
+        try pthread.cancel()
+
+		try await pthread.waitForResult()
         
-    //     // Cancel the pthread
-    //     try pthread.cancel()
-        
-    //     // Wait for the expectation to be fulfilled
-    //     wait(for: [expectation], timeout: 10)
-    // }
+        // Wait for the expectation to be fulfilled
+        wait(for: [expectation], timeout: 10)
+    }
     
     func testPThreadJoin() async throws {
         let expectation = XCTestExpectation(description: "PThread join")
         
         let logger = Logger(label: "testLogger")
-        let pthread = try PThread(logger: logger) { logger in
+        let pthread = try await PThread(logger: logger) { logger in
             sleep(5)
             expectation.fulfill()
         }
-        
+        try await pthread.start()
         // Join the pthread
         await pthread.waitForResult()
         
@@ -36,23 +39,23 @@ class PThreadTests: XCTestCase {
         wait(for: [expectation], timeout: 10)
     }
     
-    func testPThreadDeinit() throws {
+    func testPThreadDeinit() async throws {
         let expectation = XCTestExpectation(description: "PThread deinit")
-        func nestedFunc() throws {
+        func nestedFunc() async throws {
 			let logger = Logger(label: "testLogger")
-			var pthread:PThread = try PThread(logger: logger) { logger in
+			var pthread:PThread = try await PThread(logger: logger) { logger in
 				// Simulate a long-running task
 				sleep(5)
 				expectation.fulfill()
 			}
-			sleep(1)
-			pthread.returnThing()
+			try await pthread.start()
 			sleep(1)
 		}
 
 		var error:Swift.Error? = nil
 		do {
-			try nestedFunc()
+			try await nestedFunc()
+			sleep(1)
 		} catch let e {
 			error = e
 		}
