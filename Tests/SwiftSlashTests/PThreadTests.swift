@@ -36,9 +36,9 @@ class PThreadTests: XCTestCase {
         wait(for: [expectation], timeout: 10)
     }
     
-    func testPThreadDeinit() async throws {
+    func testPThreadDeinit() throws {
         let expectation = XCTestExpectation(description: "PThread deinit")
-        func nestedFunc() async throws {
+        func nestedFunc() throws {
 			let logger = Logger(label: "testLogger")
 			var pthread:PThread = try PThread(logger: logger) { logger in
 				// Simulate a long-running task
@@ -46,13 +46,13 @@ class PThreadTests: XCTestCase {
 				expectation.fulfill()
 			}
 			sleep(1)
-			try pthread.cancel()
-			await pthread.waitForResult()
+			pthread.returnThing()
+			sleep(1)
 		}
 
 		var error:Swift.Error? = nil
 		do {
-			try await nestedFunc()
+			try nestedFunc()
 		} catch let e {
 			error = e
 		}

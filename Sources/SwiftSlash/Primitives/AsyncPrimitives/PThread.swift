@@ -21,11 +21,7 @@ internal struct PThread:~Copyable {
 	}
 
 	/// the pthread primitive.
-	#if os(Linux)
-	private let pt_primitive:UnsafeMutablePointer<pthread_t>
-	#elseif os(macOS)
-	private let pt_primitive:UnsafeMutablePointer<pthread_t?>
-	#endif
+	private let pt_primitive:_cswiftslash_pthread_t_type
 
 	internal struct PThreadOperationMode:OptionSet {
 		internal let rawValue:UInt8
@@ -48,19 +44,20 @@ internal struct PThread:~Copyable {
 		self.configuration = newConf
 		let configPtr = Unmanaged.passRetained(newConf)
 		#if os(Linux)
-		let pthread = UnsafeMutablePointer<pthread_t>.allocate(capacity:1)
-		guard pthread_create(pthread, nil, { Self.mainWrapper($0!) }, configPtr.toOpaque()) != 0 && pthread != nil else {
+		var newPT = _cswiftslash_pthread_fresh()
+		guard pthread_create(&newPT, nil, { Self.mainWrapper($0!) }, configPtr.toOpaque()) != 0 else {
 			_ = configPtr.takeRetainedValue()
 			throw LaunchError()
 		}
+		self.pt_primitive = newPT
 		#elseif os(macOS)
-		let pthread = UnsafeMutablePointer<pthread_t?>.allocate(capacity:1)
-		guard pthread_create(pthread, nil, { Self.mainWrapper($0) }, configPtr.toOpaque()) == 0, pthread.pointee != nil else {
+		var newPT = _cswiftslash_pthread_fresh()
+		guard pthread_create(&newPT, nil, { Self.mainWrapper($0) }, configPtr.toOpaque()) == 0, newPT != nil else {
 			_ = configPtr.takeRetainedValue()
 			throw LaunchError()
 		}
+		self.pt_primitive = newPT!
 		#endif
-		self.pt_primitive = pthread
 		self.mode = _cswiftslash_atomic_uint8_t()
 		_cswiftslash_auint8_store(&mode, PThreadOperationMode.running.rawValue)
 	}
@@ -79,11 +76,11 @@ internal struct PThread:~Copyable {
 		// fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		// success, cancel the pthread
 		#if os(Linux)
-		guard pthread_cancel(pt_primitive.pointee) == 0 else {
+		guard pthread_cancel(pt_primitive) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		}
 		#elseif os(macOS)
-		guard pthread_cancel(pt_primitive.pointee!) == 0 else {
+		guard pthread_cancel(pt_primitive) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		}
 		#endif
@@ -91,6 +88,10 @@ internal struct PThread:~Copyable {
 
 	internal borrowing func waitForResult() async -> Result<Void, Error> {
 		return await configuration.getResult()
+	}
+
+	internal mutating func returnThing() {
+		// do nothing
 	}
 
 	deinit {
@@ -105,7 +106,7 @@ internal struct PThread:~Copyable {
 				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 			}
 			#elseif os(macOS)
-			guard pthread_cancel(pt_primitive.pointee!) == 0 else {
+			guard pthread_cancel(pt_primitive) == 0 else {
 				// fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 				return
 			}
@@ -114,19 +115,19 @@ internal struct PThread:~Copyable {
 
 		#if os(Linux)
 		var retPtr:UnsafeMutableRawPointer? = nil
-		guard pthread_join(pt_primitive.pointee, &retPtr) == 0 else {
+		guard pthread_join(pt_primitive, &retPtr) == 0 else {
 			fatalError("pthread_join error \(errno) from \(#file):\(#line)")
 		}
 		// _ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
 		#elseif os(macOS)
 		var retPtr:UnsafeMutableRawPointer? = nil
-		guard pthread_join(pt_primitive.pointee!, &retPtr) == 0 else {
+		guard pthread_join(pt_primitive, &retPtr) == 0 else {
 			fatalError("pthread_join error \(errno) from \(#file):\(#line)")
 		}
 		// _ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
 		#endif
 		
-		pt_primitive.deallocate()
+		// pt_primitive.deallocate()
 	}
 }
 
@@ -215,12 +216,12 @@ extension PThread {
 				var getResult:Result<Void, Swift.Error>? = nil
 				withUnsafeMutablePointer(to:&getResult) { returnResultPtr in
 					_cswiftslash_future_t_wait_sync(&future, { _ in 
-						returnResultPtr.pointee = nil
+						returnResultPtr.pointee = .success(())
 					}, { errPtr in 
 						let error = Unmanaged<PThread.ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().err
 						returnResultPtr.pointee = .failure(error)
 					}, {
-						returnResultPtr.pointee = .success(())
+						returnResultPtr.pointee = .failure(CancellationError())
 					})
 				}
 				cont.resume(returning:getResult!)
