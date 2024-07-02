@@ -7,6 +7,19 @@ import Darwin
 import __cswiftslash
 import Logging
 
+internal struct PThreadOperationMode:OptionSet {
+	internal let rawValue:UInt8
+
+	/// this is the explicit value of the mode byte when the pthread is dead.
+	internal static let dead: PThreadOperationMode = PThreadOperationMode(rawValue:0)
+
+	/// this flag is enabled when the pthread is running.
+	internal static let running = PThreadOperationMode(rawValue:1)
+
+	/// this flag is enabled when the pthread has been sent a cancel signal.
+	internal static let canceled = PThreadOperationMode(rawValue:1 << 1)
+}
+	
 // swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
 internal final class PThread {
 	/// thrown when a pthread cannot be created.
@@ -20,21 +33,8 @@ internal final class PThread {
 		}
 	}
 
-	internal struct PThreadOperationMode:OptionSet {
-		internal let rawValue:UInt8
-
-		/// this is the explicit value of the mode byte when the pthread is dead.
-		internal static let dead: PThreadOperationMode = PThreadOperationMode(rawValue:0)
-
-		/// this flag is enabled when the pthread is running.
-		internal static let running = PThreadOperationMode(rawValue:1)
-
-		/// this flag is enabled when the pthread has been sent a cancel signal.
-		internal static let canceled = PThreadOperationMode(rawValue:1 << 1)
-	}
-	
 	/// the pthread primitive.
-	private var pt_primitive:_cswiftslash_pthread_t_type = _cswiftslash_pthread_fresh()
+	private var pt_primitive:_cswiftslash_pthread_t_type? = nil
 	private var mode:_cswiftslash_atomic_uint8_t
 	private let configuration:ContainedConfiguration
 
@@ -45,10 +45,11 @@ internal final class PThread {
 		self.mode = mode
 	}
 
+	// start the pthread. the function is async because it waits for the thread to begin running its work before returning
 	internal func start() async throws {
 		var existingMode = _cswiftslash_auint8_load(&mode)
 
-		// validate this isn't already canceled
+		// validate this isn't already running
 		guard existingMode == PThreadOperationMode.dead.rawValue else {
 			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
 		}
@@ -59,17 +60,15 @@ internal final class PThread {
 		}
 
 		let configPtr = Unmanaged.passRetained(configuration)
+
 		#if os(Linux)
 		guard pthread_create(&pt_primitive, nil, { PThread.mainWrapper($0!) }, configPtr.toOpaque()) == 0 else {
 			_ = configPtr.takeRetainedValue()
 			throw LaunchError()
 		}
 		#elseif os(macOS)
-		var newPT = _cswiftslash_pthread_fresh()
-		guard pthread_create(&newPT, nil, { PThread.mainWrapper($0) }, configPtr.toOpaque()) == 0, newPT != nil else {
-			_ = configPtr.takeRetainedValue()
-			throw LaunchError()
-		}
+		var threadLaunchResult:Int32 = 0
+		let newPT = _cswiftslash_pthread_fresh(nil, { PThread.mainWrapper($0) }, configPtr.toOpaque(), &threadLaunchResult)
 		self.pt_primitive = newPT!
 		#endif
 		await configuration.waitForLaunch()
@@ -86,14 +85,14 @@ internal final class PThread {
 		guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.canceled.rawValue) else {
 			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
 		}
-		// fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
+
 		// success, cancel the pthread
 		#if os(Linux)
 		guard pthread_cancel(pt_primitive) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		}
 		#elseif os(macOS)
-		guard pthread_cancel(pt_primitive) == 0 else {
+		guard pthread_cancel(pt_primitive!) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		}
 		#endif
@@ -116,7 +115,7 @@ internal final class PThread {
 				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 			}
 			#elseif os(macOS)
-			guard pthread_cancel(pt_primitive) == 0 else {
+			guard pthread_cancel(pt_primitive!) == 0 else {
 				fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 			}
 			#endif
@@ -135,7 +134,7 @@ internal final class PThread {
 		// _ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
 		#elseif os(macOS)
 		var retPtr:UnsafeMutableRawPointer? = nil
-		guard pthread_join(pt_primitive, &retPtr) == 0 else {
+		guard pthread_join(pt_primitive!, &retPtr) == 0 else {
 			fatalError("pthread_join error \(errno) from \(#file):\(#line)")
 		}
 		// _ = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(retPtr!).takeRetainedValue()
@@ -207,6 +206,22 @@ extension PThread {
 			self.err = err
 		}
 	}
+	
+	private final class Sem {
+		private var sem:_cswiftslash_sem_t_type
+		internal init() {
+			self.sem = _cswiftslash_sem_fresh()
+		}
+		internal func signal() {
+			_cswiftslash_sem_signal(&sem)
+		}
+		internal func wait() {
+			_cswiftslash_sem_wait(&sem)
+		}
+		deinit {
+			_cswiftslash_sem_destroy(&sem)
+		}	
+	}
 
 	/// this class is used to pass a logger to the pthread in a relatively swift-friedly way.
 	private final class ContainedConfiguration {
@@ -214,7 +229,7 @@ extension PThread {
 		private let runFunc:(borrowing Logger) throws -> Void
 		private var result:Result<Void, Error>? = nil
 		private var future:_cswiftslash_future_t = _cswiftslash_future_t()
-		private var sem:sem_t
+		private var sem:_cswiftslash_sem_t_type
 		private enum Mode:UInt8 {
 			case hasResult = 1
 			case noResult = 0
@@ -222,16 +237,14 @@ extension PThread {
 		internal init(_ logger:Logger, run runFunc:@escaping (borrowing Logger) throws -> Void) {
 			self.logger = logger
 			self.runFunc = runFunc
-			var se = sem_t()
-			sem_init(&se, 0, 0)
-			self.sem = se
+			self.sem = _cswiftslash_sem_fresh()
 		}
 		internal func signalLaunched() {
-			sem_post(&sem)
+			_cswiftslash_sem_signal(&sem)
 		}
 		internal func waitForLaunch() async {
 			await withCheckedContinuation({
-				sem_wait(&sem)
+				_cswiftslash_sem_wait(&sem)
 				$0.resume()
 			})
 		}
@@ -265,8 +278,7 @@ extension PThread {
 			_cswiftslash_future_t_destroy(&future, { _ in return }, { errPtr in
 				_ = Unmanaged<PThread.ContainedError>.fromOpaque(errPtr!).takeRetainedValue()
 			})
-			sem_destroy(&sem)
-			print("destroyed future")
+			_cswiftslash_sem_destroy(&sem)
 		}
 	}
 }

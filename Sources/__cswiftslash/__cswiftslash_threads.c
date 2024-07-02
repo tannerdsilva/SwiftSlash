@@ -3,8 +3,23 @@
 #include "__cswiftslash_threads.h"
 #include <string.h>
 
- _cswiftslash_pthread_t_type _cswiftslash_pthread_fresh() {
+_cswiftslash_sem_t_type _Nonnull _cswiftslash_sem_fresh() {
+	_cswiftslash_sem_t_type newType = dispatch_semaphore_create(0);
+	return newType;
+}
+void _cswiftslash_sem_wait(_cswiftslash_sem_t_type* _Nonnull sem) {
+	dispatch_semaphore_wait((*sem), DISPATCH_TIME_FOREVER);
+}
+void _cswiftslash_sem_signal(_cswiftslash_sem_t_type* _Nonnull sem) {
+	dispatch_semaphore_signal((*sem));
+}
+void _cswiftslash_sem_destroy(_cswiftslash_sem_t_type* _Nonnull sem) {
+	dispatch_release((*sem));
+}
+
+_cswiftslash_pthread_t_type _cswiftslash_pthread_fresh(const pthread_attr_t *attr, void* (*start_routine)(void*), void* arg, int*_Nonnull result) {
 	_cswiftslash_pthread_t_type newthread;
+	(*result) = pthread_create(&newthread, attr, start_routine, arg);
 	return newthread;
  }
 
