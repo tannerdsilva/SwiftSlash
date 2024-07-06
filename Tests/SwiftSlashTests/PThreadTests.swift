@@ -20,23 +20,24 @@ class PThreadTests: XCTestCase {
 		try await pthread.waitForResult()
         
         // Wait for the expectation to be fulfilled
-        wait(for: [expectation], timeout: 10)
+        await fulfillment(of:[expectation], timeout: 10)
     }
     
     func testPThreadJoin() async throws {
         let expectation = XCTestExpectation(description: "PThread join")
         
         let logger = Logger(label: "testLogger")
-        let pthread = try await PThread(logger: logger) { logger in
+        var pthread = try await PThread(logger: logger) { logger in
             sleep(5)
             expectation.fulfill()
         }
         try await pthread.start()
+		
         // Join the pthread
         await pthread.waitForResult()
         
         // Wait for the expectation to be fulfilled
-        wait(for: [expectation], timeout: 10)
+        await fulfillment(of: [expectation], timeout: 10)
     }
     
     func testPThreadDeinit() async throws {

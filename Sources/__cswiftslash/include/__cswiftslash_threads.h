@@ -19,7 +19,8 @@
 typedef dispatch_semaphore_t _cswiftslash_sem_t_type;
 
 /// @brief creates a new _cswiftslash_sem that is ready for use.
-_cswiftslash_sem_t_type _Nonnull _cswiftslash_sem_fresh();
+/// @return a new _cswiftslash_sem that can be used immediately.
+_cswiftslash_sem_t_type _Nonnull _cswiftslash_sem_fresh(uint32_t value);
 
 /// @brief wait for a semaphore to be signaled
 /// @param sem the semaphore to wait on
@@ -34,18 +35,19 @@ void _cswiftslash_sem_signal(_cswiftslash_sem_t_type _Nonnull*_Nonnull sem);
 void _cswiftslash_sem_destroy(_cswiftslash_sem_t_type _Nonnull*_Nonnull sem);
 
 
-
 // MARK - threads
 
 /// @brief the type of pthread_t that is used on this particular platform
-typedef pthread_t _cswiftslash_pthread_t_type;
+typedef pthread_t _Nullable _cswiftslash_pthread_t_type;
 
 /// makes a fresh pthread_t that will launch immediately
-_cswiftslash_pthread_t_type _cswiftslash_pthread_fresh(const pthread_attr_t *attr, void*(*start_routine)(void *_Nonnull), void* arg, int*_Nonnull result);
+_cswiftslash_pthread_t_type _cswiftslash_pthread_fresh(const pthread_attr_t *_Nullable attr, void *_Nonnull(*_Nonnull start_routine)(void *_Nonnull), void*_Nonnull arg, int*_Nonnull result);
 
-typedef void(* _cswiftslash_pthreads_main_f)(_cswiftslash_optr_t arg);
+typedef void(* _cswiftslash_pthreads_main_f)(_cswiftslash_optr_t arg, _cswiftslash_ptr_t allocated);
+typedef void(* _cswiftslash_pthreads_main_alloc_f)(_cswiftslash_optr_t *_Nonnull allocated);
+typedef void(* _cswiftslash_pthreads_main_dealloc_f)(_cswiftslash_optr_t allocated);
 typedef void(* _cswiftslash_pthreads_cancel_handler_f)(_cswiftslash_optr_t arg);
 
-void*_Nullable _cswiftslash_pthreads_main_f_run(_cswiftslash_ptr_t _Nonnull arg, const _cswiftslash_pthreads_main_f _Nonnull run, const _cswiftslash_pthreads_cancel_handler_f _Nonnull cancel_handler); 
+void*_Nullable _cswiftslash_pthreads_main_f_run(_cswiftslash_ptr_t _Nonnull arg, const _cswiftslash_pthreads_main_f _Nonnull run, const _cswiftslash_pthreads_main_alloc_f _Nonnull main_allocator_func, const _cswiftslash_pthreads_main_dealloc_f _Nonnull main_deallocator_func, const _cswiftslash_pthreads_cancel_handler_f _Nonnull cancel_handler); 
 
 #endif // _CSWIFTSLASH_PTHREADS_H
