@@ -24,7 +24,7 @@ internal struct LineParser:~Copyable {
 		case continuation(AsyncStream<[[UInt8]]>.Continuation)
 		/// the line parser will handle the parsed lines with the given handler.
 		case handler(([[UInt8]]) -> Void)
-
+		/// the line parser will yield the parsed lines to the given nasyncstream.
 		case nasync(NAsyncStream<Array<[UInt8]>>)
 	}
 

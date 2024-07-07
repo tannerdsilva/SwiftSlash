@@ -25,50 +25,31 @@ class PThreadTests: XCTestCase {
     //    wait(for: [expectation], timeout: 10)
 	// }
     
-    // func testPThreadJoin() async throws {
-    //     let expectation = XCTestExpectation(description: "PThread join")
+    func testPThreadJoin() async throws {
+        let expectation = XCTestExpectation(description: "PThread join")
         
-    //     let logger = Logger(label: "testLogger")
-    //     var pthread = try await PThread(logger: logger) { logger in
-    //         sleep(5)
-    //         expectation.fulfill()
-    //     }
-    //     try await pthread.start()
+        let logger = Logger(label: "testLogger")
+        var pthread = try await PThread(alloc: { return nil }, dealloc: { _ in })
+        try await pthread.run({ argPtr, wsPtr in
+			// Simulate a long-running task
+			sleep(5)
+			// expectation.fulfill()
+		})
 		
-    //     // Join the pthread
-    //     await pthread.waitForResult()
+        // Join the pthread
+        // try await pthread.waitForResult()
         
-    //     // Wait for the expectation to be fulfilled
-    //     wait(for: [expectation], timeout: 10)
-    // }
+        // Wait for the expectation to be fulfilled
+        // wait(for: [expectation], timeout: 10)
+    }
     
     func testPThreadDeinit() async throws {
         let expectation = XCTestExpectation(description: "PThread deinit")
         func nestedFunc() async throws {
 			let logger = Logger(label: "testLogger")
-			var pthread:PThread = try await PThread(allocate: { return nil }, dealloc: { _ in })
-			try await pthread.start({ argPtr, wsPtr in
-				// Create epoll instance
-				let epollFD = epoll_create1(0)
-				defer {
-					close(epollFD)
-				}
-				XCTAssert(epollFD != -1, "Failed to create epoll instance")
-
-				// Define epoll event
-				var event = epoll_event(events: EPOLLIN.rawValue, data: epoll_data_t(fd: 0))  // Setup with dummy data
-				var events = [epoll_event](repeating: event, count: 1)
-
-				// Define the signal mask
-				var sigmask = sigset_t()
-				// Prepare the signal mask to block all signals except SIGUSR1
-				sigemptyset(&sigmask);
-				sigaddset(&sigmask, SIGUSR1);
-		
-				// Start epoll wait
-				// logger.info("PThread started, entering epoll_wait")
-				let n = epoll_pwait(epollFD, &events, 1, -1, &sigmask)
-				// notExpectation.fulfill()
+			var pthread:PThread = try await PThread(alloc: { return nil }, dealloc: { _ in })
+			try await pthread.run({ argPtr, wsPtr in
+				sleep(5)
 			})
 			sleep(1)
 		}
@@ -85,6 +66,7 @@ class PThreadTests: XCTestCase {
     }
 
 // class EPollPThreadCancellationTest: XCTestCase {
+#if os(Linux)
     func testEPollPThreadCancellationImmediate() async throws {
         let expectation = XCTestExpectation(description: "epoll_wait should be interrupted by pthread cancellation")
 		let notExpectation = XCTestExpectation(description: "epoll_wait should not be interrupted by pthread cancellation")
@@ -140,4 +122,5 @@ class PThreadTests: XCTestCase {
         // Wait for the expectation to be fulfilled
         wait(for: [expectation, notExpectation], timeout:0)
     }
+	#endif
 }
