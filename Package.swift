@@ -22,9 +22,11 @@ let package = Package(
 			]),
         .target(
         	name:"__cswiftslash",
+			publicHeadersPath:".",
 			cSettings: []),
         .testTarget(
             name: "SwiftSlashTests",
-            dependencies: ["SwiftSlash"]),
-    ]
+            dependencies: ["SwiftSlash", "__cswiftslash"]),
+    ],
+	cLanguageStandard:.c11
 )

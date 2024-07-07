@@ -1,6 +1,6 @@
 // LICENSE MIT
 // copyright (c) tanner silva 2024. all rights reserved.
-#include "include/__cswiftslash_lineparser.h"
+#include "__cswiftslash_lineparser.h"
 #include <stdlib.h>
 #include <string.h>
 

@@ -85,7 +85,7 @@ bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t fut
 /// @param res_type the result type - an 8 bit value.
 /// @param res_val the result value - a 64 bit value.
 /// @return whether the broadcast was successful.
-bool _cswiftslash_future_t_broadcast_err_val(const _cswiftslash_future_ptr_t future, const uint8_t res_type, const _cswiftslash_optr_t res_val);
+bool _cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t future, const uint8_t res_type, const _cswiftslash_optr_t res_val);
 
 /// @brief broadcast a cancellation to all threads waiting on the future.
 /// @param future the future to broadcast to.
