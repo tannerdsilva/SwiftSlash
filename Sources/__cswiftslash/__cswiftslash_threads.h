@@ -22,7 +22,7 @@ typedef pthread_t _cswiftslash_pthread_t_type;
 _cswiftslash_pthread_t_type _cswiftslash_pthread_fresh(const pthread_attr_t *_Nullable attr, void *_Nonnull(*_Nonnull start_routine)(void *_Nonnull), void*_Nonnull arg, int*_Nonnull result);
 
 typedef void(* _cswiftslash_pthreads_main_f)(_cswiftslash_ptr_t arg, _cswiftslash_ptr_t allocated);
-typedef void(* _cswiftslash_pthreads_main_alloc_f)(_cswiftslash_ptr_t arg, _cswiftslash_optr_t *_Nonnull allocated);
+typedef _cswiftslash_optr_t(* _cswiftslash_pthreads_main_alloc_f)(_cswiftslash_ptr_t arg);
 typedef void(* _cswiftslash_pthreads_main_dealloc_f)(_cswiftslash_ptr_t arg, _cswiftslash_optr_t allocated);
 typedef void(* _cswiftslash_pthreads_cancel_handler_f)(_cswiftslash_ptr_t arg);
 

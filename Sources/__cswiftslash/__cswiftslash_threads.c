@@ -25,8 +25,7 @@ _Noreturn void _cswiftslash_pthreads_main_f_run(_cswiftslash_ptr_t _Nonnull arg,
 	pthread_cleanup_push(cancel_handler, arg);
 
 	// allocate the workspace memory
-	_cswiftslash_optr_t ptr;
-	main_allocator_func(arg, &ptr);
+	_cswiftslash_optr_t ptr = main_allocator_func(arg);
 
 	struct _cswiftslash_pthreads_dealloc_package dpkg;
 	dpkg.arg = arg;

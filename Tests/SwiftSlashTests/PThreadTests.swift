@@ -46,12 +46,30 @@ class PThreadTests: XCTestCase {
         let expectation = XCTestExpectation(description: "PThread deinit")
         func nestedFunc() async throws {
 			let logger = Logger(label: "testLogger")
-			var pthread:PThread = try await PThread(logger: logger, allocate: { _, _ in }, work: { argPtr, wsPtr in
-				// Simulate a long-running task
-				sleep(5)
-				// expectation.fulfill()
-			}, dealloc: { _ in })
-			try await pthread.start()
+			var pthread:PThread = try await PThread(allocate: { return nil }, dealloc: { _ in })
+			try await pthread.start({ argPtr, wsPtr in
+				// Create epoll instance
+				let epollFD = epoll_create1(0)
+				defer {
+					close(epollFD)
+				}
+				XCTAssert(epollFD != -1, "Failed to create epoll instance")
+
+				// Define epoll event
+				var event = epoll_event(events: EPOLLIN.rawValue, data: epoll_data_t(fd: 0))  // Setup with dummy data
+				var events = [epoll_event](repeating: event, count: 1)
+
+				// Define the signal mask
+				var sigmask = sigset_t()
+				// Prepare the signal mask to block all signals except SIGUSR1
+				sigemptyset(&sigmask);
+				sigaddset(&sigmask, SIGUSR1);
+		
+				// Start epoll wait
+				// logger.info("PThread started, entering epoll_wait")
+				let n = epoll_pwait(epollFD, &events, 1, -1, &sigmask)
+				// notExpectation.fulfill()
+			})
 			sleep(1)
 		}
 
@@ -67,7 +85,7 @@ class PThreadTests: XCTestCase {
     }
 
 // class EPollPThreadCancellationTest: XCTestCase {
-    func testEPollPThreadCancellation() async throws {
+    func testEPollPThreadCancellationImmediate() async throws {
         let expectation = XCTestExpectation(description: "epoll_wait should be interrupted by pthread cancellation")
 		let notExpectation = XCTestExpectation(description: "epoll_wait should not be interrupted by pthread cancellation")
 		notExpectation.isInverted = true
@@ -76,9 +94,9 @@ class PThreadTests: XCTestCase {
         let logger = Logger(label: "testLogger")
 
 
-        var pthread = try await PThread(logger: logger, allocate: { argPtr, ptr in
-			ptr.pointee = nil
-		}, work: { argPtr, wsPtr in
+        var pthread = try await PThread(allocate: { return nil }, dealloc: { _ in })
+
+        try await pthread.start({ argPtr, wsPtr in
 		    // Create epoll instance
 			let epollFD = epoll_create1(0)
 			defer {
@@ -100,11 +118,7 @@ class PThreadTests: XCTestCase {
             // logger.info("PThread started, entering epoll_wait")
             let n = epoll_pwait(epollFD, &events, 1, -1, &sigmask)
             // notExpectation.fulfill()
-        }, dealloc: { ptr in
-			// expectation.fulfill()
-		})
-
-        try await pthread.start()
+        })
 
         // Cancel the pthread
         try pthread.cancel()

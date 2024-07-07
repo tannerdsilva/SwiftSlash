@@ -26,10 +26,10 @@ internal struct PThread:~Copyable {
 	internal typealias WorkFunc = @convention(c) (UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void
 
 	/// workspace allocator for the pthread.
-	internal typealias WorkspaceAllocator = @convention(c) (UnsafeRawPointer?, UnsafeMutablePointer<UnsafeMutableRawPointer?>) -> Void
+	internal typealias WorkspaceAllocator = @convention(c) () -> UnsafeMutableRawPointer?
 
 	/// workspace deallocator for the pthread.
-	internal typealias WorkspaceDeallocator = @convention(c) (UnsafeMutableRawPointer?) -> Void
+	internal typealias WorkspaceDeallocator = @convention(c) (UnsafeRawPointer?) -> Void
 
 	/// thrown when a pthread cannot be created.
 	internal struct LaunchError:Swift.Error {}
@@ -49,18 +49,24 @@ internal struct PThread:~Copyable {
 	private var mode:_cswiftslash_atomic_uint8_t
 
 	/// the configuration for this pthread instance.
-	private let configuration:ContainedConfiguration
+	private var configuration:ContainedConfiguration? = nil
 
-	internal init(logger:consuming Logger, allocate:@escaping WorkspaceAllocator, work:@escaping WorkFunc, dealloc:@escaping WorkspaceDeallocator) async throws {
-		self.configuration = PThread.ContainedConfiguration(logger, allocate:allocate, work:work, dealloc:dealloc)
+	private var allocate:WorkspaceAllocator?
+	private var dealloc:WorkspaceDeallocator?
+
+	internal init(allocate:@escaping WorkspaceAllocator, dealloc:@escaping WorkspaceDeallocator) async throws {
 		var mode = _cswiftslash_atomic_uint8_t()
 		_cswiftslash_auint8_store(&mode, PThreadOperationMode.dead.rawValue)
 		self.mode = mode
+		self.allocate = allocate
+		self.dealloc = dealloc
 	}
 
 	/// start the pthread. the function is async because it waits for the thread to begin running its work before returning.
 	/// - throws: InvalidModeError if the pthread is already running or has been canceled.
-	internal mutating func start() async throws {
+	internal mutating func start(argument:UnsafeRawPointer? = nil, _ work:@escaping WorkFunc) async throws {
+
+		self.configuration = ContainedConfiguration(allocate:allocate!, work:work, dealloc:dealloc!)
 
 		// read the existing mode from memory
 		var existingMode = _cswiftslash_auint8_load(&mode)
@@ -76,7 +82,7 @@ internal struct PThread:~Copyable {
 		}
 
 		// pass the configuration of this instance into an unmanaged pointer to be passed into the pthread after it is launched
-		let configPtr = Unmanaged.passRetained(configuration)
+		let configPtr = Unmanaged.passRetained(configuration!)
 
 		// this represents the result of the pthread_create call
 		var threadLaunchResult:Int32 = 0
@@ -101,7 +107,7 @@ internal struct PThread:~Copyable {
 		#endif
 
 		// wait for the pthread to engage with a CPU and begin working before returning from this function
-		switch try await configuration.launchFuture.waitForResult() {
+		switch try await configuration!.launchFuture.waitForResult() {
 			case .success:
 				return
 			case .failure(let error):
@@ -136,7 +142,7 @@ internal struct PThread:~Copyable {
 
 	/// waits for the returning result of the pthread 
 	internal borrowing func waitForResult() async throws -> Result<Void, Error> {
-		return try await configuration.getResult()
+		return try await configuration!.getResult()
 	}
 
 	deinit {
@@ -183,10 +189,9 @@ extension PThread {
 
 			// run the configured task
 			pthreadConfig.getRunFunction()(configPtr, workspacePtr)
-
-		}, { configPtr, allocateWorkspace in
+		}, { configPtr in
 			// obtain the allocator function from the configuration and call it with the workspace pointer
-			Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue().getAllocFunction()(configPtr, allocateWorkspace)
+			return Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue().getAllocFunction()()
 		}, { configPtr, deallocateWorkspace in 
 			// obtain the deallocator function from the configuration and call it with the workspace pointer
 			let config = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue()
@@ -205,15 +210,19 @@ extension PThread {
 		internal init(result:Result<Void, Swift.Error>) {
 			self.result = result
 		}
+		deinit {
+			print("RESULT DEINIT")
+		}
 	}
 	private final class ContainedError {
 		internal let err:Swift.Error
 		internal init(err:Swift.Error) {
 			self.err = err
 		}
-		
+		deinit {
+			print("ERROR DEINIT")
+		}
 	}
-
 
 	private final class Workspace {
 		deinit {
@@ -223,19 +232,16 @@ extension PThread {
 
 	/// this class is used to pass a logger to the pthread in a relatively swift-friedly way.
 	private final class ContainedConfiguration {
-		private let logger:Logger
 		private let allocFunc:WorkspaceAllocator
 		private let runFunc:WorkFunc
 		private let deallocFunc:WorkspaceDeallocator
 		private let resultFuture = Future()
 		internal let launchFuture = Future()
-		private let allowedSignals:sigset_t
 		private enum Mode:UInt8 {
 			case hasResult = 1
 			case noResult = 0
 		}
-		internal init(_ logger:Logger, allocate:@escaping WorkspaceAllocator, work runFunc:@escaping WorkFunc, dealloc:@escaping WorkspaceDeallocator) {
-			self.logger = logger
+		internal init(allocate:@escaping WorkspaceAllocator, work runFunc:@escaping WorkFunc, dealloc:@escaping WorkspaceDeallocator) {
 			self.allocFunc = allocate
 			self.runFunc = runFunc
 			self.deallocFunc = dealloc
@@ -243,12 +249,8 @@ extension PThread {
 			var allowedSignals = sigset_t()
 			sigemptyset(&allowedSignals)
 			sigaddset(&allowedSignals, SIGUSR1)
-			self.allowedSignals = allowedSignals
 		}
 
-		internal func getLogger() -> Logger {
-			return logger
-		}
 		internal func getRunFunction() -> WorkFunc {
 			return runFunc
 		}
@@ -268,6 +270,9 @@ extension PThread {
 		}
 		internal func getResult() async throws -> Result<Void, Error> {
 			return try await resultFuture.waitForResult()
+		}
+		deinit {
+			print("CONFIGURATION DEINIT")
 		}
 	}
 }
