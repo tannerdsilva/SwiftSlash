@@ -21,6 +21,10 @@ void _cswiftslash_pthreads_dealloc_internalf(void*arg) {
 }
 
 _Noreturn void _cswiftslash_pthreads_main_f_run(_cswiftslash_ptr_t _Nonnull arg, const _cswiftslash_pthreads_main_f _Nonnull run, const _cswiftslash_pthreads_main_alloc_f _Nonnull main_allocator_func, const _cswiftslash_pthreads_main_dealloc_f _Nonnull main_deallocator_func, const _cswiftslash_pthreads_cancel_handler_f _Nonnull cancel_handler) {	// enable cancellation
+	// set deferred cancellation state
+	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+	
 	// push the function that will be called if and when the thread is cancelled
 	pthread_cleanup_push(cancel_handler, arg);
 

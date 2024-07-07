@@ -18,12 +18,28 @@ internal struct PThreadOperationMode:OptionSet {
 
 	/// this flag is enabled when the pthread has been sent a cancel signal.
 	internal static let canceled = PThreadOperationMode(rawValue:1 << 1)
+
+	/// this flag is enabled when the pthread is joining.
+	internal static let joining = PThreadOperationMode(rawValue:1 << 2)
+}
+
+fileprivate struct AUInt8:~Copyable {
+	private var value:_cswiftslash_atomic_uint8_t = _cswiftslash_atomic_uint8_t()
+	fileprivate mutating func load() -> UInt8 {
+		return _cswiftslash_auint8_load(&value)
+	}
+	fileprivate mutating func store(_ newValue:UInt8) {
+		_cswiftslash_auint8_store(&value, newValue)
+	}
+	fileprivate mutating func compareExchangeWeak(expected:inout UInt8, desired:UInt8) -> Bool {
+		return _cswiftslash_auint8_compare_exchange_weak(&value, &expected, desired)
+	}
 }
 
 extension _cswiftslash_pthread_t_type:@unchecked Sendable {}
 
 // swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
-internal struct PThread:~Copyable {
+internal final class PThread {
 	/// the function that is run by the pthread.
 	internal typealias WorkFunc = @convention(c) (UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void
 
@@ -45,30 +61,31 @@ internal struct PThread:~Copyable {
 	}
 
 	/// the pthread primitive.
-	private var pt_primitive:_cswiftslash_pthread_t_type? = nil
+	private var _pt:_cswiftslash_pthread_t_type? = nil
 
 	/// the mode that this pthread instance is currently operating in.
-	private var mode:_cswiftslash_atomic_uint8_t
+	private var mode = AUInt8()
+
+	private var argument:UnsafeRawPointer?
 
 	private var allocate:WorkspaceAllocator?
 	private var dealloc:WorkspaceDeallocator?
 
-	internal init(alloc:@escaping WorkspaceAllocator, dealloc:@escaping WorkspaceDeallocator) async throws {
-		var mode = _cswiftslash_atomic_uint8_t()
-		_cswiftslash_auint8_store(&mode, PThreadOperationMode.dead.rawValue)
-		self.mode = mode
+	private var work:WorkFunc?
+
+	internal init(argument:UnsafeRawPointer? = nil, alloc:@escaping WorkspaceAllocator, dealloc:@escaping WorkspaceDeallocator, _ work:@escaping WorkFunc) {
 		self.allocate = alloc
 		self.dealloc = dealloc
+		self.work = work
+		self.argument = argument
 	}
 
 	/// start the pthread. the function is async because it waits for the thread to begin running its work before returning.
 	/// - throws: InvalidModeError if the pthread is already running or has been canceled.
-	internal mutating func run(argument:UnsafeRawPointer? = nil, _ work:@escaping WorkFunc) async throws {
-
-		let configuration = ContainedConfiguration(arg:argument, allocate:allocate!, work:work, dealloc:dealloc!)
+	internal func start() throws -> Future {
 
 		// read the existing mode from memory
-		var existingMode = _cswiftslash_auint8_load(&mode)
+		var existingMode = mode.load()
 
 		// validate this isn't already running
 		guard existingMode == PThreadOperationMode.dead.rawValue else {
@@ -76,12 +93,12 @@ internal struct PThread:~Copyable {
 		}
 
 		// apply the existing flags with the running flag
-		guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.running.rawValue) else {
+		guard mode.compareExchangeWeak(expected:&existingMode, desired:PThreadOperationMode.running.rawValue) else {
 			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
 		}
 
 		// pass the configuration of this instance into an unmanaged pointer to be passed into the pthread after it is launched
-		let configPtr = Unmanaged.passUnretained(configuration)
+		let configPtr = Unmanaged.passRetained(ContainedConfiguration(arg:argument, allocate:allocate!, work:work!, dealloc:dealloc!))
 
 		// this represents the result of the pthread_create call
 		var threadLaunchResult:Int32 = 0
@@ -89,36 +106,22 @@ internal struct PThread:~Copyable {
 		let newPT = _cswiftslash_pthread_fresh(nil, { PThread.pthreadMainWrapper($0) }, configPtr.toOpaque(), &threadLaunchResult)
 		// if the result is not 0, the pthread was not created successfully
 		guard threadLaunchResult == 0 else {
+			_ = configPtr.takeRetainedValue()
 			// with all resources now cleared up, we can now throw the launch error
 			throw LaunchError()
 		}
+
 		#if os(Linux)
 		// launch successful, assign the new pthread to this new instance
-		self.pt_primitive = newPT
+		self._pt = newPT
 		#elseif os(macOS)
-		guard newPT != nil else {
-			fatalError("pthread_create error \(errno) from \(#file):\(#line)")
-		}
-		// launch successful, assign the new pthread to this new instance
-		self.pt_primitive = newPT!
+		self._pt = newPT!
 		#endif
 
 		// wait for the pthread to engage with a CPU and begin working before returning from this function
-		switch try await configuration.launchFuture.waitForResult() {
+		switch try configPtr.takeUnretainedValue().launchFuture.waitForResult() {
 			case .success:
-			await withTaskCancellationHandler(operation: { [pt = newPT!] in
-				await withCheckedContinuation({ [pt = pt] cont in
-					guard pthread_join(pt, nil) == 0 else {
-						fatalError("pthread_join error \(errno) from \(#file):\(#line)")
-					}
-					cont.resume(returning: ())
-				})
-				_cswiftslash_auint8_store(&mode, PThreadOperationMode.dead.rawValue)
-			}, onCancel: { [pt = newPT!] in
-				guard pthread_cancel(pt) == 0 else {
-					fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
-				}
-			})
+			return configPtr.takeUnretainedValue().getResultFuture()
 			case .failure(let error):
 				throw error
 		}
@@ -126,9 +129,9 @@ internal struct PThread:~Copyable {
 
 	/// cancels a pthread if it is in a running state.
 	/// - throws: InvalidModeError if the pthread is not in a running state or has already been canceled.	
-	internal mutating func cancel() throws {
+	internal func cancel() throws {
 		// read the existing mode from memory
-		var existingMode = _cswiftslash_auint8_load(&mode)
+		var existingMode = mode.load()
 
 		// validate this isn't already canceled or dead
 		guard (existingMode != 0) && (existingMode & PThreadOperationMode.canceled.rawValue == 0) else {
@@ -136,17 +139,43 @@ internal struct PThread:~Copyable {
 		}
 
 		// apply the existing value with the cancelled flag
-		guard _cswiftslash_auint8_compare_exchange_weak(&mode, &existingMode, existingMode | PThreadOperationMode.canceled.rawValue) else {
+		guard mode.compareExchangeWeak(expected:&existingMode, desired:existingMode | PThreadOperationMode.canceled.rawValue) else {
 			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
 		}
 
-		guard pthread_cancel(pt_primitive!) == 0 else {
+		guard pthread_cancel(_pt!) == 0 else {
 			fatalError("pthread_cancel error \(errno) from \(#file):\(#line)")
 		}
 
-		guard pthread_kill(pt_primitive!, SIGUSR1) == 0 else {
+		guard pthread_kill(_pt!, SIGUSR1) == 0 else {
 			fatalError("pthread_kill error \(errno) from \(#file):\(#line)")
 		}
+	}
+
+	internal func join() throws {
+
+		// read the existing mode from memory
+		var existingMode = mode.load()
+
+		// validate this isn't already dead or joining
+		guard existingMode != PThreadOperationMode.dead.rawValue && (existingMode & PThreadOperationMode.joining.rawValue == 0) else {
+			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
+		}
+
+		// apply the existing value with the joining flag
+		guard mode.compareExchangeWeak(expected:&existingMode, desired:existingMode | PThreadOperationMode.joining.rawValue) else {
+			throw InvalidModeError(mode:PThreadOperationMode(rawValue:existingMode))
+		}
+
+		// join the pthread
+		guard pthread_join(_pt!, nil) == 0 else {
+			fatalError("pthread_join error \(errno) from \(#file):\(#line)")
+		}
+	}
+
+	deinit {
+		try? cancel()
+		try? join()
 	}
 }
 
@@ -154,13 +183,14 @@ extension PThread {
 
 	/// main function that handles the unwrapping of the logger before calling the main function.
 	private static func pthreadMainWrapper(_ ptr:UnsafeMutableRawPointer) -> Never {
-		// set deferred cancellation state
-		pthread_setcanceltype(Int32(PTHREAD_CANCEL_DEFERRED), nil);
-		pthread_setcancelstate(Int32(PTHREAD_CANCEL_DISABLE), nil);
+		var retainedValue:PThread.ContainedConfiguration? = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeRetainedValue()
+		
+		let deallocator = retainedValue.getDeallocFunction()
+		let workspacePtr = retainedValue.getAllocFunction()
+		retainedValue = nil
 
 		_cswiftslash_pthreads_main_f_run(ptr, { configPtr, workspacePtr in 
 			// use an unretained value because the root function is retaining the configuration
-			let pthreadConfig = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue()
 			pthreadConfig.launchFuture.setSuccess()
 
 			// run the configured task
@@ -171,7 +201,8 @@ extension PThread {
 			return Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue().getAllocFunction()()
 		}, { configPtr, deallocateWorkspace in 
 			// obtain the deallocator function from the configuration and call it with the workspace pointer
-			Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue().getDeallocFunction()(deallocateWorkspace)
+			Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeRetainedValue().getDeallocFunction()(deallocateWorkspace)
+			
 		}, { configPtr in
 			// use an unretained value because the root function is retaining the configuration
 			let pthreadConfig = Unmanaged<PThread.ContainedConfiguration>.fromOpaque(configPtr).takeUnretainedValue()
@@ -201,6 +232,12 @@ extension PThread {
 	}
 
 	private final class Workspace {
+		internal let launchFuture:Future
+		internal let resultFuture:Future
+		internal init(launchFuture:Future, resultFuture:Future) {
+			self.launchFuture = launchFuture
+			self.resultFuture = resultFuture
+		}
 		deinit {
 			print("WORKSPACE DEINIT")
 		}
@@ -246,11 +283,15 @@ extension PThread {
 					resultFuture.setFailure(error)
 			}
 		}
+		internal borrowing func getResultFuture() -> Future {
+			return resultFuture
+		}
 		internal func getResult() async throws -> Result<Void, Error> {
-			return try await resultFuture.waitForResult()
+			return try resultFuture.waitForResult()
 		}
 		deinit {
 			print("CONFIGURATION DEINIT")
+			fatalError("Configuration deinit")
 		}
 	}
 }
