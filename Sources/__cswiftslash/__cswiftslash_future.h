@@ -1,3 +1,5 @@
+// LICENSE MIT
+// copyright (c) tanner silva 2024. all rights reserved.
 #ifndef CLIBSWIFTSLASH_FUTURE_INT_H
 #define CLIBSWIFTSLASH_FUTURE_INT_H
 
@@ -58,7 +60,7 @@ _cswiftslash_future_t _cswiftslash_future_t_init(void);
 /// @param res_handler the result handler to call when the future is complete.
 /// @param err_handler the error handler to call when the future is complete.
 /// @return 0 if the future was destroyed, -1 if the future was not destroyed.
-int _cswiftslash_future_t_destroy(_cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handlerf);
+int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handlerf);
 
 // waiting for the result -----
 
@@ -76,14 +78,14 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, con
 /// broadcast a completion result to all threads waiting on the future.
 /// @param future the future to broadcast to.
 /// @param res_type the result type - an 8 bit value.
-/// @param res_val the result value - a 64 bit value.
+/// @param res_val the result value - an optional pointer.
 /// @return whether the broadcast was successful.
 bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t future, const uint8_t res_type, const _cswiftslash_optr_t res_val);
 
 /// broadcast a completion result to all threads waiting on the future.
 /// @param future the future to broadcast to.
 /// @param res_type the result type - an 8 bit value.
-/// @param res_val the result value - a 64 bit value.
+/// @param res_val the result value - an optional pointer.
 /// @return whether the broadcast was successful.
 bool _cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t future, const uint8_t res_type, const _cswiftslash_optr_t res_val);
 

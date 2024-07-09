@@ -1,3 +1,5 @@
+// LICENSE MIT
+// copyright (c) tanner silva 2024. all rights reserved.
 #include "__cswiftslash_atomicmode.h"
 #include <stdatomic.h>
 

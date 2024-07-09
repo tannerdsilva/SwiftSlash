@@ -15,9 +15,9 @@ _cswiftslash_future_t _cswiftslash_future_t_init(void) {
 	return newfuture;
 }
 
-int _cswiftslash_future_t_destroy(_cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler) {
+int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler) {
 	// load the state of the future
-	int8_t curstat = atomic_load_explicit(&future->statVal, memory_order_acquire);
+	int8_t curstat = atomic_load_explicit(&future.statVal, memory_order_acquire);
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
 			return -1;
@@ -26,7 +26,7 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_ptr_t future, const future
 			// the future is fufilled with a result.
 			
 			// fire the result handler.
-			res_handler(atomic_load_explicit(&future->fres_val, memory_order_acquire));
+			res_handler(atomic_load_explicit(&future.fres_val, memory_order_acquire));
 
 			return 0;
 
@@ -34,7 +34,7 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_ptr_t future, const future
 			// the future is fufilled with an error.
 
 			// fire the error handler.
-			err_handler(atomic_load_explicit(&future->fres_val, memory_order_acquire));
+			err_handler(atomic_load_explicit(&future.fres_val, memory_order_acquire));
 
 			return 0;
 
@@ -45,8 +45,8 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_ptr_t future, const future
 	}
 
 	// destroy the condition related to this future
-	pthread_cond_destroy(&future->statCond);
-	pthread_mutex_destroy(&future->mutex);
+	pthread_cond_destroy(&future.statCond);
+	pthread_mutex_destroy(&future.mutex);
 }
 
 void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
