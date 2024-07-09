@@ -14,7 +14,7 @@ internal struct PThread<A, W, R> {
 		internal init(result:R) {
 			self.result = result
 		}
-		internal func getResult() -> R {
+		internal borrowing func getResult() -> R {
 			return result
 		}
 	}
@@ -23,7 +23,7 @@ internal struct PThread<A, W, R> {
 		internal init(_ stored:W) {
 			self.stored = stored
 		}
-		internal func accessWorkspace<R>(_ ws:(UnsafeMutablePointer<W>) throws -> R) rethrows -> R {
+		internal borrowing func accessWorkspace<R>(_ ws:(UnsafeMutablePointer<W>) throws -> R) rethrows -> R {
 			return try withUnsafeMutablePointer(to:&stored) { sPtr in
 				return try ws(sPtr)
 			}
