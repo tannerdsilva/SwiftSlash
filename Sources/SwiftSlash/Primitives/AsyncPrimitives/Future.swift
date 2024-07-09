@@ -1,6 +1,9 @@
 import __cswiftslash
 
-internal final class Future<R>:@unchecked Sendable {
+extension _cswiftslash_future_t:@unchecked Sendable {}
+
+internal final class Future<R>:Sendable {
+	internal typealias SuccessfulResultDeallocator = (R) -> Void
 	private final class ContainedError {
 		internal let error:Swift.Error
 		internal init(error:Swift.Error) {
@@ -15,6 +18,11 @@ internal final class Future<R>:@unchecked Sendable {
 	}
 
 	private var prim:_cswiftslash_future_t = _cswiftslash_future_t()
+	private let successfulResultDeallocator:SuccessfulResultDeallocator?
+
+	internal init(successfulResultDeallocator:SuccessfulResultDeallocator? = nil) {
+		self.successfulResultDeallocator = successfulResultDeallocator
+	}
 
 	internal borrowing func setSuccess(_ result:R) {
 		let op = Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
@@ -48,7 +56,8 @@ internal final class Future<R>:@unchecked Sendable {
 
 	deinit {
 		_cswiftslash_future_t_destroy(prim, {
-			_ = Unmanaged<ContainedResult>.fromOpaque($0!).takeRetainedValue()
+			let val = Unmanaged<ContainedResult>.fromOpaque($0!).takeRetainedValue().result
+			self.successfulResultDeallocator?(val)
 		}, {
 			_ = Unmanaged<ContainedError>.fromOpaque($0!).takeRetainedValue()
 		})

@@ -8,28 +8,44 @@ import __cswiftslash
 import Logging
 
 // swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
-internal struct PThread<A, W> {
+internal struct PThread<A, W, R> {
+	private final class ContainedResult {
+		internal let result:R
+		internal init(result:R) {
+			self.result = result
+		}
+		internal func getResult() -> R {
+			return result
+		}
+	}
 	private final class ContainedWorkspace {
-		private let stored:W
+		private var stored:W
 		internal init(_ stored:W) {
 			self.stored = stored
 		}
-		internal func getWorkspace() -> W {
-			return stored
-		}
-	}
-	internal func run(_ arg:consuming A, alloc:() -> W, work:(UnsafeMutablePointer<A>, W) throws -> Void) {
-		let lf = Future<Running>()
-		withUnsafeMutablePointer(to:&arg) { argPtr in
-			_run(argument:argPtr, alloc: {
-				return Unmanaged.passRetained(ContainedWorkspace(alloc())).toOpaque()
-			}, dealloc: { wsPtr in
-				_ = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
-			}, launchFuture:lf) { argPtr, wsPtr in
-				try work(argPtr.assumingMemoryBound(to:A.self), Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().getWorkspace())
+		internal func accessWorkspace<R>(_ ws:(UnsafeMutablePointer<W>) throws -> R) rethrows -> R {
+			return try withUnsafeMutablePointer(to:&stored) { sPtr in
+				return try ws(sPtr)
 			}
 		}
-		
+	}
+	internal func run(_ arg:consuming A, alloc:() -> W, work:(UnsafeMutablePointer<A>, UnsafeMutablePointer<W>) throws -> R) async {
+		let lf = Future<_Running>()
+
+		try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+			withUnsafeMutablePointer(to:&arg) { argPtr in
+				_run(argument:argPtr, alloc: {
+					return Unmanaged.passRetained(ContainedWorkspace(alloc())).toOpaque()
+				}, dealloc: { wsPtr in
+					_ = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
+				}, launchFuture:lf) { argPtr, wsPtr in
+					let result = try Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().accessWorkspace { wp in
+						return try work(argPtr.assumingMemoryBound(to:A.self), wp)
+					}
+					return Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
+				}
+			}
+		}
 	}
 }
 
@@ -40,30 +56,41 @@ internal struct LaunchError:Swift.Error {}
 internal struct CancellationError:Swift.Error {}
 
 /// the function that is run by the pthread.
-internal typealias WorkFunc = (UnsafeMutableRawPointer, UnsafeMutableRawPointer) throws -> Void
-
-internal typealias DeallocFunc = (UnsafeMutableRawPointer) -> Void
-
-internal typealias AllocFunc = () -> UnsafeMutableRawPointer
 
 
-fileprivate struct Running {
+fileprivate typealias RetPtr = UnsafeMutableRawPointer?
+fileprivate typealias WorkFunc = (UnsafeMutableRawPointer, UnsafeMutableRawPointer) throws -> RetPtr?
+fileprivate typealias DeallocFunc = (UnsafeMutableRawPointer) -> Void
+fileprivate typealias AllocFunc = () -> UnsafeMutableRawPointer
+
+
+fileprivate struct _Running {
+	/// the pthread primitive type that is used to represent the pthread.
 	private let pt:_cswiftslash_pthread_t_type
-	private let rf:Future<Void>
-	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, returnFuture:Future<Void>) {
+	/// the future that will be set after the pthread has joined
+	private let rf:Future<RetPtr?>
+	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, returnFuture:Future<RetPtr?>) {
 		pt = pthread
 		rf = returnFuture
 	}
-	internal consuming func cancel() throws {
+	internal func cancel() throws {
 		guard pthread_cancel(pt) == 0 else {
 			throw CancellationError()
 		}
 	}
+	internal func awaitResult() async -> Result<RetPtr?, Swift.Error> {
+		await withCheckedContinuation { cont in
+			cont.resume(returning:rf.blockForResult())
+		}
+	}
 }
 
-
-// internal static func run<A>(argument arg:consuming A)
-fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFunc, dealloc:DeallocFunc, launchFuture:borrowing Future<Running>, _ _wf:WorkFunc) {
+/// the primary function to call when you want to run a pthread and safely handle the memory around it.
+/// - parameter usrArgPtr: the argument passed into the run function
+/// - parameter alloc: the function to allocate the workspace memory
+/// - parameter dealloc: the function to deallocate the workspace memory
+/// - parameter launchFuture: the future that will be set to success or failure depending on the success of the pthread launch
+fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFunc, dealloc:DeallocFunc, launchFuture:borrowing Future<_Running>, _ _wf:WorkFunc) {
 	
 	// the contained setup struct that is passed into the pthread and used to set up / configure things.
 	struct ContainedSetup {
@@ -77,12 +104,16 @@ fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFun
 		// the dealloc function to be run after the main work or during cancellation
 		let dealloc:DeallocFunc
 
-		// the launch future
-		let configureFuture = Future<Future<Void>>()
+		// the configure future. this will fufill when the pthread is running its designated work and configured to properly cancel if needed.
+		let configureFuture = Future<Future<RetPtr?>>()
 
-		let returnFuture = Future<Void>()
+		// the future that will be set to success or failure depending on the success of the work function.
+		let returnFuture = Future<RetPtr?>()
 
-		// the pointer to the user pointer
+		/// the return value of the work if it didn't throw
+		var workResult:RetPtr? = nil
+
+		// the pointer to the workspace memory. the workspace memory is safely and reliably allocated and deallocated by the alloc and dealloc functions regardless if the pthread cancels or exits.
 		var workspace:UnsafeMutableRawPointer? = nil
 
 		internal init(_ arg:UnsafeMutableRawPointer, work:@escaping WorkFunc, alloc:@escaping AllocFunc, dealloc:@escaping DeallocFunc) {
@@ -105,11 +136,13 @@ fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFun
 					// launch the pthread
 					var pthreadLaunchResult:Int32 = 0
 					var pthreadPrimitiveInstance = _cswiftslash_pthread_fresh(nil, { csp in
+
+						// pthread begin ----
 						
 						// allocate the workspace
 						csp.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workspace)!.pointee = csp.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.alloc)!.pointee()
 
-						// main run function
+						// main run function. this will configure the pthread to handle cancellation corrrctly. does not return.
 						_cswiftslash_pthreads_main_f_run(csp, { csPtr in
 
 							// thread is now configured and running. mark the configuring future as succeeded.
@@ -117,14 +150,16 @@ fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFun
 
 							do {
 								// do the main work. pass the users argument and the workspace memory to the function.
-								try csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.work)!.pointee(csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.arg)!.pointee, csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workspace)!.pointee!)
+								csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workResult)!.pointee = try csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.work)!.pointee(csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.arg)!.pointee, csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workspace)!.pointee!)
 								
 								// set the exit future to success since the work didn't throw
-								csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.returnFuture)!.pointee.setSuccess(())
+								csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.returnFuture)!.pointee.setSuccess(csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workResult)!.pointee!)
 
 								// call the deallocator for the workspace memory
 								csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.dealloc)!.pointee(csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workspace)!.pointee!)
+							
 							} catch let error {
+							
 								// thread has thrown an error. set the exit future to failure.
 								csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.returnFuture)!.pointee.setFailure(error)
 
@@ -138,6 +173,7 @@ fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFun
 							// call the deallocator for the workspace memory
 							csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.dealloc)!.pointee(csPtr.assumingMemoryBound(to:ContainedSetup.self).pointer(to:\.workspace)!.pointee!)
 						})
+
 					}, cSetupPtr, &pthreadLaunchResult);
 
 					// verify the pthread was created successfully
@@ -148,8 +184,11 @@ fileprivate func _run(argument usrArgPtr:UnsafeMutableRawPointer, alloc:AllocFun
 
 					// launch successful, we now have a guarantee that configureFuture will be fufilled, so we will wait for that to happen now.
 					switch cSetupPtr.pointer(to:\.configureFuture)!.pointee.blockForResult() {
+						// the configure future has succeeded, we can now set the launch future to success.
 						case .success:
-						launchFuture.setSuccess(Running(pthreadPrimitiveInstance, returnFuture:cSetupPtr.pointer(to:\.returnFuture)!.pointee))
+						launchFuture.setSuccess(_Running(pthreadPrimitiveInstance, returnFuture:cSetupPtr.pointer(to:\.returnFuture)!.pointee))
+
+						// this should never happen
 						case .failure(let error):
 						fatalError("unexpected error \(error) from \(#file):\(#line)")
 					}
