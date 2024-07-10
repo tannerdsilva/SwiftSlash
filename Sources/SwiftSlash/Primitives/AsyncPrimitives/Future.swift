@@ -1,5 +1,6 @@
 import __cswiftslash
 
+// future is sendable because it is a struct type that may be copied and completely guards against reentrant and concurrent access
 extension _cswiftslash_future_t:@unchecked Sendable {}
 
 internal final class Future<R>:Sendable {
@@ -24,7 +25,7 @@ internal final class Future<R>:Sendable {
 		self.successfulResultDeallocator = successfulResultDeallocator
 	}
 
-	internal borrowing func setSuccess(_ result:R) {
+	internal func setSuccess(_ result:R) {
 		let op = Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_val(&prim, 0, op) else {
 			_ = Unmanaged<ContainedResult>.fromOpaque(op).takeRetainedValue()
@@ -32,7 +33,7 @@ internal final class Future<R>:Sendable {
 		}
 	}
 
-	internal borrowing func setFailure(_ error:Swift.Error) {
+	internal func setFailure(_ error:Swift.Error) {
 		let op = Unmanaged.passRetained(ContainedError(error:error)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_throw(&prim, 1, op) else {
 			_ = Unmanaged<ContainedError>.fromOpaque(op).takeRetainedValue()
@@ -52,6 +53,12 @@ internal final class Future<R>:Sendable {
 			})
 		}
 		return res!
+	}
+
+	internal func awaitResult() async -> Result<R, Swift.Error> {
+		await withCheckedContinuation { cont in
+			cont.resume(returning:blockForResult())
+		}
 	}
 
 	deinit {
