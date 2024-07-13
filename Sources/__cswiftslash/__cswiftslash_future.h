@@ -3,40 +3,37 @@
 #ifndef CLIBSWIFTSLASH_FUTURE_INT_H
 #define CLIBSWIFTSLASH_FUTURE_INT_H
 
+#include "__cswiftslash_fifo.h"
 #include "__cswiftslash_types.h"
 
+#include "__cswiftslash_future.h"
+
 #include <pthread.h>
-
-// status values.
-typedef enum future_status {
-	// pending status (future not fufilled)
-	FUTURE_STATUS_PEND = 0,
-	// result status (future fufilled normally)
-	FUTURE_STATUS_RESULT = 1,
-	// thrown status (future fufilled with an error)
-	FUTURE_STATUS_THROW = 2,
-	// cancel status (future was not fufilled and will NOT fufill in the future)
-	FUTURE_STATUS_CANCEL = 3,
-} _cswiftslash_future_status_t;
-
 
 // handler types -----
 
 /// @brief a future result handler.
-/// @param res_val the result value - an optional pointer.
-typedef void(^_Nonnull future_result_val_handler_f)(const _cswiftslash_optr_t);
+/// @param res_typ the result type value.
+/// @param res_ptr the result pointer (optional).
+typedef void(*_Nonnull future_result_val_handler_f)(const uint8_t res_typ, const _cswiftslash_optr_t res_ptr);
 
 /// @brief a future error handler.
-/// @param res_val the error value - an optional pointer.
-typedef void(^_Nonnull future_result_err_handler_f)(const _cswiftslash_optr_t);
+/// @param err_typ the error type value.
+/// @param err_ptr the error pointer (optional).
+typedef void(*_Nonnull future_result_err_handler_f)(const uint8_t err_type, const _cswiftslash_optr_t err_ptr);
 
 /// @brief a future cancel handler.
-typedef void(^_Nonnull future_result_cancel_handler_f)(void);
+typedef void(*_Nonnull future_result_cancel_handler_f)(void);
 
+/// @brief used to represent a thread that is synchronously waiting and blocking for the result of a future.
+typedef struct _cswiftslash_future_syncwait_t {
+	const future_result_val_handler_f res_handler;
+	const future_result_err_handler_f err_handler;
+	const future_result_cancel_handler_f cancel_handler;
+} _cswiftslash_future_syncwait_t;
 
-/// @brief a future that will produce a 64 bit integer. 
+/// @brief a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct _cswiftslash_future {
-	// outcome of the future.
 	_Atomic uint8_t statVal;		// internal status value.
 	pthread_cond_t statCond;		// internal condition for when the status changes.
 	pthread_mutex_t mutex;			// internal mutex for the condition.
@@ -44,10 +41,12 @@ typedef struct _cswiftslash_future {
 	// user fields related to the result.
 	_Atomic uint8_t fres_val_type;					// result value type (user field).
 	_Atomic _cswiftslash_optr_t fres_val;			// result value (user field).
+
+	// function blocks for waiters must be called from the thread that broadcasts the result or error. this is where these waiters are stored.
+	_cswiftslash_fifo_linkpair_t waiters;
 } _cswiftslash_future_t;
 
 typedef _cswiftslash_future_t*_Nonnull _cswiftslash_future_ptr_t;
-
 
 // init and deinit -----
 
@@ -71,7 +70,6 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, const future_res
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return the result of the future.
 void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
-
 
 // delivering the result -----
 

@@ -20,10 +20,19 @@ let package = Package(
 				.product(name:"Logging", package:"swift-log"),
 				"__cswiftslash"
 			]),
+		.target(
+			name:"SwiftSlashPThread",
+			dependencies:["__cswiftslash", "SwiftSlashFuture"]
+		),
+		.target(
+			name:"SwiftSlashFuture",
+			dependencies:["__cswiftslash"]
+		),
         .target(
         	name:"__cswiftslash",
 			publicHeadersPath:".",
-			cSettings: []),
+			cSettings: [],
+			linkerSettings: [.linkedFramework("pthread")]),
         .testTarget(
             name: "SwiftSlashTests",
             dependencies: ["SwiftSlash", "__cswiftslash"]),

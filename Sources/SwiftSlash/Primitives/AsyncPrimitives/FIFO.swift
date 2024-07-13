@@ -75,7 +75,7 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 		}) {
 			_ = Unmanaged<ContainedResult>.fromOpaque(capPointer).takeRetainedValue()
 		}
-		datachain_primitive_ptr.deallocate()
+		datachain_primitive_ptr.deinitialize(count:1).deallocate()
 	}
 }
 

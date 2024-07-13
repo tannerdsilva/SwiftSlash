@@ -170,8 +170,8 @@ int8_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_pt
 			return -1; // would block
 		} else {
 			// the chain is capped. return the cap pointer.
-			pthread_mutex_unlock(&chain->mutex);
 			*consumed_ptr = atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
+			pthread_mutex_unlock(&chain->mutex);
 			return 1; // cap element
 		}
 	}
