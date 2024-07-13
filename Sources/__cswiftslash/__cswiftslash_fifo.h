@@ -14,7 +14,7 @@ typedef struct _cswiftslash_fifo_link* _Nullable _cswiftslash_fifo_link_ptr_t;
 /// defines an atomic version of `_cswiftslash_fifo_link_ptr_t` to ensure thread-safe manipulation of the fifo links.
 typedef _Atomic _cswiftslash_fifo_link_ptr_t _cswiftslash_fifo_link_aptr_t;
 /// function prototype for consuming data from the chain. does not free the memory of the consumed pointer.
-typedef void (^_Nonnull _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
+typedef void (*_Nonnull _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
 
 /// structure representing a single link within the fifo, holding a data item and a pointer to the next chain item.
 typedef struct _cswiftslash_fifo_link {

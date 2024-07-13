@@ -4,36 +4,70 @@
 #define _CSWIFTSLASH_PTHREADS_H
 
 #include <pthread.h>
-#include <stdnoreturn.h>
 #include "__cswiftslash_types.h"
-#include <stdnoreturn.h>
 
 #if defined(__APPLE__)
-typedef pthread_t _Nullable _cswiftslash_pthread_t_type;
+typedef pthread_t _Null_unspecified _cswiftslash_pthread_t_type;
 #else
 typedef pthread_t _cswiftslash_pthread_t_type;
 #endif
 
-// MARK - threads
+// /// @brief cancel a currently running pthread. this is basically a wrapper of the common pthread_cancel function.
+// int _cswiftslash_pthread_cancel(_cswiftslash_pthread_t_type pthread);
 
-/// @brief the type of pthread_t that is used on this particular platform
+// /// @brief send a signal to a currently running pthread. this is basically a wrapper of the common pthread_kill function.
+// int _cswiftslash_pthread_kill(_cswiftslash_pthread_t_type pthread, int sig);
 
-/// makes a fresh pthread_t that will launch immediately
-_cswiftslash_pthread_t_type _cswiftslash_pthread_fresh(const pthread_attr_t *_Nullable attr, void *_Nonnull(*_Nonnull start_routine)(void *_Nonnull), void*_Nonnull arg, int*_Nonnull result);
+// /// @brief wait for a pthread to finish. this is basically a wrapper of the common pthread_join function.
+// int _cswiftslash_pthread_join(_cswiftslash_pthread_t_type pthread, _cswiftslash_optr_t *_Nonnull retval);
 
 /// @brief the type of a pthread main function.
-typedef void(*_cswiftslash_pthreads_main_f)(_cswiftslash_ptr_t arg);
+/// @param ws a pointer to the workspace that the pthread will use.
+typedef void(*_cswiftslash_pthreads_main_f)(_cswiftslash_ptr_t ws);
 
-/// @brief a cancel handler for a pthread.
-typedef void(* _cswiftslash_pthreads_cancel_handler_f)(_cswiftslash_ptr_t arg);
+/// @brief an allocator for a pthread workspace.
+/// @param arg the argument that was initially passed into the pthread. you can assume this is the only time you will be able to access this argument.
+/// @return a pointer to the allocated workspace that the pthread will use.
+typedef _cswiftslash_ptr_t(* _cswiftslash_pthreads_alloc_f)(const _cswiftslash_ptr_t arg);
 
-/// @brief runs a pthread with a main function and a cancel handler.
-/// @param arg the argument pointer to pass to the main function.
-/// @param alloc the workspace allocator to run.
-/// @param run the main function to run.
-/// @param dealloc the workspace deallocator to run.
-/// @param cancel_handler the cancel handler to run if the thread is cancelled.
-/// @note this function will never return, it is meant to be the main driver for a pthread.
-_Noreturn void _cswiftslash_pthreads_main_f_run(_cswiftslash_ptr_t arg, const _cswiftslash_pthreads_main_f _Nonnull run, const _cswiftslash_pthreads_cancel_handler_f _Nonnull cancel_handler); 
+/// @brief a deallocator for a pthread workspace.
+/// @param ws a pointer to the workspace that the pthread used.
+typedef void(* _cswiftslash_pthreads_dealloc_f)(_cswiftslash_ptr_t ws);
+
+/// @brief a cancel handler for a pthread. this is guaranteed to be called before the workspace deallocator.
+/// @param ws a pointer to the workspace that the pthread used.
+typedef void(* _cswiftslash_pthreads_cancel_f)(_cswiftslash_ptr_t ws);
+
+/// @brief a configuration for a pthread. this structure outlines the standardized way that work threads are created and managed.
+typedef struct _cswiftslash_pthread_config_t {
+	_cswiftslash_ptr_t alloc_arg;
+	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f;
+	_cswiftslash_pthreads_main_f _Nonnull run_f;
+	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f;
+	_cswiftslash_pthreads_dealloc_f _Nonnull dealloc_f;
+} _cswiftslash_pthread_config_t;
+
+/// @brief create a pthread configuration.
+/// @param alloc_arg the argument to pass into the workspace allocator function.
+/// @param alloc_f the workspace allocator to run.
+/// @param run_f the main function to run as the 'work' of the pthread.
+/// @param cancel_f the cancel handler to run if the thread is cancelled.
+/// @param dealloc_f the workspace deallocator to run.
+_cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
+	_cswiftslash_ptr_t alloc_arg,
+	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
+	_cswiftslash_pthreads_main_f _Nonnull run_f,
+	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f,
+	_cswiftslash_pthreads_dealloc_f _Nonnull dealloc_f
+);
+
+/// @brief create a new pthread.
+/// @param config the configuration to use for the pthread lifecycle. this pointer and its contents must be valid until the alloc function is called.
+/// @param result the result of the pthread creation.
+/// @return the pthread that was created if result is 0, undefined otherwise.
+_cswiftslash_pthread_t_type _cswiftslash_pthread_config_run(
+	const _cswiftslash_pthread_config_t *_Nonnull config,
+	int *_Nonnull result
+ );
 
 #endif // _CSWIFTSLASH_PTHREADS_H
