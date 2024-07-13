@@ -15,18 +15,22 @@
 /// @brief a future result handler.
 /// @param res_typ the result type value.
 /// @param res_ptr the result pointer (optional).
-typedef void(*_Nonnull future_result_val_handler_f)(const uint8_t res_typ, const _cswiftslash_optr_t res_ptr);
+/// @param ctx_ptr the context pointer (optional).
+typedef void(^_Nonnull future_result_val_handler_f)(const uint8_t res_typ, const _cswiftslash_optr_t res_ptr, void *_Nullable ctx_ptr);
 
 /// @brief a future error handler.
 /// @param err_typ the error type value.
 /// @param err_ptr the error pointer (optional).
-typedef void(*_Nonnull future_result_err_handler_f)(const uint8_t err_type, const _cswiftslash_optr_t err_ptr);
+/// @param ctx_ptr the context pointer (optional).
+typedef void(^_Nonnull future_result_err_handler_f)(const uint8_t err_type, const _cswiftslash_optr_t err_ptr, void *_Nullable ctx_ptr);
 
 /// @brief a future cancel handler.
-typedef void(*_Nonnull future_result_cancel_handler_f)(void);
+/// @param ctx_ptr the context pointer (optional).
+typedef void(^_Nonnull future_result_cancel_handler_f)(void *_Nullable ctx_ptr);
 
 /// @brief used to represent a thread that is synchronously waiting and blocking for the result of a future.
 typedef struct _cswiftslash_future_syncwait_t {
+	void *_Nullable ctx_ptr;
 	const future_result_val_handler_f res_handler;
 	const future_result_err_handler_f err_handler;
 	const future_result_cancel_handler_f cancel_handler;
@@ -56,20 +60,22 @@ _cswiftslash_future_t _cswiftslash_future_t_init(void);
 
 /// @brief destroy a future. behavior is undefined if this is called while the future is still in use.
 /// @param future the future to deallocate.
+/// @param ctx_ptr the context pointer to pass to the result handler.
 /// @param res_handler the result handler to call when the future is complete.
 /// @param err_handler the error handler to call when the future is complete.
 /// @return 0 if the future was destroyed, -1 if the future was not destroyed.
-int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handlerf);
+int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handlerf);
 
 // waiting for the result -----
 
 /// @brief block the calling thread until the future is complete.
 /// @param future the future to wait for.
+/// @param ctx_ptr the context pointer to pass to the result handler.
 /// @param res_handler the result handler to call when the future is complete.
 /// @param err_handler the error handler to call when the future is complete.
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return the result of the future.
-void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
+void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void*_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
 
 // delivering the result -----
 
