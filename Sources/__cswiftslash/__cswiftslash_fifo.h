@@ -14,7 +14,7 @@ typedef struct _cswiftslash_fifo_link* _Nullable _cswiftslash_fifo_link_ptr_t;
 /// defines an atomic version of `_cswiftslash_fifo_link_ptr_t` to ensure thread-safe manipulation of the fifo links.
 typedef _Atomic _cswiftslash_fifo_link_ptr_t _cswiftslash_fifo_link_aptr_t;
 /// function prototype for consuming data from the chain. does not free the memory of the consumed pointer.
-typedef void (*_Nonnull _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
+typedef void (^ _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
 
 /// structure representing a single link within the fifo, holding a data item and a pointer to the next chain item.
 typedef struct _cswiftslash_fifo_link {
@@ -56,7 +56,7 @@ _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init();
 /// @param chain pointer to the fifo to be deinitialized.
 /// @param deallocator_f function used for deallocating memory of data pointers.
 /// @return the cap pointer if the chain was capped; NULL if the chain was not capped. the caller is responsible for freeing this pointer from memory.
-_cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f deallocator_f);
+_cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f);
 
 // data handling
 

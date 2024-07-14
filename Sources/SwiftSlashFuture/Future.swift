@@ -62,7 +62,7 @@ public final class Future<R>:Sendable {
 	}
 
 	public func blockForResult() -> Result<R, Swift.Error> {
-		var res:Result<R, Swift.Error> = (nil, nil)
+		var res:Result<R, Swift.Error>? = nil
 		withUnsafeMutablePointer(to:&res) { resPtr in
 			_cswiftslash_future_t_wait_sync(prim, resPtr, {
 				$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(returning:Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
@@ -72,6 +72,7 @@ public final class Future<R>:Sendable {
 				$0!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:CancellationError())
 			})
 		}
+		return res!
 	}
 	
 	public func waitForResult() async throws -> R {
@@ -80,9 +81,9 @@ public final class Future<R>:Sendable {
 				_cswiftslash_future_t_wait_sync(prim, awaitResult, {
 					$2!.assumingMemoryBound(to:UnsafeContinuation<R, Swift.Error>.self).pointee.resume(returning:Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
 				}, {
-					$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:Unmanaged<ContainedError>.fromOpaque($1!).takeUnretainedValue().error)
+					$2!.assumingMemoryBound(to:UnsafeContinuation<R, Swift.Error>.self).pointee.resume(throwing:Unmanaged<ContainedError>.fromOpaque($1!).takeUnretainedValue().error)
 				}, {
-					$0!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:CancellationError())
+					$0!.assumingMemoryBound(to:UnsafeContinuation<R, Swift.Error>.self).pointee.resume(throwing:CancellationError())
 				})
 			}
 		})

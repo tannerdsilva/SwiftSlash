@@ -169,14 +169,13 @@ fileprivate func _run(_ config:consuming PThreadSetup) throws {
 			}
 
 			// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
-			switch config.pointee.configureFuture.blockForResult() {
-				case .success(let returnFuture):
-					let makeRunning = RunningPThread(config, returnFuture:returnFuture)
-					ptSetup.pointer(to:\.runFuture)!.pointee.setSuccess(makeRunning)
-
+			switch ptSetup.pointer(to:\.configureFuture)!.pointee.blockForResult() {
+				case .success(let future):
+					// set the running future to the RunningPThread object.
+					ptSetup.pointer(to:\.runFuture)!.pointee.setSuccess(RunningPThread(config, returnFuture:future))
 				case .failure(let error):
-					// pthread was canceled before it could be configured.
-					throw error
+					// set the running future to a failure error.
+					ptSetup.pointer(to:\.runFuture)!.pointee.setFailure(error)
 			}
 		}	
 	}

@@ -15,12 +15,12 @@ internal struct RunningPThread {
 	/// the future that will be set after the work is joined.
 	private let rf:Future<UnsafeMutableRawPointer?>
 	
-	fileprivate init(_ pthread:consuming _cswiftslash_pthread_t_type, returnFuture:Future<UnsafeMutableRawPointer?>) {
+	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, returnFuture:consuming Future<UnsafeMutableRawPointer?>) {
 		pt = pthread
 		rf = returnFuture
 	}
 	
-	fileprivate func cancel() throws {
+	fileprivate borrowing func cancel() throws {
 		guard pthread_cancel(pt) == 0 else {
 			throw CancellationError()
 		}
@@ -30,9 +30,7 @@ internal struct RunningPThread {
 		}
 	}
 	
-	fileprivate func awaitResult() async -> Result<UnsafeMutableRawPointer?, Swift.Error> {
-		await withCheckedContinuation { cont in
-			cont.resume(returning:rf.blockForResult())
-		}
+	fileprivate borrowing func awaitResult() async throws -> UnsafeMutableRawPointer? {
+		return try await rf.waitForResult()
 	}
 }

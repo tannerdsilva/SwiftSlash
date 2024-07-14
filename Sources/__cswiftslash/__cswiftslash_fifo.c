@@ -22,7 +22,7 @@ _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init() {
 	return chain;
 }
 
-_cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f deallocator_f) {
+_cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f) {
 	// load the base entry.
 	_cswiftslash_fifo_link_ptr_t current = atomic_load_explicit(&chain->base, memory_order_acquire);
 	
@@ -30,12 +30,20 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 	atomic_store_explicit(&chain->base, NULL, memory_order_release);
 	atomic_store_explicit(&chain->tail, NULL, memory_order_release);
 	
-	// iterate through the chain and free all entries
-	while (current != NULL) {
-		_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
-		deallocator_f(current->ptr);
-		free(current);
-		current = next;
+	// iterate through the chain and free all entries. call the deallocator function if it is not NULL.
+	if (deallocator_f != NULL) {
+		while (current != NULL) {
+			_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
+			deallocator_f(current->ptr);
+			free(current);
+			current = next;
+		}
+	} else {
+		while (current != NULL) {
+			_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
+			free(current);
+			current = next;
+		}
 	}
 	
 	pthread_mutex_destroy(&chain->mutex);

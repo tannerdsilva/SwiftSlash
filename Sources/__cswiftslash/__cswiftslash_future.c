@@ -30,17 +30,13 @@ _cswiftslash_future_t _cswiftslash_future_t_init(void) {
 	return newfuture;
 }
 
-void _cswiftslash_future_fifo_deallocator(const _cswiftslash_ptr_t ptr) {
-	// nothing to free, since the pointer is just a reference to a stack space.
-}
-
 int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler) {
 
 	// destroy the condition related to this future
 	pthread_cond_destroy(&future.statCond);
 	pthread_mutex_destroy(&future.mutex);
 
-	_cswiftslash_fifo_close(&future.waiters, _cswiftslash_future_fifo_deallocator);
+	_cswiftslash_fifo_close(&future.waiters, NULL);
 
 	// load the state of the future
 	int8_t curstat = atomic_load_explicit(&future.statVal, memory_order_acquire);
