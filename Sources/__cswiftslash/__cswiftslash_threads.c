@@ -5,18 +5,6 @@
 #include <string.h>
 #include <pthread.h>
 
-// int _cswiftslash_pthread_cancel(_cswiftslash_pthread_t_type pthread) {
-// 	return pthread_cancel((pthread_t)pthread);
-// }
-
-// int _cswiftslash_pthread_kill(_cswiftslash_pthread_t_type pthread, int sig) {
-// 	return pthread_kill((pthread_t)pthread, sig);
-// }
-
-// int _cswiftslash_pthread_join(_cswiftslash_pthread_t_type pthread, _cswiftslash_optr_t *_Nonnull retval) {
-// 	return pthread_join((pthread_t)pthread, (void*)retval);
-// }
-
 void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 	// disable cancellation so that the thread can be set up.
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);	// cancel not allowed right now, we must first configure the thread.

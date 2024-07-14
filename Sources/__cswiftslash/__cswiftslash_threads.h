@@ -12,15 +12,6 @@ typedef pthread_t _Null_unspecified _cswiftslash_pthread_t_type;
 typedef pthread_t _cswiftslash_pthread_t_type;
 #endif
 
-// /// @brief cancel a currently running pthread. this is basically a wrapper of the common pthread_cancel function.
-// int _cswiftslash_pthread_cancel(_cswiftslash_pthread_t_type pthread);
-
-// /// @brief send a signal to a currently running pthread. this is basically a wrapper of the common pthread_kill function.
-// int _cswiftslash_pthread_kill(_cswiftslash_pthread_t_type pthread, int sig);
-
-// /// @brief wait for a pthread to finish. this is basically a wrapper of the common pthread_join function.
-// int _cswiftslash_pthread_join(_cswiftslash_pthread_t_type pthread, _cswiftslash_optr_t *_Nonnull retval);
-
 /// @brief the type of a pthread main function.
 /// @param ws a pointer to the workspace that the pthread will use.
 typedef void(*_cswiftslash_pthreads_main_f)(_cswiftslash_ptr_t ws);

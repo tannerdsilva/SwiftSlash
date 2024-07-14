@@ -110,28 +110,6 @@ fileprivate struct PThreadSetup {
 	}
 }
 
-fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
-	return Unmanaged<ContainedWorkspace>.passRetained(
-		ContainedWorkspace(
-			csPtr.assumingMemoryBound(to:PThreadSetup.self)
-		)
-	).toOpaque()
-}
-fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	var ws:ContainedWorkspace? = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
-	ws = nil
-}
-fileprivate let _run_cancel:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().setCancellation()
-}
-fileprivate let _run_main:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
-	withUnsafePointer(to:Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue()) { containerPtr in 
-		// run the work function, pass the result into the return future.
-		containerPtr.pointee.work()
-	}
-}
-
 /// primary function for running pthread work in an async swift runtime. THIS FUNCTION IS BLOCKING. calls pthread_create and pthread_join unconditionally to ensure full lifecycle safety.
 /// - parameters:
 /// 	- config: the configuration that defines what kind of executable work and memory space the newly created pthread will use.
@@ -178,5 +156,27 @@ fileprivate func _run(_ config:consuming PThreadSetup) throws {
 					ptSetup.pointer(to:\.runFuture)!.pointee.setFailure(error)
 			}
 		}	
+	}
+}
+
+fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
+	return Unmanaged<ContainedWorkspace>.passRetained(
+		ContainedWorkspace(
+			csPtr.assumingMemoryBound(to:PThreadSetup.self)
+		)
+	).toOpaque()
+}
+fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+	var ws:ContainedWorkspace? = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
+	ws = nil
+}
+fileprivate let _run_cancel:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+	Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().setCancellation()
+}
+fileprivate let _run_main:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
+	withUnsafePointer(to:Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue()) { containerPtr in 
+		// run the work function, pass the result into the return future.
+		containerPtr.pointee.work()
 	}
 }
