@@ -1,7 +1,7 @@
 import __cswiftslash
 
-internal final class Future<R>:Sendable {
-	internal typealias SuccessfulResultDeallocator = @Sendable (R) -> Void
+public final class Future<R>:Sendable {
+	public typealias SuccessfulResultDeallocator = @Sendable (R) -> Void
 	private final class ContainedError {
 		internal let error:Swift.Error
 		internal init(error:Swift.Error) {
@@ -18,13 +18,13 @@ internal final class Future<R>:Sendable {
 	private let prim:UnsafeMutablePointer<_cswiftslash_future_t>
 	private let successfulResultDeallocator:SuccessfulResultDeallocator?
 
-	internal init(successfulResultDeallocator:SuccessfulResultDeallocator? = nil) {
+	public init(successfulResultDeallocator:SuccessfulResultDeallocator? = nil) {
 		self.prim = UnsafeMutablePointer<_cswiftslash_future_t>.allocate(capacity:1)
 		self.successfulResultDeallocator = successfulResultDeallocator
 		self.prim.initialize(to:_cswiftslash_future_t_init())
 	}
 
-	internal func setSuccess(_ result:R) {
+	public borrowing func setSuccess(_ result:R) {
 		let op = Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
 			_ = Unmanaged<ContainedResult>.fromOpaque(op).takeRetainedValue()
@@ -32,7 +32,7 @@ internal final class Future<R>:Sendable {
 		}
 	}
 
-	internal func setFailure(_ error:Swift.Error) {
+	public borrowing func setFailure(_ error:Swift.Error) {
 		let op = Unmanaged.passRetained(ContainedError(error:error)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
 			_ = Unmanaged<ContainedError>.fromOpaque(op).takeRetainedValue()
@@ -60,12 +60,25 @@ internal final class Future<R>:Sendable {
 			cont.pointee.resume(throwing:error)
 		}
 	}
+
+	public func blockForResult() -> Result<R, Swift.Error> {
+		var res:Result<R, Swift.Error> = (nil, nil)
+		withUnsafeMutablePointer(to:&res) { resPtr in
+			_cswiftslash_future_t_wait_sync(prim, resPtr, {
+				$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(returning:Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
+			}, {
+				$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:Unmanaged<ContainedError>.fromOpaque($1!).takeUnretainedValue().error)
+			}, {
+				$0!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:CancellationError())
+			})
+		}
+	}
 	
-	internal func waitForResult() async throws -> R {
+	public func waitForResult() async throws -> R {
 		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
 			AwaitResult.expose(cont) { awaitResult in
 				_cswiftslash_future_t_wait_sync(prim, awaitResult, {
-					$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(returning:Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
+					$2!.assumingMemoryBound(to:UnsafeContinuation<R, Swift.Error>.self).pointee.resume(returning:Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
 				}, {
 					$2!.assumingMemoryBound(to:AwaitResult.self).pointee.resume(throwing:Unmanaged<ContainedError>.fromOpaque($1!).takeUnretainedValue().error)
 				}, {
@@ -84,10 +97,10 @@ internal final class Future<R>:Sendable {
 				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (nil, Unmanaged<ContainedError>.fromOpaque(eptr!).takeRetainedValue().error)
 			})
 		}) == 0 else {
-			fatalError("Failed to destroy future.")
+			fatalError("failed to destroy future - \(#file):\(#line)")
 		}
-		if let result = result.0 {
-			successfulResultDeallocator?(result)
+		if result.0 != nil {
+			successfulResultDeallocator?(result.0!)
 		}
 		result = (nil, nil)
 	}

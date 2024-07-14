@@ -5,6 +5,7 @@ import Darwin
 #endif
 
 import __cswiftslash
+import SwiftSlashFuture
 
 // swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
 
