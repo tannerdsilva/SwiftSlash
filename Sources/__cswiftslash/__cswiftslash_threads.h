@@ -19,7 +19,7 @@ typedef void(*_cswiftslash_pthreads_main_f)(_cswiftslash_ptr_t ws);
 /// @brief an allocator for a pthread workspace.
 /// @param arg the argument that was initially passed into the pthread. you can assume this is the only time you will be able to access this argument.
 /// @return a pointer to the allocated workspace that the pthread will use.
-typedef _cswiftslash_ptr_t(* _cswiftslash_pthreads_alloc_f)(const _cswiftslash_ptr_t arg);
+typedef _cswiftslash_ptr_t(* _cswiftslash_pthreads_alloc_f)(_cswiftslash_cptr_t arg);
 
 /// @brief a deallocator for a pthread workspace.
 /// @param ws a pointer to the workspace that the pthread used.
@@ -31,7 +31,7 @@ typedef void(* _cswiftslash_pthreads_cancel_f)(_cswiftslash_ptr_t ws);
 
 /// @brief a configuration for a pthread. this structure outlines the standardized way that work threads are created and managed.
 typedef struct _cswiftslash_pthread_config_t {
-	_cswiftslash_ptr_t alloc_arg;
+	_cswiftslash_cptr_t alloc_arg;
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f;
 	_cswiftslash_pthreads_main_f _Nonnull run_f;
 	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f;
@@ -45,7 +45,7 @@ typedef struct _cswiftslash_pthread_config_t {
 /// @param cancel_f the cancel handler to run if the thread is cancelled.
 /// @param dealloc_f the workspace deallocator to run.
 _cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
-	_cswiftslash_ptr_t alloc_arg,
+	_cswiftslash_cptr_t alloc_arg,
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
 	_cswiftslash_pthreads_main_f _Nonnull run_f,
 	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f,

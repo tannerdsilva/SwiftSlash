@@ -36,7 +36,7 @@ void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 }
 
  _cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
-	_cswiftslash_ptr_t alloc_arg,
+	_cswiftslash_cptr_t alloc_arg,
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
 	_cswiftslash_pthreads_main_f _Nonnull run_f,
 	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f,

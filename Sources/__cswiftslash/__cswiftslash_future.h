@@ -5,7 +5,6 @@
 
 #include "__cswiftslash_fifo.h"
 #include "__cswiftslash_types.h"
-
 #include "__cswiftslash_future.h"
 
 #include <pthread.h>
@@ -27,14 +26,6 @@ typedef void(^_Nonnull future_result_err_handler_f)(const uint8_t err_type, cons
 /// @brief a future cancel handler.
 /// @param ctx_ptr the context pointer (optional).
 typedef void(^_Nonnull future_result_cancel_handler_f)(void *_Nullable ctx_ptr);
-
-/// @brief used to represent a thread that is synchronously waiting and blocking for the result of a future.
-typedef struct _cswiftslash_future_syncwait_t {
-	void *_Nullable ctx_ptr;
-	const future_result_val_handler_f res_handler;
-	const future_result_err_handler_f err_handler;
-	const future_result_cancel_handler_f cancel_handler;
-} _cswiftslash_future_syncwait_t;
 
 /// @brief a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct _cswiftslash_future {
@@ -76,6 +67,14 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable 
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return the result of the future.
 void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void*_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
+
+/// @brief register completion handlers for the future and return immediately.
+/// @param future the future to wait for.
+/// @param res_handler the result handler to call when the future is complete.
+/// @param err_handler the error handler to call when the future is complete.
+/// @param cancel_handler the cancel handler to call when the future is cancelled.
+/// @return the result of the future.
+void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
 
 // delivering the result -----
 
