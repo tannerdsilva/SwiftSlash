@@ -25,7 +25,6 @@ typedef struct _cswiftslash_future_syncwait_t {
 	const future_result_err_handler_f err_handler;
 	const future_result_cancel_handler_f cancel_handler;
 	const bool is_sync;
-	pthread_mutex_t *_Nullable sync_mutex;
 } _cswiftslash_future_syncwait_t;
 
 
@@ -110,9 +109,6 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, voi
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
 
-			// the future is not fufilled so we must insert out waiters into the waiters queue.
-			_cswiftslash_fifo_pass(&future->waiters, (void*)&waiters);
-
 			// wait for the condition to be broadcasted.
 			_cswiftslash_future_t_wait_result_infiniteloop(future, &curstat);
 
@@ -172,7 +168,6 @@ void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, co
 			if (_cswiftslash_fifo_pass(&future->waiters, (void*)&waiters) != 0) {
 				// there was an error inserting the waiter into the queue.
 				free((void*)waiters);
-				goto returnTime;
 			}
 
 			goto returnTime;

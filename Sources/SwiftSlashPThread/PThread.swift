@@ -50,6 +50,7 @@ extension PThreadWorkspace {
 
 	fileprivate static func launch(arg:consuming Argument) async throws -> ReturnType {
 		let launchedThread = try await launchAsync(arg:arg, Self.self)
+		let result = try await launchedThread.awaitResult()
 	}
 
 	fileprivate static func makeContainedReturnFuture() -> Future<UnsafeMutableRawPointer> {
@@ -136,11 +137,6 @@ fileprivate func launchAsync<A, W>(arg:consuming A, _ ws:W.Type) async throws ->
 	})
 }
 
-/// primary function for running pthread work in an async swift runtime. THIS FUNCTION IS BLOCKING. calls pthread_create and pthread_join unconditionally to ensure full lifecycle safety.
-/// - parameters:
-/// 	- config: the configuration that defines what kind of executable work and memory space the newly created pthread will use.
-/// - throws: LaunchError if the pthread cannot be created.
-/// - WARNING: THIS FUNCTION WILL BLOCK and as such, breaks the swift async runtime model. be sure to call within a continuation.
 fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consuming Future<RunningPThread>) {
 
 	// consume the config immediately, expose it as an unsafe mutable pointer.
