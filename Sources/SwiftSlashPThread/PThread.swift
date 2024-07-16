@@ -9,24 +9,30 @@ internal struct LaunchError:Swift.Error {}
 internal struct CancellationError:Swift.Error {}
 
 
-public struct GeneralPThreadWorker<R>:PThreadWorkspace {
-	public typealias Argument = @Sendable () throws -> R
+public struct GeneralPThreadWorker<A, R>:PThreadWorkspace {
+
+	public struct Work {
+		public typealias WorkFuncType = (A) throws -> R
+		public let argument:A
+		public let work:WorkFuncType
+	}
+	public typealias Argument = Work
 	public typealias ReturnType = R
 
-	public let argument:Argument
+	public let work:Work
 
-	public init(_ argument:@escaping Argument) {
-		self.argument = argument
+	public init(_ argument:Work) {
+		self.work = argument
 	}
 
 	public mutating func run() throws -> R {
-		return try self.argument()
+		return try self.work.work(self.work.argument)
 	}
 }
 
 extension PThreadWorkspace {
 	internal static func run(_ arg:Argument) async throws -> ReturnType {
-		let launchedPThread = try await launchPThread(Self.self, argument:arg)
+		let launchedPThread = try await launch(Self.self, argument:arg)
 		return try await withTaskCancellationHandler(operation: {
 			return Unmanaged<Contained<ReturnType>>.fromOpaque(try await launchedPThread.get()!).takeRetainedValue().consumeValue()
 		}, onCancel: {
@@ -60,7 +66,7 @@ extension PThreadWorkspace {
 }
 
 /// represents the memory space that is initialized and used within a pthread to accomplish a task.
-fileprivate final class ContainedWorkspace {
+fileprivate final class Workspace {
 	
 	/// the instance of the workspace that is being used in the pthread.
 	private var workspaceInstance:any PThreadWorkspace
@@ -74,7 +80,7 @@ fileprivate final class ContainedWorkspace {
 
 	// call this from within the pthread. this will initialize the workspace for the work that is about to begin on the pthread.
 	fileprivate init(
-		_ setup:UnsafeMutablePointer<PThreadSetup>
+		_ setup:UnsafeMutablePointer<Setup>
 	) {
 		self.workspaceInstance = setup.pointer(to:\.thread_worktype)!.pointee.init(setup.pointer(to:\.containedArg)!.pointee)
 		self.workspaceType = setup.pointer(to:\.thread_worktype)!.pointee
@@ -109,7 +115,7 @@ fileprivate final class ContainedWorkspace {
 }
 
 // assistive structure to define how a pthread shall be launched and ran.
-fileprivate struct PThreadSetup {
+fileprivate struct Setup {
 	// a pointer to the contained argument
 	fileprivate let containedArg:UnsafeMutableRawPointer
 
@@ -129,12 +135,12 @@ fileprivate struct PThreadSetup {
 }
 
 // this function makes three allocations. if the pthread is successfully launched, none of the memory needs to be deallocated. if the pthread fails to launch, the memory will be deallocated before the function throws.
-fileprivate func launchPThread<W, A>(_ workType:W.Type, argument:A) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
+fileprivate func launch<W, A>(_ workType:W.Type, argument:A) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
 	// allocate the memory where the pthread will be configured.
-	let allocPrivate = UnsafeMutablePointer<PThreadSetup>.allocate(capacity:1)
+	let allocPrivate = UnsafeMutablePointer<Setup>.allocate(capacity:1)
 
 	// initialize the floating setup to the consumed argument value.
-	allocPrivate.initialize(to:PThreadSetup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque()))
+	allocPrivate.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque()))
 
 	// initialize the pthread config onto the setup structure. argument pointer passed for allocator will be allocPrivate
 	allocPrivate.pointee.pthread_config.initialize(to:_cswiftslash_pthread_config_init(
@@ -168,25 +174,25 @@ fileprivate func launchPThread<W, A>(_ workType:W.Type, argument:A) async throws
 	return RunningPThread(pthr, future:returnFuture, type:workType)
 }
 
-// allocator function. responsible for initializing the workspace and transferring the crucial memory from the pthreadsetup.
+// allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
 fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
-	return Unmanaged<ContainedWorkspace>.passRetained(
-		ContainedWorkspace(
-			csPtr.assumingMemoryBound(to:PThreadSetup.self)
+	return Unmanaged<Workspace>.passRetained(
+		Workspace(
+			csPtr.assumingMemoryBound(to:Setup.self)
 		)
 	).toOpaque()
 }
 // deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
 fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	var ws:ContainedWorkspace? = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
+	var ws:Workspace? = Unmanaged<Workspace>.fromOpaque(wsPtr).takeRetainedValue()
 	ws = nil
 }
 // cancel function. responsible for setting the cancellation flag on the contained workspace.
 fileprivate let _run_cancel:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().setCancellation()
+	Unmanaged<Workspace>.fromOpaque(wsPtr).takeUnretainedValue().setCancellation()
 }
 // main function. responsible for running the work function and setting the result into the return future.
 fileprivate let _run_main:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
 	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
-	Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeUnretainedValue().work()
+	Unmanaged<Workspace>.fromOpaque(wsPtr).takeUnretainedValue().work()
 }
