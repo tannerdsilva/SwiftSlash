@@ -1,8 +1,9 @@
 import XCTest
 @testable import SwiftSlash
-import Logging
+// import Logging
 // import Glibc
 import __cswiftslash
+import SwiftSlashPThread
 
 class PThreadTests: XCTestCase {
     // func testPThreadCancellation() async throws {
@@ -71,9 +72,9 @@ class PThreadTests: XCTestCase {
 		notExpectation.isInverted = true
 
         // Logger for debugging purposes
-        let logger = Logger(label: "testLogger")
+        // let logger = Logger(label: "testLogger")
 
-		final class ws {
+		actor ws {
 			var epollFD:Int32
 			var sigmask:sigset_t
 			var events:UnsafeMutablePointer<epoll_event>
@@ -96,27 +97,11 @@ class PThreadTests: XCTestCase {
 				events.deallocate()
 			}
 		}
-		let getThing = try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
-			tg.addTask {
-				switch try await PThread<ws, ws, Void>.run(arg:ws(), work: { wsPtr in
-					sleep(1)
-					return
-					wsPtr.pointee.n = epoll_pwait(wsPtr.pointee.epollFD, wsPtr.pointee.events, 1, -1, &wsPtr.pointee.sigmask)
-				}) {
-					case .failure(let error):
-						expectation.fulfill()
-					default:
-						XCTFail("PThread should have been cancelled")
-				}
-				// expectation.fulfill()
-			}
-			try await Task.sleep(nanoseconds:2_000_000_000)
-			// tg.cancelAll()
-			try await Task.sleep(nanoseconds:1_000_000_000)
-			// try await tg.waitForAll()	
-			// wait(for: [expectation], timeout:0)
-			return
-		}
+		let myString = try await pthreadRun {
+			print("Foo")
+			return "String"
+		}.get()
+		XCTAssertEqual(myString, "String")
 		return
 		
 

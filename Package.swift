@@ -73,7 +73,7 @@ let package = Package(
 			cSettings:[]),
         .testTarget(
             name: "SwiftSlashTests",
-            dependencies: ["SwiftSlash", "__cswiftslash"]),
+            dependencies: ["SwiftSlash", "__cswiftslash", "SwiftSlashPThread"]),
     ],
 	cLanguageStandard:.c11
 )

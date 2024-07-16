@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 _cswiftslash_pthread_config_t _cswiftslash_pthread_config_garbage(void) {
 	_cswiftslash_pthread_config_t garbage;
@@ -17,6 +18,7 @@ void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);	// deferred cancellation only.
 
 	_cswiftslash_pthread_config_t cfg = *((_cswiftslash_pthread_config_t*)arg);	// copy the configuration into a local stack variable.
+	free(arg);	// deallocate the configuration argument.
 	
 	// pass the initial arguments into the allocator. this is the only time that the initial arguments will be accessible. the work thread is responsible for transferring any necessary data to the workspace.
 	const _cswiftslash_ptr_t wsptr = cfg.alloc_f(cfg.alloc_arg);	// alloc_arg is now considered deallocated space, do not touch.
@@ -41,20 +43,22 @@ void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 	return NULL;
 }
 
- _cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
+ _cswiftslash_pthread_config_t *_Nonnull _cswiftslash_pthread_config_init (
 	_cswiftslash_ptr_t alloc_arg,
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
 	_cswiftslash_pthreads_main_f _Nonnull run_f,
 	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f,
 	_cswiftslash_pthreads_dealloc_f _Nonnull dealloc_f
 ) {
-	return (_cswiftslash_pthread_config_t) {
+	_cswiftslash_pthread_config_t *config = malloc(sizeof(_cswiftslash_pthread_config_t));
+	(*config) = (_cswiftslash_pthread_config_t) {
 		.alloc_arg = alloc_arg,
 		.alloc_f = alloc_f,
 		.run_f = run_f,
 		.cancel_f = cancel_f,
 		.dealloc_f = dealloc_f
 	};
+	return config;
 }
 
 _cswiftslash_pthread_t_type _cswiftslash_pthread_config_run(
@@ -65,5 +69,8 @@ _cswiftslash_pthread_t_type _cswiftslash_pthread_config_run(
 	_cswiftslash_pthread_t_type newthread;
 	memset(&newthread, 0, sizeof(_cswiftslash_pthread_t_type));
 	(*result) = pthread_create(&newthread, NULL, _cswiftslash_pthread_f, (void*)config_consume);
+	if ((*result) != 0) {
+		free((void*)config_consume);
+	}
 	return newthread;
 }

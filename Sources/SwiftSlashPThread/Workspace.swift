@@ -1,4 +1,4 @@
-internal protocol PThreadWorkspace {
+public protocol PThreadWork {
 	associatedtype Argument
 	associatedtype ReturnType
 	init(_:Argument)

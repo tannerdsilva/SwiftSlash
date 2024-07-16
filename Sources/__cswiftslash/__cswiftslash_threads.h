@@ -38,15 +38,13 @@ typedef struct _cswiftslash_pthread_config_t {
 	_cswiftslash_pthreads_dealloc_f _Nonnull dealloc_f;
 } _cswiftslash_pthread_config_t;
 
-_cswiftslash_pthread_config_t _cswiftslash_pthread_config_garbage(void);
-
 /// @brief create a pthread configuration.
 /// @param alloc_arg the argument to pass into the workspace allocator function.
 /// @param alloc_f the workspace allocator to run.
 /// @param run_f the main function to run as the 'work' of the pthread.
 /// @param cancel_f the cancel handler to run if the thread is cancelled.
 /// @param dealloc_f the workspace deallocator to run.
-_cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
+_cswiftslash_pthread_config_t *_Nonnull _cswiftslash_pthread_config_init (
 	_cswiftslash_ptr_t alloc_arg,
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
 	_cswiftslash_pthreads_main_f _Nonnull run_f,
@@ -55,7 +53,7 @@ _cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
 );
 
 /// @brief create a new pthread.
-/// @param config the configuration to use for the pthread lifecycle. this pointer and its contents must be valid until the alloc function is called.
+/// @param config_consume the configuration to use for the pthread lifecycle. this pointer will be freed internally by this function.
 /// @param result the result of the pthread creation.
 /// @return the pthread that was created if result is 0, undefined otherwise.
 _cswiftslash_pthread_t_type _cswiftslash_pthread_config_run(
