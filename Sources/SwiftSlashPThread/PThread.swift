@@ -15,25 +15,21 @@ internal struct LaunchError:Swift.Error {}
 /// thrown when a pthread is unable to be canceled.
 internal struct CancellationError:Swift.Error {}
 
-extension Future:PThreadArgument {}
-
-// public struct EventTriggerThread:PThreadWork {
-// 	public struct Workspace:PThreadWorkspace {
-// 		public let future:Future<Void>
-// 		public init(_ ptr:UnsafeMutablePointer<Future<Void>>) {
-// 			self.future = ptr.pointee
-// 		}
-// 	}
-// }
-
-
-internal protocol PThreadArgument {}
-
-internal protocol PThreadWorkspace {
-	associatedtype Argument
-	associatedtype ReturnType
-	init(_:Argument)
-	mutating func run() throws -> ReturnType
+fileprivate func launchAsync<A, W>(arg:consuming A, _ ws:W.Type) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
+	return try await withThrowingDiscardingTaskGroup(body: { group in
+		let future = Future<RunningPThread>()
+		let containedArg = Unmanaged.passRetained(Contained(arg)).toOpaque()
+		let setup = PThreadSetup(ws, containedArgument:containedArg)
+		group.addTask {
+			_launch(setup, runningFuture:future)
+		}
+		do {
+			return try await future.waitForResult()
+		} catch let error {
+			_ = Unmanaged<Contained<A>>.fromOpaque(containedArg).takeRetainedValue()
+			throw error
+		}
+	})
 }
 
 extension PThreadWorkspace {
@@ -46,11 +42,6 @@ extension PThreadWorkspace {
 		} catch let error {
 			future.setFailure(error)
 		}
-	}
-
-	fileprivate static func launch(arg:consuming Argument) async throws -> ReturnType {
-		let launchedThread = try await launchAsync(arg:arg, Self.self)
-		let result = try await launchedThread.awaitResult()
 	}
 
 	fileprivate static func makeContainedReturnFuture() -> Future<UnsafeMutableRawPointer> {
@@ -72,16 +63,17 @@ fileprivate final class Contained<A> {
 
 /// represents the memory space that is initialized and used within a pthread to accomplish a task.
 fileprivate final class ContainedWorkspace {
-	private var workspace:any PThreadWorkspace
+	private var workspaceInstance:any PThreadWorkspace
 	private let workspaceType:any PThreadWorkspace.Type
 
 	private var configureFuture:Future<Future<UnsafeMutableRawPointer>>?
 	private let returnFuture:Future<UnsafeMutableRawPointer>
 
+	// call this from within the pthread. this will initialize the workspace for the work that is about to begin on the pthread.
 	fileprivate init(
 		_ setup:UnsafePointer<PThreadSetup>
 	) {
-		self.workspace = setup.pointer(to:\.thread_worktype)!.pointee.init(setup.pointer(to:\.containedArg)!.pointee)
+		self.workspaceInstance = setup.pointer(to:\.thread_worktype)!.pointee.init(setup.pointer(to:\.containedArg)!.pointee)
 		self.workspaceType = setup.pointer(to:\.thread_worktype)!.pointee
 		self.configureFuture = setup.pointee.configureFuture
 		self.returnFuture = setup.pointer(to:\.thread_worktype)!.pointee.makeContainedReturnFuture()
@@ -105,11 +97,11 @@ fileprivate final class ContainedWorkspace {
 		// set the configuration future to success.
 		setSuccessfulConfiguration()
 
-		workspace.run(future:returnFuture)
+		workspaceInstance.run(future:returnFuture)
 	}
 }
 
-// the contained setup struct that is passed into the pthread and used to set up / configure things.
+// assistive structure to define how a pthread shall be launched and ran.
 fileprivate struct PThreadSetup {
 	// a pointer to the contained argument
 	fileprivate let containedArg:UnsafeMutableRawPointer
@@ -124,17 +116,6 @@ fileprivate struct PThreadSetup {
 		self.containedArg = containedArgument
 		self.thread_worktype = P.self
 	}
-}
-
-fileprivate func launchAsync<A, W>(arg:consuming A, _ ws:W.Type) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
-	try await withThrowingDiscardingTaskGroup(body: { group in
-		let future = Future<RunningPThread>()
-		let setup = PThreadSetup(ws, containedArgument: Unmanaged.passRetained(Contained(arg)).toOpaque())
-		group.addTask {
-			_launch(setup, runningFuture:future)
-		}
-		return try await future.waitForResult()
-	})
 }
 
 fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consuming Future<RunningPThread>) {
@@ -182,7 +163,7 @@ fileprivate let _run_alloc:@convention(c) (_cswiftslash_cptr_t) -> _cswiftslash_
 		)
 	).toOpaque()
 }
-// deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it.
+// deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
 fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
 	var ws:ContainedWorkspace? = Unmanaged<ContainedWorkspace>.fromOpaque(wsPtr).takeRetainedValue()
 	ws = nil

@@ -74,7 +74,7 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, voi
 /// @param err_handler the error handler to call when the future is complete.
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return the result of the future.
-void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
+int _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
 
 // delivering the result -----
 

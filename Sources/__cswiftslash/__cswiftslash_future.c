@@ -24,7 +24,6 @@ typedef struct _cswiftslash_future_syncwait_t {
 	const future_result_val_handler_f res_handler;
 	const future_result_err_handler_f err_handler;
 	const future_result_cancel_handler_f cancel_handler;
-	const bool is_sync;
 } _cswiftslash_future_syncwait_t;
 
 
@@ -50,10 +49,7 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable 
 	pthread_mutex_destroy(&future.mutex);
 
 	_cswiftslash_fifo_close(&future.waiters, ^(void *_Nonnull ptr) {
-		_cswiftslash_future_syncwait_t *waiter = (_cswiftslash_future_syncwait_t*)ptr;
-		if (waiter->is_sync == false) {
-			free(waiter);
-		}
+		free(ptr);
 	});
 
 	// load the state of the future
@@ -94,21 +90,13 @@ void _cswiftslash_future_t_wait_result_infiniteloop(const _cswiftslash_future_pt
 
 void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void *_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
 	pthread_mutex_lock(&future->mutex);
-	const _cswiftslash_future_syncwait_t waiters = {
-		.ctx_ptr = ctx_ptr,
-		.res_handler = res_handler,
-		.err_handler = err_handler,
-		.cancel_handler = cancel_handler,
-		.is_sync = true
-	};
-
+	
 	// load the state of the future
 	int8_t curstat = atomic_load_explicit(&future->statVal, memory_order_acquire);
 
 	checkStat:
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
-
 			// wait for the condition to be broadcasted.
 			_cswiftslash_future_t_wait_result_infiniteloop(future, &curstat);
 
@@ -134,6 +122,7 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, voi
 		case FUTURE_STATUS_CANCEL:
 			// the future was cancelled. fire the handler and exit.
 			cancel_handler(ctx_ptr);
+			
 			goto returnTime;
 		
 		default:
@@ -145,14 +134,13 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, voi
 	return;
 }
 
-void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
+int _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
 	pthread_mutex_lock(&future->mutex);
 	const _cswiftslash_future_syncwait_t waitersStack = {
 		.ctx_ptr = NULL,
 		.res_handler = res_handler,
 		.err_handler = err_handler,
 		.cancel_handler = cancel_handler,
-		.is_sync = false
 	};
 
 	const _cswiftslash_future_syncwait_t* waiters = (const _cswiftslash_future_syncwait_t*)memcpy(malloc(sizeof(_cswiftslash_future_syncwait_t)), &waitersStack, sizeof(_cswiftslash_future_syncwait_t));
@@ -160,14 +148,17 @@ void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, co
 	// load the state of the future
 	int8_t curstat = atomic_load_explicit(&future->statVal, memory_order_acquire);
 
+	int ret = 0;
+
 	checkStat:
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
 
 			// the future is not fufilled so we must insert out waiters into the waiters queue.
-			if (_cswiftslash_fifo_pass(&future->waiters, (void*)&waiters) != 0) {
+			if (_cswiftslash_fifo_pass(&future->waiters, (void*)waiters) != 0) {
 				// there was an error inserting the waiter into the queue.
 				free((void*)waiters);
+				ret = -1;
 			}
 
 			goto returnTime;
@@ -199,7 +190,7 @@ void _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, co
 
 	returnTime:
 	pthread_mutex_unlock(&future->mutex);
-	return;
+	return ret;
 }
 
 bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t future, const uint8_t res_type, const _cswiftslash_optr_t res_val) {
@@ -222,11 +213,6 @@ bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t fut
 	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, (void*)&wptr) == 0) {
 		// fire the waiter handler.
 		((_cswiftslash_future_syncwait_t*)wptr)->res_handler(res_type, res_val, ((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
-
-		// free the heap memory if this is an async waiter.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == false) {
-			free(wptr);
-		}
 	}
 	
 	// broadcast the condition to wake up all waiting threads.
@@ -257,11 +243,6 @@ bool _cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t f
 	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
 		// fire the waiter handler.
 		((_cswiftslash_future_syncwait_t*)wptr)->err_handler(res_type, res_val, ((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
-
-		// free the heap memory if this is an async waiter.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == false) {
-			free(wptr);
-		}
 	}
 	
 	// broadcast the condition to wake up all waiting threads.
@@ -289,11 +270,6 @@ bool _cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t futu
 	_cswiftslash_optr_t wptr;
 	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
 		((_cswiftslash_future_syncwait_t*)wptr)->cancel_handler(((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
-
-		// free the heap memory if this is an async waiter.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == false) {
-			free(wptr);
-		}
 	}
 	
 	// broadcast the condition to wake up all waiting threads. this will prompt them to free the stack memory that was allocated for the waiters.
