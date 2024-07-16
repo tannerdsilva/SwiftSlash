@@ -1,6 +1,8 @@
 import __cswiftslash
 
+/// a reference type that represents a result that will be available in the future.
 public final class Future<R>:Sendable {
+	/// SuccessfulResultDeallocator is used to safely deallocate any 'R' type that requires external deinitialization before the future is fully dereferenced.
 	public typealias SuccessfulResultDeallocator = @Sendable (R) -> Void
 
 	/// thrown when a result is set on a future that is already set.
@@ -67,27 +69,10 @@ public final class Future<R>:Sendable {
 		}
 	}
 	
-	/// block the calling thread until a result for the future can be returned.
-	/// - returns: the result of the future.
-	/// - WARNING: this function will block indefinitely until the result of the future is assigned.
-	public func blockForResult() -> Result<R, Swift.Error> {
-		var res:Result<R, Swift.Error>? = nil
-		withUnsafeMutablePointer(to:&res) { resPtr in
-			_cswiftslash_future_t_wait_sync(prim, resPtr, {
-				$2!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .success(Unmanaged<ContainedResult>.fromOpaque($1!).takeUnretainedValue().result)
-			}, {
-				$2!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .failure(Unmanaged<ContainedError>.fromOpaque($1!).takeUnretainedValue().error)
-			}, { _ in
-				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
-			})
-		}
-		return res!
-	}
-	
 	/// asyncronously wait for the result of the future.
-	/// - returns: the result of the future.
-	/// - throws: any error that was set on the future.
-	public func waitForResult() async throws -> R {
+	/// - returns: the return value of the future.
+	/// - throws: any error that was assigned to the future in place of a valid return instance.
+	public func get() async throws -> R {
 		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
 			guard _cswiftslash_future_t_wait_async(prim, { resType, resPtr, ctx in
 				cont.resume(returning:Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
@@ -101,7 +86,22 @@ public final class Future<R>:Sendable {
 		})
 	}
 
+	public func result() async -> Result<R, Swift.Error> {
+		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
+			guard _cswiftslash_future_t_wait_async(prim, { resType, resPtr, ctx in
+				cont.resume(returning:.success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result))
+			}, { errType, errPtr, ctx in
+				cont.resume(returning:.failure(Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error))
+			}, { ctx in
+				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
+			}) == 0 else {
+				fatalError("failed to wait for future - \(#file):\(#line)")
+			}
+		})
+	}
+
 	deinit {
+		// destroy the c primitive. capture the result 
 		var result:(R?, Swift.Error?) = (nil, nil)
 		guard withUnsafeMutablePointer(to:&result, { rptr in
 			return _cswiftslash_future_t_destroy(prim.pointee, rptr, { etyp, eptr, ctx in

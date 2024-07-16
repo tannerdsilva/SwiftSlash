@@ -16,10 +16,13 @@ internal struct RunningPThread {
 	private let pt:_cswiftslash_pthread_t_type
 	/// the future that will be set after the work is joined.
 	private let rf:ReturnFuture
+	/// the type of workspace that is being used in the pthread.
+	private let runningType:any PThreadWorkspace.Type
 	
-	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, future:consuming Future<UnsafeMutableRawPointer>) {
+	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, future:consuming Future<UnsafeMutableRawPointer>, type:any PThreadWorkspace.Type) {
 		pt = pthread
 		rf = future
+		runningType = type
 	}
 
 	internal borrowing func cancel() throws {
@@ -32,7 +35,7 @@ internal struct RunningPThread {
 		}
 	}
 	
-	internal borrowing func awaitResult() async throws -> UnsafeMutableRawPointer? {
-		return try await rf.waitForResult()
+	internal func get() async throws -> UnsafeMutableRawPointer? {
+		return try await rf.get()
 	}
 }

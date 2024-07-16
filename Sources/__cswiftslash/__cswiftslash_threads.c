@@ -5,6 +5,12 @@
 #include <string.h>
 #include <pthread.h>
 
+_cswiftslash_pthread_config_t _cswiftslash_pthread_config_garbage(void) {
+	_cswiftslash_pthread_config_t garbage;
+	memset(&garbage, 0, sizeof(_cswiftslash_pthread_config_t));
+	return garbage;
+}
+
 void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 	// disable cancellation so that the thread can be set up.
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);	// cancel not allowed right now, we must first configure the thread.
@@ -36,7 +42,7 @@ void *_Nullable _cswiftslash_pthread_f(void *_Nonnull arg) {
 }
 
  _cswiftslash_pthread_config_t _cswiftslash_pthread_config_init (
-	_cswiftslash_cptr_t alloc_arg,
+	_cswiftslash_ptr_t alloc_arg,
 	_cswiftslash_pthreads_alloc_f _Nonnull alloc_f,
 	_cswiftslash_pthreads_main_f _Nonnull run_f,
 	_cswiftslash_pthreads_cancel_f _Nonnull cancel_f,

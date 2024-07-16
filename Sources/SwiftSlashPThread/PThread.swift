@@ -1,14 +1,6 @@
-#if os(Linux)
-import Glibc
-#elseif os(macOS)
-import Darwin
-#endif
-
 import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
-
-// swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
 
 /// thrown when a pthread cannot be created.
 internal struct LaunchError:Swift.Error {}
@@ -16,21 +8,31 @@ internal struct LaunchError:Swift.Error {}
 /// thrown when a pthread is unable to be canceled.
 internal struct CancellationError:Swift.Error {}
 
-fileprivate func launchAsync<A, W>(arg:consuming A, _ ws:W.Type) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
-	return try await withThrowingDiscardingTaskGroup(body: { group in
-		let future = Future<RunningPThread>()
-		let containedArg = Unmanaged.passRetained(Contained(arg)).toOpaque()
-		let setup = PThreadSetup(ws, containedArgument:containedArg)
-		group.addTask {
-			_launch(setup, runningFuture:future)
-		}
-		do {
-			return try await future.waitForResult()
-		} catch let error {
-			_ = Unmanaged<Contained<A>>.fromOpaque(containedArg).takeRetainedValue()
-			throw error
-		}
-	})
+
+public struct GeneralPThreadWorker<R>:PThreadWorkspace {
+	public typealias Argument = @Sendable () throws -> R
+	public typealias ReturnType = R
+
+	public let argument:Argument
+
+	public init(_ argument:@escaping Argument) {
+		self.argument = argument
+	}
+
+	public mutating func run() throws -> R {
+		return try self.argument()
+	}
+}
+
+extension PThreadWorkspace {
+	internal static func run(_ arg:Argument) async throws -> ReturnType {
+		let launchedPThread = try await launchPThread(Self.self, argument:arg)
+		return try await withTaskCancellationHandler(operation: {
+			return Unmanaged<Contained<ReturnType>>.fromOpaque(try await launchedPThread.get()!).takeRetainedValue().consumeValue()
+		}, onCancel: {
+			try! launchedPThread.cancel()
+		})
+	}
 }
 
 extension PThreadWorkspace {
@@ -59,8 +61,10 @@ extension PThreadWorkspace {
 
 /// represents the memory space that is initialized and used within a pthread to accomplish a task.
 fileprivate final class ContainedWorkspace {
+	
 	/// the instance of the workspace that is being used in the pthread.
 	private var workspaceInstance:any PThreadWorkspace
+	
 	/// the type of workspace that is being used in the pthread.
 	private let workspaceType:any PThreadWorkspace.Type
 
@@ -70,12 +74,15 @@ fileprivate final class ContainedWorkspace {
 
 	// call this from within the pthread. this will initialize the workspace for the work that is about to begin on the pthread.
 	fileprivate init(
-		_ setup:UnsafePointer<PThreadSetup>
+		_ setup:UnsafeMutablePointer<PThreadSetup>
 	) {
 		self.workspaceInstance = setup.pointer(to:\.thread_worktype)!.pointee.init(setup.pointer(to:\.containedArg)!.pointee)
 		self.workspaceType = setup.pointer(to:\.thread_worktype)!.pointee
 		self.configureFuture = setup.pointer(to:\.configureFuture)!.pointee
 		self.returnFuture = setup.pointer(to:\.thread_worktype)!.pointee.makeContainedReturnFuture()
+		
+		setup.pointee.pthread_config.deinitialize(count:1).deallocate()
+		setup.deinitialize(count:1).deallocate()
 	}
 
 	fileprivate borrowing func setCancellation() {
@@ -112,51 +119,57 @@ fileprivate struct PThreadSetup {
 	// the type of pthread work to execute. this informs the pthread launch what kind of memory and work needs to be done.
 	fileprivate let thread_worktype:any PThreadWorkspace.Type
 
+	// the pthread configuration that is used to launch the pthread.
+	fileprivate let pthread_config = UnsafeMutablePointer<_cswiftslash_pthread_config_t>.allocate(capacity:1)
+
 	fileprivate init<P>(_ workType:P.Type, containedArgument:UnsafeMutableRawPointer) where P:PThreadWorkspace {
 		self.containedArg = containedArgument
 		self.thread_worktype = P.self
 	}
 }
 
-fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consuming Future<RunningPThread>) {
+// this function makes three allocations. if the pthread is successfully launched, none of the memory needs to be deallocated. if the pthread fails to launch, the memory will be deallocated before the function throws.
+fileprivate func launchPThread<W, A>(_ workType:W.Type, argument:A) async throws -> RunningPThread where W:PThreadWorkspace, W.Argument == A {
+	// allocate the memory where the pthread will be configured.
+	let allocPrivate = UnsafeMutablePointer<PThreadSetup>.allocate(capacity:1)
 
-	// consume the config immediately, expose it as an unsafe mutable pointer.
-	withUnsafePointer(to:config) { ptSetup in
+	// initialize the floating setup to the consumed argument value.
+	allocPrivate.initialize(to:PThreadSetup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque()))
 
-		// pass the resulting pointer into the pthread config as the primary argument for the allocator.
-		var configuredStruct = _cswiftslash_pthread_config_init(
-			ptSetup,
-			_run_alloc,
-			_run_main,
-			_run_cancel,
-			_run_dealloc
-		);
+	// initialize the pthread config onto the setup structure. argument pointer passed for allocator will be allocPrivate
+	allocPrivate.pointee.pthread_config.initialize(to:_cswiftslash_pthread_config_init(
+		allocPrivate,
+		_run_alloc,
+		_run_main,
+		_run_cancel,
+		_run_dealloc
+	));
 
-		withUnsafeMutablePointer(to:&configuredStruct) { configPtr in
+	// take a local copy of the configure future so that we can await it later.
+	let configFuture = allocPrivate.pointee.configureFuture
+
+	// launch the pthread, verify the results are successful.
+	var launchResult:Int32 = -1
+	let pthr = _cswiftslash_pthread_config_run(allocPrivate.pointee.pthread_config, &launchResult)
+	guard launchResult == 0 else {
 		
-			// launch the pthread, verify the results are successful.
-			var launchResult:Int32 = -1
-			let pthr = _cswiftslash_pthread_config_run(configPtr, &launchResult)
-			guard launchResult == 0 else {
-				// if the pthread launch failed, set the running future to failure.
-				try! runningFuture.setFailure(LaunchError())
-				return
-			}
+		// balance the retained value that was passed into the pthread setup.
+		_ = Unmanaged<Contained<A>>.fromOpaque(allocPrivate.pointee.containedArg).takeRetainedValue()
 
-			// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
-			switch ptSetup.pointer(to:\PThreadSetup.configureFuture)!.pointee.blockForResult() {
-				case .success(let future):
-					// set the running future to the RunningPThread object.
-					try! runningFuture.setSuccess(RunningPThread(pthr, future:future))
-				case .failure(let error):
-					fatalError("pthread configuration failed: \(error) - this should never happen - \(#file) \(#line)")
-			}
-		}
+		// deinitialize and deallocate the setup structure.
+		allocPrivate.pointee.pthread_config.deinitialize(count:1).deallocate()
+		allocPrivate.deinitialize(count:1).deallocate()
+
+		throw LaunchError()
 	}
+
+	// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
+	let returnFuture = try await configFuture.get()
+	return RunningPThread(pthr, future:returnFuture, type:workType)
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the pthreadsetup.
-fileprivate let _run_alloc:@convention(c) (_cswiftslash_cptr_t) -> _cswiftslash_ptr_t = { csPtr in
+fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
 	return Unmanaged<ContainedWorkspace>.passRetained(
 		ContainedWorkspace(
 			csPtr.assumingMemoryBound(to:PThreadSetup.self)

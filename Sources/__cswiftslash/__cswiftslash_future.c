@@ -28,13 +28,12 @@ typedef struct _cswiftslash_future_syncwait_t {
 	const future_result_cancel_handler_f cancel_handler;
 } _cswiftslash_future_syncwait_t;
 
-
 _cswiftslash_future_t _cswiftslash_future_t_init(void) {
 	_cswiftslash_future_t newfuture;
 
 	// initialize the status related variables
     atomic_store_explicit(&newfuture.statVal, FUTURE_STATUS_PEND, memory_order_release);
-    pthread_cond_init(&newfuture.statCond, NULL);
+    // pthread_cond_init(&newfuture.statCond, NULL);
 	pthread_mutex_init(&newfuture.mutex, NULL);
 
 	// initialize the result related variables
@@ -83,14 +82,15 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable 
 	}
 }
 
+/*
 void _cswiftslash_future_t_wait_result_infiniteloop(const _cswiftslash_future_ptr_t future, int8_t *_Nonnull stat) {
 	while (*stat == FUTURE_STATUS_PEND) {
 		pthread_cond_wait(&future->statCond, &future->mutex);
 		*stat = atomic_load_explicit(&future->statVal, memory_order_acquire);
 	}
 }
-
-void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void *_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
+*/
+/*void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void *_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
 	pthread_mutex_lock(&future->mutex);
 	
 	// load the state of the future
@@ -134,7 +134,7 @@ void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, voi
 	returnTime:
 	pthread_mutex_unlock(&future->mutex);
 	return;
-}
+}*/
 
 int _cswiftslash_future_t_wait_async(const _cswiftslash_future_ptr_t future, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler) {
 	pthread_mutex_lock(&future->mutex);
@@ -218,7 +218,7 @@ bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t fut
 	}
 	
 	// broadcast the condition to wake up all waiting threads.
-	pthread_cond_broadcast(&future->statCond);
+	// pthread_cond_broadcast(&future->statCond);
 
 	// return true, since we successfully broadcasted the result.
 	pthread_mutex_unlock(&future->mutex);
@@ -248,7 +248,7 @@ bool _cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t f
 	}
 	
 	// broadcast the condition to wake up all waiting threads.
-	pthread_cond_broadcast(&future->statCond);
+	// pthread_cond_broadcast(&future->statCond);
 
 	// return true, since we successfully broadcasted the result.
 	pthread_mutex_unlock(&future->mutex);
@@ -275,7 +275,7 @@ bool _cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t futu
 	}
 	
 	// broadcast the condition to wake up all waiting threads. this will prompt them to free the stack memory that was allocated for the waiters.
-	pthread_cond_broadcast(&future->statCond); 
+	// pthread_cond_broadcast(&future->statCond); 
 
 	// return true, since we successfully broadcasted the result.
 	pthread_mutex_unlock(&future->mutex);

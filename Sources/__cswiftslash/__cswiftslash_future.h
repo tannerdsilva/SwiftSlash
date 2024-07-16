@@ -30,7 +30,7 @@ typedef void(^_Nonnull future_result_cancel_handler_f)(void *_Nullable ctx_ptr);
 /// @brief a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct _cswiftslash_future {
 	_Atomic uint8_t statVal;		// internal status value.
-	pthread_cond_t statCond;		// internal condition for when the status changes.
+	// pthread_cond_t statCond;		// internal condition for when the status changes.
 	pthread_mutex_t mutex;			// internal mutex for the condition.
 	
 	// user fields related to the result.
@@ -66,7 +66,7 @@ int _cswiftslash_future_t_destroy(_cswiftslash_future_t future, void *_Nullable 
 /// @param err_handler the error handler to call when the future is complete.
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return the result of the future.
-void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void*_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
+// void _cswiftslash_future_t_wait_sync(const _cswiftslash_future_ptr_t future, void*_Nullable ctx_ptr, const future_result_val_handler_f res_handler, const future_result_err_handler_f err_handler, const future_result_cancel_handler_f cancel_handler);
 
 /// @brief register completion handlers for the future and return immediately.
 /// @param future the future to wait for.
