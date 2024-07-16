@@ -1,6 +1,6 @@
 // import ClibSwiftSlash
 // import Foundation
-import Logging
+// import Logging
 
 internal enum EventMode {
 	case readableEvent(Int)

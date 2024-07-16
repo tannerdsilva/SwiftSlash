@@ -6,6 +6,7 @@ import Darwin
 
 import __cswiftslash
 import SwiftSlashFuture
+import SwiftSlashContained
 
 // swiftslash is using pthread for the runtime loop that captures events from the kernel. this is so that the thread can be canceled while also using an indefinite wait time in the system polling call.
 
@@ -33,17 +34,22 @@ fileprivate func launchAsync<A, W>(arg:consuming A, _ ws:W.Type) async throws ->
 }
 
 extension PThreadWorkspace {
+	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
 		self.init(Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().consumeValue())
 	}
+	// this is a convenience and bridge function that allows the contained workspace to run the work function and set the result into the return future. the pointer pass in success to the future is presumed to be a retained instance of Contained<ReturnType>
 	fileprivate mutating func run(future:borrowing Future<UnsafeMutableRawPointer>) {
+		let op:UnsafeMutableRawPointer
 		do {
-			future.setSuccess(Unmanaged.passRetained(Contained(try run())).toOpaque())
+			op = Unmanaged.passRetained(Contained(try run())).toOpaque()
 		} catch let error {
-			future.setFailure(error)
+			try! future.setFailure(error)
+			return
 		}
+		try? future.setSuccess(op) // this is allowed to fail because the future may have been canceled at the instant before this is called.
 	}
-
+	// this is a bridge function that allows the contained workspace to obtain a future that knows how to deallocate the result when the future is destroyed.
 	fileprivate static func makeContainedReturnFuture() -> Future<UnsafeMutableRawPointer> {
 		return Future<UnsafeMutableRawPointer>(successfulResultDeallocator: { ptr in
 			_ = Unmanaged<Contained<ReturnType>>.fromOpaque(ptr).takeRetainedValue()
@@ -51,21 +57,14 @@ extension PThreadWorkspace {
 	}
 }
 
-fileprivate final class Contained<A> {
-	private let val:A
-	fileprivate init(_ arg:A) {
-		self.val = arg
-	}
-	fileprivate consuming func consumeValue() -> A {
-		return val
-	}
-}
-
 /// represents the memory space that is initialized and used within a pthread to accomplish a task.
 fileprivate final class ContainedWorkspace {
+	/// the instance of the workspace that is being used in the pthread.
 	private var workspaceInstance:any PThreadWorkspace
+	/// the type of workspace that is being used in the pthread.
 	private let workspaceType:any PThreadWorkspace.Type
 
+	/// the future for pthread configuration. this is set to success when the pthread is configured, running its work, and ready to be canceled. after a result is passed into the return future, this future is set to nil.
 	private var configureFuture:Future<Future<UnsafeMutableRawPointer>>?
 	private let returnFuture:Future<UnsafeMutableRawPointer>
 
@@ -75,21 +74,21 @@ fileprivate final class ContainedWorkspace {
 	) {
 		self.workspaceInstance = setup.pointer(to:\.thread_worktype)!.pointee.init(setup.pointer(to:\.containedArg)!.pointee)
 		self.workspaceType = setup.pointer(to:\.thread_worktype)!.pointee
-		self.configureFuture = setup.pointee.configureFuture
+		self.configureFuture = setup.pointer(to:\.configureFuture)!.pointee
 		self.returnFuture = setup.pointer(to:\.thread_worktype)!.pointee.makeContainedReturnFuture()
 	}
 
 	fileprivate borrowing func setCancellation() {
 		// set the return future to a failure error that is aproprate for cancellation.
-		returnFuture.setFailure(CancellationError())
+		try? returnFuture.setFailure(CancellationError()) // this try may fail because its theoretically possible that the work returns an instant moment before this is called.
 
-		configureFuture?.setFailure(CancellationError())
+		try! configureFuture?.setFailure(CancellationError()) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
 		configureFuture = nil
 	}
 
 	private borrowing func setSuccessfulConfiguration() {
 		// set the configure future to success.
-		configureFuture?.setSuccess(returnFuture)
+		try! configureFuture?.setSuccess(returnFuture) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
 		configureFuture = nil
 	}
 
@@ -97,6 +96,7 @@ fileprivate final class ContainedWorkspace {
 		// set the configuration future to success.
 		setSuccessfulConfiguration()
 
+		// run the work and have it pass the result into the return future. in a successful case, this will pass a retained instance of Contained<ReturnType> into the return future.
 		workspaceInstance.run(future:returnFuture)
 	}
 }
@@ -139,7 +139,7 @@ fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consumin
 			let pthr = _cswiftslash_pthread_config_run(configPtr, &launchResult)
 			guard launchResult == 0 else {
 				// if the pthread launch failed, set the running future to failure.
-				runningFuture.setFailure(LaunchError())
+				try! runningFuture.setFailure(LaunchError())
 				return
 			}
 
@@ -147,7 +147,7 @@ fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consumin
 			switch ptSetup.pointer(to:\PThreadSetup.configureFuture)!.pointee.blockForResult() {
 				case .success(let future):
 					// set the running future to the RunningPThread object.
-					runningFuture.setSuccess(RunningPThread(pthr, future:future))
+					try! runningFuture.setSuccess(RunningPThread(pthr, future:future))
 				case .failure(let error):
 					fatalError("pthread configuration failed: \(error) - this should never happen - \(#file) \(#line)")
 			}
