@@ -36,7 +36,7 @@ _cswiftslash_future_t _cswiftslash_future_t_init(void) {
 	pthread_mutex_init(&newfuture.mutex, NULL);
 
 	// initialize the result related variables
-	newfuture.waiters = _cswiftslash_fifo_init();
+	newfuture.waiters = _cswiftslash_fifo_init(NULL);
 
 	// return the stack space
 	return newfuture;

@@ -40,7 +40,8 @@ typedef struct _cswiftslash_fifo_linkpair {
 	_Atomic _cswiftslash_optr_t _cap_ptr;
 	
 	/// mutex used to synchronize the state of various threads.
-	pthread_mutex_t mutex;
+	bool has_mutex;
+	pthread_mutex_t mutex_optional;
 } _cswiftslash_fifo_linkpair_t;
 
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
@@ -48,9 +49,13 @@ typedef _cswiftslash_fifo_linkpair_t*_Nonnull _cswiftslash_fifo_linkpair_ptr_t;
 
 // initialization and deinitialization
 
-/// initializes a new fifo pair.
+/// @brief initializes a new mutex for use with a fifo chain. this is a convenience function that wraps the pthread_mutex_init function.
+/// @return a newly initialized mutex that can be passed directly into the fifo initializer.
+pthread_mutex_t _cswiftslash_fifo_mutex_new();
+
+/// initializes a new fifo pair. if this fifo is used as an independent concurrency unit, the mutex should be initialized and passed in. when a newly initialized mutex is passed in the initializer, it will automatically be destroyed at the apropriate time. a mutex is not required if the fifo is used in a single-threaded context.
 /// @return initialized fifo pair structure. NOTE: this structure must be closed with _cswiftslash_fifo_close to free all associated memory.
-_cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init();
+_cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex);
 
 /// deinitializes a fifo.
 /// @param chain pointer to the fifo to be deinitialized.

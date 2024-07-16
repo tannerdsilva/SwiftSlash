@@ -10,7 +10,8 @@ internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 	
 	internal init() {
 		let newPointer = UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>.allocate(capacity:1)
-		newPointer.initialize(to:_cswiftslash_fifo_init())
+		var newMutex = _cswiftslash_fifo_mutex_new()
+		newPointer.initialize(to:_cswiftslash_fifo_init(&newMutex))
 		self.datachain_primitive_ptr = newPointer
 		(self.stream, self.continuation) = _Concurrency.AsyncStream<Void>.makeStream(of:Void.self, bufferingPolicy:.bufferingOldest(1))
 		self.continuation.onTermination = { [weak self] result in

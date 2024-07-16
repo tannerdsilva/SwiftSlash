@@ -151,7 +151,7 @@ fileprivate func _launch(_ config:borrowing PThreadSetup, runningFuture:consumin
 				case .failure(let error):
 					fatalError("pthread configuration failed: \(error) - this should never happen - \(#file) \(#line)")
 			}
-		}	
+		}
 	}
 }
 
