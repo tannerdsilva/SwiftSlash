@@ -14,4 +14,7 @@ typedef const void*_Nonnull _cswiftslash_cptr_t;
 // an optional pointer
 typedef void*_Nullable _cswiftslash_optr_t;
 
+// a non-optional constant pointer
+typedef const void*_Nonnull _cswiftslash_coptr_t;
+
 #endif // _CSWIFTSLASH_TYPES_H

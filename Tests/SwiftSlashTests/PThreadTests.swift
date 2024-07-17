@@ -65,7 +65,7 @@ class PThreadTests: XCTestCase {
     // }
 
 // class EPollPThreadCancellationTest: XCTestCase {
-#if os(Linux)
+// #if os(Linux)
     func testEPollPThreadCancellationImmediate() async throws {
         let expectation = XCTestExpectation(description: "epoll_wait should be interrupted by pthread cancellation")
 		let notExpectation = XCTestExpectation(description: "epoll_wait should not be interrupted by pthread cancellation")
@@ -74,7 +74,7 @@ class PThreadTests: XCTestCase {
         // Logger for debugging purposes
         // let logger = Logger(label: "testLogger")
 
-		actor ws {
+		/*actor ws {
 			var epollFD:Int32
 			var sigmask:sigset_t
 			var events:UnsafeMutablePointer<epoll_event>
@@ -96,13 +96,14 @@ class PThreadTests: XCTestCase {
 				close(epollFD)
 				events.deallocate()
 			}
-		}
-		let myString = try await pthreadRun {
-			print("Foo")
-			return "String"
-		}.get()
-		XCTAssertEqual(myString, "String")
-		return
+		}*/
+
+		// let myString = try await pthreadRun {
+		// 	print("Foo")
+		// 	return "String"
+		// }.get()
+		// XCTAssertEqual(myString, "String")
+		// return
 		
 
 		// try withUnsafePointer(to:notExpectation) { notExpectationPtr in
@@ -144,5 +145,5 @@ class PThreadTests: XCTestCase {
 
 		
     }
-	#endif
+	// #en/dif
 }

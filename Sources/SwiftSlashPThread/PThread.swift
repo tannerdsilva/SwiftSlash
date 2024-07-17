@@ -182,10 +182,11 @@ fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async thr
 		_ = setupContainer.takeRetainedValue()
 		throw LaunchFailure()
 	}
-
+	// fatalError()
 	// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
 	let returnFuture = try await configureFuture.get()
-	return LaunchedPThread(pthr, future:returnFuture, type:workType)
+	// fatalError()
+	return LaunchedPThread(pthr!, future:returnFuture, type:workType)
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.

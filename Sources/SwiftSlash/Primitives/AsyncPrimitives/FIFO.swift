@@ -1,7 +1,7 @@
 import __cswiftslash
 
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
-internal final class FIFO<T>:AsyncSequence, Sendable {
+internal final class FIFO<T>:AsyncSequence, @unchecked Sendable {
 	internal typealias Element = T
 
 	private let stream:_Concurrency.AsyncStream<Void>
@@ -9,8 +9,8 @@ internal final class FIFO<T>:AsyncSequence, Sendable {
 	private let datachain_primitive_ptr:UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>
 	
 	internal init() {
-		let newPointer = UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>.allocate(capacity:1)
 		var newMutex = _cswiftslash_fifo_mutex_new()
+		let newPointer = UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>.allocate(capacity:1)
 		newPointer.initialize(to:_cswiftslash_fifo_init(&newMutex))
 		self.datachain_primitive_ptr = newPointer
 		(self.stream, self.continuation) = _Concurrency.AsyncStream<Void>.makeStream(of:Void.self, bufferingPolicy:.bufferingOldest(1))
@@ -76,7 +76,6 @@ internal final class FIFO<T>:AsyncSequence, Sendable {
 		}) {
 			_ = Unmanaged<ContainedResult>.fromOpaque(capPointer).takeRetainedValue()
 		}
-		datachain_primitive_ptr.deinitialize(count:1).deallocate()
 	}
 }
 

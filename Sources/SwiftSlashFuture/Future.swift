@@ -66,32 +66,28 @@ public final class Future<R>:Sendable {
 	/// - returns: the return value of the future.
 	/// - throws: any error that was assigned to the future in place of a valid return instance.
 	public func get() async throws -> R {
-		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
-			guard _cswiftslash_future_t_wait_async(prim, { resType, resPtr, ctx in
+		return try await withCheckedThrowingContinuation({ (cont:CheckedContinuation<R, Swift.Error>) in
+			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
 			}, { errType, errPtr, ctx in
 				cont.resume(throwing:Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error)					
 			}, { ctx in
 				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
-			}) == 0 else {
-				fatalError("failed to wait for future - \(#file):\(#line)")
-			}
+			})
 		})
 	}
 
 	/// asyncronously wait for the result of the future.
 	/// - returns: the result of the future.
 	public func result() async -> Result<R, Swift.Error> {
-		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
-			guard _cswiftslash_future_t_wait_async(prim, { resType, resPtr, ctx in
+		return await withCheckedContinuation({ (cont:CheckedContinuation<Result<R, Swift.Error>, Never>) in
+			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:.success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result))
 			}, { errType, errPtr, ctx in
 				cont.resume(returning:.failure(Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error))
 			}, { ctx in
 				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
-			}) == 0 else {
-				fatalError("failed to wait for future - \(#file):\(#line)")
-			}
+			})
 		})
 	}
 
