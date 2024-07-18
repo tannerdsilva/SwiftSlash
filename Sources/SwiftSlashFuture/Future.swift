@@ -1,7 +1,8 @@
 import __cswiftslash
 
 /// a reference type that represents a result that will be available in the future.
-public final class Future<R>:Sendable {
+public final class Future<R>:@unchecked Sendable {
+	
 	/// thrown when a result is set on a future that is already set.
 	public struct InvalidStateError:Swift.Error {}
 
@@ -66,7 +67,7 @@ public final class Future<R>:Sendable {
 	/// - returns: the return value of the future.
 	/// - throws: any error that was assigned to the future in place of a valid return instance.
 	public func get() async throws -> R {
-		return try await withCheckedThrowingContinuation({ (cont:CheckedContinuation<R, Swift.Error>) in
+		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
 			}, { errType, errPtr, ctx in
@@ -77,10 +78,24 @@ public final class Future<R>:Sendable {
 		})
 	}
 
+	// public func block() -> Result<R, Swift.Error> {
+	// 	var res:Result<R, Swift.Error>?
+	// 	withUnsafeMutablePointer(to:&res) { (resultPtr:UnsafeMutablePointer<Result<R, Swift.Error>?>) in
+	// 		_cswiftslash_future_t_wait_sync(prim, resultPtr, { resType, resPtr, ctx in
+	// 			ctx!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
+	// 		}, { errType, errPtr, ctx in
+	// 			ctx!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .failure(Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error)
+	// 		}, { ctx in
+	// 			fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
+	// 		})
+	// 	}
+	// 	return res!
+	// }
+
 	/// asyncronously wait for the result of the future.
 	/// - returns: the result of the future.
 	public func result() async -> Result<R, Swift.Error> {
-		return await withCheckedContinuation({ (cont:CheckedContinuation<Result<R, Swift.Error>, Never>) in
+		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:.success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result))
 			}, { errType, errPtr, ctx in

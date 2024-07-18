@@ -7,7 +7,7 @@
 #include "__cswiftslash_types.h"
 
 #if defined(__APPLE__)
-typedef pthread_t _Null_unspecified _cswiftslash_pthread_t_type;
+typedef pthread_t _Nonnull _cswiftslash_pthread_t_type;
 #else
 typedef pthread_t _cswiftslash_pthread_t_type;
 #endif

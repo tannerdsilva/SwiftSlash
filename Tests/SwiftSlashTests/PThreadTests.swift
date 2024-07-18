@@ -98,12 +98,12 @@ class PThreadTests: XCTestCase {
 			}
 		}*/
 
-		// let myString = try await pthreadRun {
-		// 	print("Foo")
-		// 	return "String"
-		// }.get()
-		// XCTAssertEqual(myString, "String")
-		// return
+		let myString = try await pthreadRun {
+			print("Foo")
+			return "String"
+		}.get()
+		XCTAssertEqual(myString, "String")
+		return
 		
 
 		// try withUnsafePointer(to:notExpectation) { notExpectationPtr in

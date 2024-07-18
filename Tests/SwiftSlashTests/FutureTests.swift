@@ -16,30 +16,30 @@ final class FutureTests: XCTestCase {
 		future = nil
     }
     
-	// struct MyTestError:Swift.Error, Equatable {
-	// 	internal let code:Int
-	// 	internal let message:String
-	// 	static func == (lhs:MyTestError, rhs:MyTestError) -> Bool {
-	// 		return lhs.code == rhs.code && lhs.message == rhs.message
-	// 	}
-	// }
-    // func testSetFailure() {
-    //     let future = Future<Int>()
-    //     let error = MyTestError(code: 42, message: "Test error")
-	// 	future.setFailure(error)
-    //     let result = future.blockForResult()
-	// 	switch result {
-	// 	case .failure(let e):
-	// 		XCTAssertEqual(e as! MyTestError, error)
-	// 	default:
-	// 		XCTFail("Expected a failure result")
-	// 	}
-    // }
+	struct MyTestError:Swift.Error, Equatable {
+		internal let code:Int
+		internal let message:String
+		static func == (lhs:MyTestError, rhs:MyTestError) -> Bool {
+			return lhs.code == rhs.code && lhs.message == rhs.message
+		}
+	}
+    func testSetFailure() async throws {
+        let future = Future<Int>()
+        let error = MyTestError(code: 42, message: "Test error")
+		try future.setFailure(error)
+        let result: Result<Int, any Error> = await future.result()
+		switch result {
+		case .failure(let e):
+			XCTAssertEqual(e as! MyTestError, error)
+		default:
+			XCTFail("Expected a failure result")
+		}
+    }
     
     func testAwaitResult() async {
         let future = Future<String>()
         Task {
-            await Task.sleep(1) // Simulating some asynchronous operation
+            try await Task.sleep(nanoseconds:1_000_000_000) // Simulating some asynchronous operation
             try future.setSuccess("Hello, World!")
         }
         let result = await future.result()
@@ -53,10 +53,10 @@ final class FutureTests: XCTestCase {
     
     // // Add more test cases as needed
     
-    // static var allTests = [
-    //     ("testSetSuccess", testSetSuccess),
-    //     ("testSetFailure", testSetFailure),
-    //     ("testAwaitResult", testAwaitResult),
-    //     // Add more test cases here
-    // ]
+    static var allTests = [
+        ("testSetSuccess", testSetSuccess),
+        ("testSetFailure", testSetFailure),
+        ("testAwaitResult", testAwaitResult),
+        // Add more test cases here
+    ]
 }

@@ -13,22 +13,6 @@ internal struct LaunchFailure:Swift.Error {}
 internal struct CancellationFailure:Swift.Error {}
 
 internal struct PThreadFuncRunner<R>:PThreadWork {
-	// /// work that needs to run on the pthread.
-	// internal struct Func {
-	// 	/// the argument that is passed into the work function.
-	// 	typealias WorkFuncType = (consuming A) throws -> R
-
-	// 	/// the argument that is passed into the work function.
-	// 	private let argument:A
-
-	// 	/// the work function that is run on the pthread.
-	// 	internal let work:WorkFuncType
-
-	// 	internal consuming func consumeArgument() -> A {
-	// 		return argument
-	// 	}
-	// }
-
 	/// function to run
 	private let funct:Argument
 
@@ -59,9 +43,7 @@ extension PThreadWork {
 		return await withTaskCancellationHandler(operation: {
 			switch await launchedPThread.result() {
 				case .success(let ptr):
-					return .success(Unmanaged<Contained<ReturnType>>.fromOpaque(ptr).takeRetainedValue().accessContainedValue({
-						return $0.pointee
-					}))
+					return .success(Unmanaged<Contained<ReturnType>>.fromOpaque(ptr).takeRetainedValue().value())
 				case .failure(let error):
 					return .failure(error)
 			}
@@ -74,9 +56,7 @@ extension PThreadWork {
 extension PThreadWork {
 	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
-		self = Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().accessContainedValue {
-			return Self($0)
-		}
+		self = Self(Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().value())
 	}
 	// this is a convenience and bridge function that allows the contained workspace to run the work function and set the result into the return future. the pointer pass in success to the future is presumed to be a retained instance of Contained<ReturnType>
 	fileprivate mutating func run(future:borrowing Future<UnsafeMutableRawPointer>) {
@@ -108,12 +88,9 @@ fileprivate struct Workspace {
 	fileprivate init(
 		_ setup:Setup
 	) {
-
 		self.workspaceInstance = setup.thread_worktype.init(setup.containedArg)
 		self.workspaceType = setup.thread_worktype
 		self.configureFuture = setup.configureFuture
-		
-		// setup.deinitialize(count:1).deallocate()
 	}
 
 	fileprivate func setCancellation() {
@@ -138,7 +115,7 @@ fileprivate struct Workspace {
 }
 
 // assistive structure to define how a pthread shall be launched and ran.
-fileprivate final class Setup {
+fileprivate struct Setup {
 	// a pointer to the contained argument
 	fileprivate let containedArg:UnsafeMutableRawPointer
 
@@ -153,11 +130,6 @@ fileprivate final class Setup {
 		self.thread_worktype = P.self
 		self.configureFuture = configureFuture
 	}
-
-	deinit {
-		// _ = configureFuture.takeRetainedValue()
-		print("SETPU DEINIT")
-	}
 }
 
 // this function makes three allocations. if the pthread is successfully launched, none of the memory needs to be deallocated. if the pthread fails to launch, the memory will be deallocated before the function throws.
@@ -165,59 +137,52 @@ fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async thr
 	// allocate the memory where the pthread will be configured.
 	let configureFuture = Future<Future<UnsafeMutableRawPointer>>()
 
-	let setupContainer = Unmanaged<Setup>.passRetained(Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
+	// let setupContainer = Unmanaged<Setup>.passRetained(Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
+	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
+	launchStructure.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
+	defer {
+		launchStructure.deinitialize(count:1)
+		launchStructure.deallocate()
+	}
 
 	// launch the pthread, verify the results are successful.
 	var launchResult:Int32 = -1
-	let pthr = _cswiftslash_pthread_config_run(_cswiftslash_pthread_config_init(
-		setupContainer.toOpaque(),
-		_run_alloc,
-		_run_main,
-		_run_cancel,
-		_run_dealloc
-	), &launchResult)
+	let pthr = _cswiftslash_pthread_config_run(
+		_cswiftslash_pthread_config_init(
+			launchStructure,
+			_run_alloc,
+			_run_main,
+			_run_cancel,
+			_run_dealloc
+		),
+		&launchResult
+	)
 	guard launchResult == 0 else {
 		// balance the retained value that was passed into the pthread setup.
-		_ = Unmanaged<Contained<A>>.fromOpaque(setupContainer.takeUnretainedValue().containedArg).takeRetainedValue()
-		_ = setupContainer.takeRetainedValue()
+		_ = Unmanaged<Contained<A>>.fromOpaque(launchStructure.pointee.containedArg).takeRetainedValue()
 		throw LaunchFailure()
 	}
-	// fatalError()
 	// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
 	let returnFuture = try await configureFuture.get()
-	// fatalError()
-	return LaunchedPThread(pthr!, future:returnFuture, type:workType)
+	return LaunchedPThread(pthr, future:returnFuture, type:workType)
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
 fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
-	print("alloc")
-	return Unmanaged<Contained<Workspace>>.passRetained(
-		Contained(
-			Workspace(
-				Unmanaged<Setup>.fromOpaque(csPtr).takeRetainedValue()
-			)
-		)
-	).toOpaque()
+	let setup = UnsafeMutablePointer<Workspace>.allocate(capacity:1)
+	setup.initialize(to:Workspace(csPtr.assumingMemoryBound(to: Setup.self).pointee))
+	return UnsafeMutableRawPointer(setup)
 }
 // deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
 fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	print("dealloc")
-	var ws:Contained? = Unmanaged<Contained<Workspace>>.fromOpaque(wsPtr).takeRetainedValue()
-	ws = nil
+	wsPtr.assumingMemoryBound(to: Workspace.self).deinitialize(count:1).deallocate()
 }
 // cancel function. responsible for setting the cancellation flag on the contained workspace.
 fileprivate let _run_cancel:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	print("cancel")
-	Unmanaged<Contained<Workspace>>.fromOpaque(wsPtr).takeUnretainedValue().accessContainedValue { ws in
-		ws.pointee.setCancellation()
-	}
+	wsPtr.assumingMemoryBound(to: Workspace.self).pointee.setCancellation()
 }
 // main function. responsible for running the work function and setting the result into the return future.
 fileprivate let _run_main:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
-	print("main")
 	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
-	Unmanaged<Contained<Workspace>>.fromOpaque(wsPtr).takeUnretainedValue().accessContainedValue { ws in
-		ws.pointee.work()
-	}
+	wsPtr.assumingMemoryBound(to: Workspace.self).pointee.work()
 }
