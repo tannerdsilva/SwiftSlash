@@ -99,7 +99,6 @@ class PThreadTests: XCTestCase {
 		}*/
 
 		let myString = try await pthreadRun {
-			print("Foo")
 			return "String"
 		}.get()
 		XCTAssertEqual(myString, "String")
