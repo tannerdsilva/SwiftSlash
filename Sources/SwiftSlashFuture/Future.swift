@@ -120,5 +120,6 @@ public final class Future<R>:@unchecked Sendable {
 		}
 		result = (nil, nil)
 		prim.deallocate()
+		print("destroyed future \(type(of:self))")
 	}
 }

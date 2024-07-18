@@ -137,7 +137,6 @@ fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async thr
 	// allocate the memory where the pthread will be configured.
 	let configureFuture = Future<Future<UnsafeMutableRawPointer>>()
 
-	// let setupContainer = Unmanaged<Setup>.passRetained(Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
 	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
 	launchStructure.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
 	defer {
