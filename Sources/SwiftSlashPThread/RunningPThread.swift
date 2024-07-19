@@ -12,8 +12,10 @@ internal struct LaunchedPThread {
 
 	/// the pthread primitive that was launched.
 	private let pt:_cswiftslash_pthread_t_type
+
 	/// the future that will be set after the work is joined.
 	private let rf:Future<UnsafeMutableRawPointer>
+
 	/// the type of workspace that is being used in the pthread.
 	private let runningType:any PThreadWork.Type
 	
@@ -23,7 +25,9 @@ internal struct LaunchedPThread {
 		runningType = type
 	}
 
+	// cancels a pthread before it returns.
 	internal borrowing func cancel() throws {
+		// cancel pthread
 		guard pthread_cancel(pt) == 0 else {
 			throw CancellationError()
 		}

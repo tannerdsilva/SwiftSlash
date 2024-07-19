@@ -10,28 +10,26 @@ import Logging
 internal struct LaunchFailure:Swift.Error {}
 
 /// thrown when a pthread is unable to be canceled.
-internal struct CancellationFailure:Swift.Error {}
+internal struct UnableToCancel:Swift.Error {}
 
-internal struct PThreadFuncRunner<R>:PThreadWork {
+internal struct GenericPThread<R>:PThreadWork {
 	/// function to run
-	private let funct:Argument
+	private let funcToRun:Argument
 
 	internal typealias Argument = () throws -> R
 	internal typealias ReturnType = R
 
 	internal init(_ argument:@escaping Argument) {
-		self.funct = argument
+		self.funcToRun = argument
 	}
 
 	internal mutating func run() throws -> R {
-		return try funct()
+		return try funcToRun()
 	}
 }
 
-public func pthreadRun<R>(_ work:() throws -> R) async throws -> Result<R, Swift.Error> {
-	try await withoutActuallyEscaping(work, do: { neWork in
-		return try await PThreadFuncRunner<R>.run(neWork)
-	})
+public func pthreadRun<R>(_ work:@escaping () throws -> R) async throws -> Result<R, Swift.Error> {
+		return try await GenericPThread.run(work)
 }
 
 extension PThreadWork {
@@ -48,6 +46,7 @@ extension PThreadWork {
 					return .failure(error)
 			}
 		}, onCancel: {
+		
 			try! launchedPThread.cancel()
 		})
 	}
@@ -58,7 +57,6 @@ extension PThreadWork {
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
 		self = Self(Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().value())
 	}
-	// this is a convenience and bridge function that allows the contained workspace to run the work function and set the result into the return future. the pointer pass in success to the future is presumed to be a retained instance of Contained<ReturnType>
 	fileprivate mutating func run(future:borrowing Future<UnsafeMutableRawPointer>) {
 		let op:UnsafeMutableRawPointer
 		do {
@@ -82,6 +80,8 @@ fileprivate struct Workspace {
 
 	/// the future for pthread configuration. this is set to success when the pthread is configured, running its work, and ready to be canceled. after a result is passed into the return future, this future is set to nil.
 	private var configureFuture:Future<Future<UnsafeMutableRawPointer>>
+
+	/// the future that will be set after the work result is returned.
 	private let returnFuture:Future<UnsafeMutableRawPointer> = Future<UnsafeMutableRawPointer>()
 
 	// call this from within the pthread. this will initialize the workspace for the work that is about to begin on the pthread.
@@ -134,9 +134,10 @@ fileprivate struct Setup {
 
 // this function makes three allocations. if the pthread is successfully launched, none of the memory needs to be deallocated. if the pthread fails to launch, the memory will be deallocated before the function throws.
 fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async throws -> LaunchedPThread where W:PThreadWork, W.Argument == A {
-	// allocate the memory where the pthread will be configured.
+	// the primary role of this function is to manage the intersection between the calling memoryspace and the launched memoryspace. this configuration future is the primary way these two memoryspaces coordinate the timing of their memory allocations and freeing.
 	let configureFuture = Future<Future<UnsafeMutableRawPointer>>()
 
+	// the configuring memory for the pthread is necessarily1 floated in the heap since addressing this memory directly from the "stack" creates issues when the await is called towards the end of the function.
 	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
 	launchStructure.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
 	defer {

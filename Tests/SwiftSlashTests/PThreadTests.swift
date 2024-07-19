@@ -140,9 +140,29 @@ class PThreadTests: XCTestCase {
 		// 				XCTFail("Unexpected error: \(error)")
 		// 		}
 		// 	}
-			// Wait for the expectation to be fulfilled
-
-		
+			// Wait for the expectation to be fulfille
     }
-	// #en/dif
+	func testPthreadDelay() async throws {
+		let cancelExpect = XCTestExpectation(description: "PThread delay")
+		let returnExpect = XCTestExpectation(description: "PThread delay")
+		returnExpect.isInverted = true
+			Task.detached {
+				do {
+					let runTask = Task.detached {
+						try await pthreadRun {
+							sleep(5)
+							returnExpect.fulfill()
+						}
+					}
+					try await Task.sleep(nanoseconds: 1_000_000_000)
+					runTask.cancel()
+					try await runTask.result.get().get()
+				} catch is CancellationError {
+					cancelExpect.fulfill()
+				}
+			}
+			wait(for: [cancelExpect, returnExpect], timeout: 2)
+	}
+
+	// #n/dif
 }
