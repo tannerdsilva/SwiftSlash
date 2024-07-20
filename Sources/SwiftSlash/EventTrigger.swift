@@ -1,3 +1,5 @@
+import __cswiftslash
+
 internal enum EventMode {
 	case readableEvent(Int)
 	case writableEvent
@@ -11,10 +13,10 @@ internal struct EventDescription {
 }
 
 public protocol EventTrigger {
-	func register(reader:Int32) throws
-	func register(writer:Int32) throws
-	func deregister(reader:Int32) throws
-	func deregister(writer:Int32) throws
+	static func register(_ ev:EventTriggerHandle, reader:Int32) throws
+	static func register(_ ev:EventTriggerHandle, writer:Int32) throws
+	static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws
+	static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws
 	
 	associatedtype EventTriggerHandle
 
@@ -49,64 +51,64 @@ public protocol EventTrigger {
 // 		self.eventContinuation = eventCont!
 // 	}
 	
-// 	fileprivate func _mainLoop() {
-// 		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
-// 		defer {
-// 			epollEventsAllocation.deallocate()
-// 		}
-// 		var allocationSize:Int32 = 32
-// 		func reallocate(size:Int32) {
-// 			epollEventsAllocation.deallocate()
-// 			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
-// 			allocationSize = size
-// 		}
+	fileprivate func _mainLoop() {
+		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
+		defer {
+			epollEventsAllocation.deallocate()
+		}
+		var allocationSize:Int32 = 32
+		func reallocate(size:Int32) {
+			epollEventsAllocation.deallocate()
+			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
+			allocationSize = size
+		}
 		
-// 		while true {
-// 			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
-// 			switch pollResult {
-// 				case -1:
-// 					if (errno != EINTR) {
-// 						fatalError("EPOLL ERROR")
-// 					}
-// 					break;
-// 				default:
-// 					if (pollResult > 0) {
-// 						var i = 0
-// 						while (i < pollResult) {
-// 							let currentEvent = epollEventsAllocation[i]
-// 							let pollin = currentEvent.events & UInt32(EPOLLIN.rawValue)
-// 							let pollhup = currentEvent.events & UInt32(EPOLLHUP.rawValue)
-// 							let pollout = currentEvent.events & UInt32(EPOLLOUT.rawValue)
-// 							let pollerr = currentEvent.events & UInt32(EPOLLERR.rawValue)
+		while true {
+			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
+			switch pollResult {
+				case -1:
+					if (errno != EINTR) {
+						fatalError("EPOLL ERROR")
+					}
+					break;
+				default:
+					if (pollResult > 0) {
+						var i = 0
+						while (i < pollResult) {
+							let currentEvent = epollEventsAllocation[i]
+							let pollin = currentEvent.events & UInt32(EPOLLIN.rawValue)
+							let pollhup = currentEvent.events & UInt32(EPOLLHUP.rawValue)
+							let pollout = currentEvent.events & UInt32(EPOLLOUT.rawValue)
+							let pollerr = currentEvent.events & UInt32(EPOLLERR.rawValue)
 							
-// 							if (pollhup != 0) {
-// 								//reading handle closed
-// 								try? self.deregister(reader:currentEvent.data.fd)
-// 								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readingClosed)))
-// 							} else if (pollerr != 0) {
-// 								//writing handle closed
-// 								try? self.deregister(writer:currentEvent.data.fd)
-// 								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writingClosed)))
-// 							} else if (pollin != 0) {
-// 								//read data available
-// 								var byteCount:Int = 0
-// 								guard ioctl(currentEvent.data.fd, UInt(FIONREAD), &byteCount) == 0 else {
-// 									fatalError("EventTrigger ioctl error")
-// 								}
-// 								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readableEvent(byteCount))))
-// 							} else if (pollout != 0) {
-// 								//writing available
-// 								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writableEvent)))
-// 							}
-// 							i = i + 1
-// 						}
-// 						if (i*2 > allocationSize) {
-// 							reallocate(size:allocationSize*2)
-// 						}
-// 					}
-// 			}
-// 		}
-// 	}
+							if (pollhup != 0) {
+								//reading handle closed
+								try? self.deregister(reader:currentEvent.data.fd)
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readingClosed)))
+							} else if (pollerr != 0) {
+								//writing handle closed
+								try? self.deregister(writer:currentEvent.data.fd)
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writingClosed)))
+							} else if (pollin != 0) {
+								//read data available
+								var byteCount:Int = 0
+								guard ioctl(currentEvent.data.fd, UInt(FIONREAD), &byteCount) == 0 else {
+									fatalError("EventTrigger ioctl error")
+								}
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readableEvent(byteCount))))
+							} else if (pollout != 0) {
+								//writing available
+								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writableEvent)))
+							}
+							i = i + 1
+						}
+						if (i*2 > allocationSize) {
+							reallocate(size:allocationSize*2)
+						}
+					}
+			}
+		}
+	}
 	
 // 	func register(reader:Int32) throws {
 // 		var buildEvent = epoll_event()
