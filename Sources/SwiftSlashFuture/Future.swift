@@ -43,7 +43,7 @@ public final class Future<R>:@unchecked Sendable {
 	/// - parameters:
 	/// 	- result: the result to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setSuccess(_ result:R) throws {
+	public borrowing func setSuccess(_ result:R) throws {
 		let op = Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
 			_ = Unmanaged<ContainedResult>.fromOpaque(op).takeRetainedValue()
@@ -55,7 +55,7 @@ public final class Future<R>:@unchecked Sendable {
 	/// - parameters:
 	/// 	- error: the error to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setFailure(_ error:Swift.Error) throws {
+	public borrowing func setFailure(_ error:Swift.Error) throws {
 		let op = Unmanaged.passRetained(ContainedError(error:error)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
 			_ = Unmanaged<ContainedError>.fromOpaque(op).takeRetainedValue()
@@ -77,20 +77,6 @@ public final class Future<R>:@unchecked Sendable {
 			})
 		})
 	}
-
-	// public func block() -> Result<R, Swift.Error> {
-	// 	var res:Result<R, Swift.Error>?
-	// 	withUnsafeMutablePointer(to:&res) { (resultPtr:UnsafeMutablePointer<Result<R, Swift.Error>?>) in
-	// 		_cswiftslash_future_t_wait_sync(prim, resultPtr, { resType, resPtr, ctx in
-	// 			ctx!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
-	// 		}, { errType, errPtr, ctx in
-	// 			ctx!.assumingMemoryBound(to:Result<R, Swift.Error>?.self).pointee = .failure(Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error)
-	// 		}, { ctx in
-	// 			fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
-	// 		})
-	// 	}
-	// 	return res!
-	// }
 
 	/// asyncronously wait for the result of the future.
 	/// - returns: the result of the future.
@@ -119,6 +105,6 @@ public final class Future<R>:@unchecked Sendable {
 			fatalError("failed to destroy future - \(#file):\(#line)")
 		}
 		result = (nil, nil)
-		prim.deallocate()
+		prim.deinitialize(count:1).deallocate()
 	}
 }

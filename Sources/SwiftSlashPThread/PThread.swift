@@ -6,33 +6,41 @@ import SwiftSlashContained
 import Logging
 #endif
 
-/// thrown when a pthread cannot be created.
-internal struct LaunchFailure:Swift.Error {}
-
-/// thrown when a pthread is unable to be canceled.
-internal struct UnableToCancel:Swift.Error {}
-
+/// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
 internal struct GenericPThread<R>:PThreadWork {
 	/// function to run
 	private let funcToRun:Argument
 
+	/// the argument type for the function to run.
 	internal typealias Argument = () throws -> R
+	/// the return type for the function to run.
 	internal typealias ReturnType = R
 
+	/// creates a new instance of GenericPThread.
+	/// - parameters:
+	/// 	- argument: the function to run.
 	internal init(_ argument:@escaping Argument) {
 		self.funcToRun = argument
 	}
 
+	/// runs the function and returns the result.
+	/// - returns: the result of the function.
+	/// - throws: any error that prevents the work from being completed.
 	internal mutating func run() throws -> R {
 		return try funcToRun()
 	}
 }
 
+/// runs any given arbitrary function on a pthread.
 public func pthreadRun<R>(_ work:@escaping () throws -> R) async throws -> Result<R, Swift.Error> {
-		return try await GenericPThread.run(work)
+	return try await GenericPThread.run(work)
 }
 
 extension PThreadWork {
+	/// launches a new pthread that will execute the work for the particular type of PThreadWork implementation.
+	/// - parameters:
+	/// 	- arg: the argument to pass into the work function.
+	/// - returns: a future that will contain the result of the work function.
 	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, Swift.Error> {
 		let launchedPThread = try await launch(Self.self, argument:arg)
 		defer {
@@ -46,7 +54,6 @@ extension PThreadWork {
 					return .failure(error)
 			}
 		}, onCancel: {
-		
 			try! launchedPThread.cancel()
 		})
 	}
@@ -57,6 +64,7 @@ extension PThreadWork {
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
 		self = Self(Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().value())
 	}
+	// this is a bridge function that allows the primary work implementation to run and return into the future as it needs to when it is called from the pthread.
 	fileprivate mutating func run(future:borrowing Future<UnsafeMutableRawPointer>) {
 		let op:UnsafeMutableRawPointer
 		do {
@@ -93,6 +101,7 @@ fileprivate struct Workspace {
 		self.configureFuture = setup.configureFuture
 	}
 
+	// assign cancellation values to the relevant futures.
 	fileprivate func setCancellation() {
 		// set the return future to a failure error that is aproprate for cancellation.
 		try? returnFuture.setFailure(CancellationError()) // this try may fail because its theoretically possible that the work returns an instant moment before this is called.
@@ -100,11 +109,13 @@ fileprivate struct Workspace {
 		try? configureFuture.setFailure(CancellationError()) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
 	}
 
+	// set the configuration future to success.
 	private func setSuccessfulConfiguration() {
 		// set the configure future to success.
 		try? configureFuture.setSuccess(returnFuture) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
 	}
 
+	// run the work and have it pass the result into the return future.
 	fileprivate mutating func work() {
 		// set the configuration future to success.
 		setSuccessfulConfiguration()
@@ -125,7 +136,12 @@ fileprivate struct Setup {
 	// the type of pthread work to execute. this informs the pthread launch what kind of memory and work needs to be done.
 	fileprivate let thread_worktype:any PThreadWork.Type
 
-	fileprivate init<P>(_ workType:P.Type, containedArgument:UnsafeMutableRawPointer, configureFuture:Future<Future<UnsafeMutableRawPointer>>) where P:PThreadWork {
+	// call this from outside the pthread before it is launched. this setup structure will initialize on the heap and passed into the pthread from there.
+	fileprivate init<P>(
+		_ workType:P.Type,
+		containedArgument:UnsafeMutableRawPointer,
+		configureFuture:Future<Future<UnsafeMutableRawPointer>>
+	) where P:PThreadWork {
 		self.containedArg = containedArgument
 		self.thread_worktype = P.self
 		self.configureFuture = configureFuture
