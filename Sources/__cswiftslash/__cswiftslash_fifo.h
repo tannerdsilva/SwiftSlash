@@ -16,6 +16,18 @@ typedef _Atomic _cswiftslash_fifo_link_ptr_t _cswiftslash_fifo_link_aptr_t;
 /// function prototype for consuming data from the chain. does not free the memory of the consumed pointer.
 typedef void (^ _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
 
+// fifo consumption results.
+typedef enum fifo_consume_result {
+	// pending status (future not fufilled)
+	FIFO_CONSUME_RESULT = 0,
+	// result status (future fufilled normally)
+	FIFO_CONSUME_CAP = 1,
+	// thrown status (future fufilled with an error)
+	FIFO_CONSUME_WOULDBLOCK = 2,
+	// cancel status (future was not fufilled and will NOT fufill in the future)
+	FIFO_CONSUME_INTERNAL_ERROR = 3,
+} _cswiftslash_fifo_consume_result_t;
+
 /// structure representing a single link within the fifo, holding a data item and a pointer to the next chain item.
 typedef struct _cswiftslash_fifo_link {
 	/// the data item held by this link in the chain.
@@ -39,9 +51,13 @@ typedef struct _cswiftslash_fifo_linkpair {
 	/// atomic pointer to the cap pointer, which is the final element in the chain.
 	_Atomic _cswiftslash_optr_t _cap_ptr;
 	
-	/// mutex used to synchronize the state of various threads.
+	/// mutex used to synchronize the internal state of the fifo. this is optional because there may be parent structures that are synchronized in the same way, therefore, can opt out of the built in synchronization to eliminate overhead.
 	bool has_mutex;
 	pthread_mutex_t mutex_optional;
+
+	/// mutex used to signal to waiting threads when a result is available again. one may argue that there are better pthread primitives to use for this, but the swift runtime only wants to operate with mutexes.
+	_Atomic bool is_waiters_mutex_locked;
+	pthread_mutex_t waiters_mutex;
 } _cswiftslash_fifo_linkpair_t;
 
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
@@ -77,10 +93,11 @@ bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, co
 /// @return 0 on success. 1 when a retry should be done on the function call. -1 when the fifo is capped and no retry is necessary.
 int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_ptr_t ptr);
 
-/// returns the next item in the chain. if no items are remaining and the chain is capped, the cap pointer will be returned (not for consumption, leave in memory). if no items are remaining and the chain is not capped, the function will block until an item is available (if specified by argument).
-/// @param chain pointer to the fifo to consume from.
-/// @param consumed_ptr pointer to the consumed data pointer, if any.
-/// @return 0 if the function was successful and `consumed_ptr` was assigned to the next fifo entry to consume (consider this the last time you'll see this pointer - deallocate apropriately); -1 if the function would block. -2 if there was an internal error.
+
+/// @return 0 if the operation was successful and a normal fifo element was consumed. 1 if the operation resulted in the cap element being returned. -1 if the operation would block. -2 if the operation occurred an internal error.
 int8_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr);
+
+/// @return 0 if the operation was successful and a normal fifo element was consumed. 1 if the operation resulted in the cap element being returned. -1 if the operation would block. -2 if the operation occurred an internal error.
+int8_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr);
 
 #endif // _CSWIFTSLASH_FIFO_H

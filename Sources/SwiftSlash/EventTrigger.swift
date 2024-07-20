@@ -39,9 +39,6 @@ internal protocol EventTrigger:PThreadWork {
 
 	/// the primitive that is used to handle the event trigger.
 	var prim:EventTriggerHandle { get set }
-
-	/// runs the event trigger monitoring service.
-	func runEventTrigger() throws
 }
 
 internal enum EventTriggerError:Swift.Error {
@@ -104,7 +101,7 @@ internal final class LinuxET {
 	}
 
 	func runEventTrigger() throws {
-		
+		let epollET = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
 	}
 
 	deinit {
@@ -113,7 +110,124 @@ internal final class LinuxET {
 	}
 }
 #elseif os(macOS)
+internal final class MacOSET {
+	
+	/// the primitive that is used to handle the event trigger.
+	internal typealias Argument = Void
+	/// the primitive that is used to handle the event trigger.
+	internal typealias ReturnType = Void
+	/// the primitive that is used to handle the event trigger.
+	internal typealias EventTriggerHandle = Int32
 
+	internal typealias EventType = kevent
+
+	/// the primitive that is used to handle the event trigger.
+	private var prim:EventTriggerHandle = kqueue()
+
+	/// event buffer that allows us to process events.
+	private var allocationSize:Int32 = 32
+	private var events:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)	// no need to initialize this since the Pointee type is a c struct.
+	private func reallocate(size:Int32) {
+		events.deallocate()
+		allocationSize = size
+		events = UnsafeMutablePointer<EventType>.allocate(capacity:Int(size))
+	}
+
+	// ai gen need to audit
+	internal static func register(_ ev:EventTriggerHandle, reader:Int32) throws {
+		var newEvent = kevent()
+		newEvent.ident = UInt(reader)
+		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
+		newEvent.filter = Int16(EVFILT_READ)
+		newEvent.fflags = 0
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	// ai gen need to audit
+	internal static func register(_ ev:EventTriggerHandle, writer:Int32) throws {
+		var newEvent = kevent()
+		newEvent.ident = UInt(writer)
+		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
+		newEvent.filter = Int16(EVFILT_WRITE)
+		newEvent.fflags = 0
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	// ai gen need to audit
+	internal static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws {
+		var newEvent = kevent()
+		newEvent.ident = UInt(reader)
+		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
+		newEvent.filter = Int16(EVFILT_READ)
+		newEvent.fflags = 0
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	internal static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws {
+		var newEvent = kevent()
+		newEvent.ident = UInt(writer)
+		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
+		newEvent.filter = Int16(EVFILT_WRITE)
+		newEvent.fflags = 0
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	func pthreadWork() throws {
+		let kqueueResult = kevent(prim, nil, 0, events, allocationSize, nil)
+		switch kqueueResult {
+			case Int32.min..<0:
+				switch errno {
+					case EINTR:
+						pthread_testcancel()
+					default:
+						fatalError("kevent error - this should never happen")
+				}
+			case 0..<Int32.max:
+				var i = 0
+				while i < kqueueResult {
+					let currentEvent = events[i]
+					let curIdent = Int32(currentEvent.ident)
+					if currentEvent.flags & UInt16(EV_EOF) == 0 {
+						if currentEvent.filter == Int16(EVFILT_READ) {
+							let ed = EventDescription(fh:curIdent, event: .readableEvent(currentEvent.data))
+						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+							let ed = EventDescription(fh:curIdent, event: .writableEvent)
+						}
+					} else {
+						if currentEvent.filter == Int16(EVFILT_READ) {
+							try? Self.deregister(prim, reader: curIdent)
+							let ed = EventDescription(fh:curIdent, event: .readingClosed)
+						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+							try? Self.deregister(prim, writer: curIdent)
+							let ed = EventDescription(fh:curIdent, event: .writingClosed)
+						}
+					}
+					i = i + 1
+				}
+				if (i*2 > allocationSize) {
+					reallocate(size:allocationSize*2)
+				}
+			default:
+				fatalError("eventtrigger error - this should never happen")
+		}
+	}
+}
 #endif
 
 // #if os(Linux)
@@ -143,65 +257,6 @@ internal final class LinuxET {
 // 		}
 // 		self.eventContinuation = eventCont!
 // 	}
-	
-	fileprivate func _mainLoop() {
-		var epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:32)
-		defer {
-			epollEventsAllocation.deallocate()
-		}
-		var allocationSize:Int32 = 32
-		func reallocate(size:Int32) {
-			epollEventsAllocation.deallocate()
-			epollEventsAllocation = UnsafeMutablePointer<epoll_event>.allocate(capacity:Int(size))
-			allocationSize = size
-		}
-		
-		while true {
-			let pollResult = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
-			switch pollResult {
-				case -1:
-					if (errno != EINTR) {
-						fatalError("EPOLL ERROR")
-					}
-					break;
-				default:
-					if (pollResult > 0) {
-						var i = 0
-						while (i < pollResult) {
-							let currentEvent = epollEventsAllocation[i]
-							let pollin = currentEvent.events & UInt32(EPOLLIN.rawValue)
-							let pollhup = currentEvent.events & UInt32(EPOLLHUP.rawValue)
-							let pollout = currentEvent.events & UInt32(EPOLLOUT.rawValue)
-							let pollerr = currentEvent.events & UInt32(EPOLLERR.rawValue)
-							
-							if (pollhup != 0) {
-								//reading handle closed
-								try? self.deregister(reader:currentEvent.data.fd)
-								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readingClosed)))
-							} else if (pollerr != 0) {
-								//writing handle closed
-								try? self.deregister(writer:currentEvent.data.fd)
-								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writingClosed)))
-							} else if (pollin != 0) {
-								//read data available
-								var byteCount:Int = 0
-								guard ioctl(currentEvent.data.fd, UInt(FIONREAD), &byteCount) == 0 else {
-									fatalError("EventTrigger ioctl error")
-								}
-								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.readableEvent(byteCount))))
-							} else if (pollout != 0) {
-								//writing available
-								self.eventContinuation.yield((EventDescription(fh:currentEvent.data.fd, event:.writableEvent)))
-							}
-							i = i + 1
-						}
-						if (i*2 > allocationSize) {
-							reallocate(size:allocationSize*2)
-						}
-					}
-			}
-		}
-	}
 	
 // 	func register(reader:Int32) throws {
 // 		var buildEvent = epoll_event()

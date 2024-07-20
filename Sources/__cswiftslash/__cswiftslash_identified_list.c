@@ -88,8 +88,8 @@ bool _cswiftslash_al_insert_internal(const _cswiftslash_identified_list_pair_ptr
 /// @param ptr pointer to the data to be stored in the atomic list.
 /// @return true if the element was successfully inserted, false if the element could not be inserted.
 uint64_t _cswiftslash_identified_list_insert(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_ptr_t ptr) {
-	uint64_t new_id_internal;
 	pthread_mutex_lock(&list->mutex);
+	uint64_t new_id_internal;
 	// acquire an unused key for the new element. if this fails (not expected), retry until it succeeds.
 	while (__builtin_expect(_cswiftslash_al_next_key(list, &new_id_internal) == false, false)) {}
 	// package the new item on stack memory, with the new key and the pointer to the data.

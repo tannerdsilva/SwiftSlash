@@ -10,5 +10,5 @@ public protocol PThreadWork {
 	init(_:Argument)
 	
 	/// runs the work type and returns the result.
-	mutating func run() throws -> ReturnType
+	mutating func pthreadWork() throws -> ReturnType
 }

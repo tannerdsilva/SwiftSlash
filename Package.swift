@@ -58,6 +58,20 @@ fileprivate var targetList:[Target] = [
 		dependencies:targetSwiftSlashContainedDependencies
 	),
 	.target(
+		name:"SwfitSlashIdentifiedList",
+		dependencies:[
+			"__cswiftslash",
+			"SwiftSlashContained"
+		]
+	),
+	.target(
+		name:"SwiftSlashFIFO",
+		dependencies:[
+			"__cswiftslash",
+			"SwiftSlashContained"
+		]
+	),
+	.target(
 		name:"__cswiftslash",
 		publicHeadersPath:"."),
 	

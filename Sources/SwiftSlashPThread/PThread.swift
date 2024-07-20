@@ -22,7 +22,7 @@ internal struct GenericPThread<R>:PThreadWork {
 	/// runs the function and returns the result.
 	/// - returns: the result of the function.
 	/// - throws: any error that prevents the work from being completed.
-	internal mutating func run() throws -> R {
+	internal mutating func pthreadWork() throws -> R {
 		return try funcToRun()
 	}
 }
