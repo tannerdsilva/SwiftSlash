@@ -25,7 +25,7 @@ internal struct LaunchedPThread {
 		runningType = type
 	}
 
-	// cancels a pthread before it returns.
+	/// cancels a pthread before it returns.
 	internal borrowing func cancel() throws {
 		// cancel pthread
 		guard pthread_cancel(pt) == 0 else {
@@ -37,10 +37,12 @@ internal struct LaunchedPThread {
 		}
 	}
 	
+	/// gets the result of the pthread.
 	internal func get() async throws -> UnsafeMutableRawPointer? {
 		return try await rf.get()
 	}
 
+	/// awaits the result of the pthread.
 	internal func result() async -> Result<UnsafeMutableRawPointer, Swift.Error> {
 		return await rf.result()
 	}

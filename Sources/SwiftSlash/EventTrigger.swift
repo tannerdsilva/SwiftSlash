@@ -1,4 +1,11 @@
 import __cswiftslash
+import SwiftSlashPThread
+
+#if os(Linux)
+import Glibc
+#elseif os(macOS)
+import Darwin
+#endif
 
 internal enum EventMode {
 	case readableEvent(Int)
@@ -12,16 +19,102 @@ internal struct EventDescription {
 	internal let event:EventMode
 }
 
-public protocol EventTrigger {
+/// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
+internal protocol EventTrigger:PThreadWork {
+
+	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	static func register(_ ev:EventTriggerHandle, reader:Int32) throws
+
+	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
 	static func register(_ ev:EventTriggerHandle, writer:Int32) throws
+
+	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
 	static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws
+
+	/// deregisters a file handle. the handle must be of writer variant. if the handle is not of writer variant, behavior is undefined.
 	static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws
 	
+	/// the type of primitive that this particular event trigger uses.
 	associatedtype EventTriggerHandle
 
-	static func run() async throws
+	/// the primitive that is used to handle the event trigger.
+	var prim:EventTriggerHandle { get set }
+
+	/// runs the event trigger monitoring service.
+	func runEventTrigger() throws
 }
+
+internal enum EventTriggerError:Swift.Error {
+	case unableToRegister
+}
+
+#if os(Linux)
+internal final class LinuxET {
+
+	/// the primitive that is used to handle the event trigger.
+	internal typealias Argument = Void
+	/// the primitive that is used to handle the event trigger.
+	internal typealias ReturnType = Void
+	/// the primitive that is used to handle the event trigger.
+	internal typealias EventTriggerHandle = Int32
+
+	internal typealias EventType = epoll_event
+
+	/// the primitive that is used to handle the event trigger.
+	private var prim:EventTriggerHandle = epoll_create1(0)
+
+	/// event buffer that allows us to process events.
+	private var allocationSize:size_t = 32
+	private var events:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)	// no need to initialize this since the Pointee type is a c struct.
+
+	internal static func register(_ ev:EventTriggerHandle, reader:Int32) throws {
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = reader
+		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_ADD, reader, &buildEvent) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	internal static func register(_ ev:EventTriggerHandle, writer:Int32) throws {
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = writer
+		buildEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_ADD, writer, &buildEvent) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	internal static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws {
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = reader
+		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_DEL, reader, &buildEvent) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	internal static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws {
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = writer
+		buildEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_DEL, writer, &buildEvent) == 0 else {
+			throw EventTriggerError.unableToRegister
+		}
+	}
+
+	func runEventTrigger() throws {
+		
+	}
+
+	deinit {
+		close(prim)
+		events.deallocate()	// no need to deinitialize since the Pointee type is a c struct.
+	}
+}
+#elseif os(macOS)
+
+#endif
 
 // #if os(Linux)
 // import Glibc

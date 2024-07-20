@@ -2,13 +2,9 @@ import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
 
-#if SWIFTSLASH_SHOULDLOG
-import Logging
-#endif
-
 /// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
 internal struct GenericPThread<R>:PThreadWork {
-	/// function to run
+	/// function to run.
 	private let funcToRun:Argument
 
 	/// the argument type for the function to run.
@@ -32,7 +28,7 @@ internal struct GenericPThread<R>:PThreadWork {
 }
 
 /// runs any given arbitrary function on a pthread.
-public func pthreadRun<R>(_ work:@escaping () throws -> R) async throws -> Result<R, Swift.Error> {
+public func run<R>(_ work:@escaping () throws -> R) async throws -> Result<R, Swift.Error> {
 	return try await GenericPThread.run(work)
 }
 

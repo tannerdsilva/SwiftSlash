@@ -1,4 +1,5 @@
 import __cswiftslash
+import SwiftSlashContained
 
 /// a reference type that represents a result that will be available in the future.
 public final class Future<R>:@unchecked Sendable {
@@ -6,27 +7,16 @@ public final class Future<R>:@unchecked Sendable {
 	/// thrown when a result is set on a future that is already set.
 	public struct InvalidStateError:Swift.Error {}
 
-	/// a private class that represents a swift error as a reference. initial referencing and dereferencing is managed entirely enternally by the future, the user never needs to know this exists.
-	private final class ContainedError {
-		/// the error that this instance is containing.
-		internal let error:Swift.Error
+	// /// a private class that represents a swift error as a reference. initial referencing and dereferencing is managed entirely enternally by the future, the user never needs to know this exists.
+	// private final class ContainedError {
+	// 	/// the error that this instance is containing.
+	// 	internal let error:Swift.Error
 
-		/// creates a new instance of ContainedError.
-		internal init(error:Swift.Error) {
-			self.error = error
-		}
-	}
-
-	/// a private class that represents a successful result as a reference. initial referencing and dereferencing is managed entirely enternally by the future, the user never needs to know this exists.
-	private final class ContainedResult {
-		/// the result that this instance is containing.
-		internal let result:R
-		
-		/// creates a new instance of ContainedResult.
-		internal init(result:R) {
-			self.result = result
-		}
-	}
+	// 	/// creates a new instance of ContainedError.
+	// 	internal init(error:Swift.Error) {
+	// 		self.error = error
+	// 	}
+	// }
 
 	/// the underlying c primitive that this future wraps.
 	private let prim:UnsafeMutablePointer<_cswiftslash_future_t>
@@ -44,9 +34,9 @@ public final class Future<R>:@unchecked Sendable {
 	/// 	- result: the result to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
 	public borrowing func setSuccess(_ result:R) throws {
-		let op = Unmanaged.passRetained(ContainedResult(result:result)).toOpaque()
+		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
-			_ = Unmanaged<ContainedResult>.fromOpaque(op).takeRetainedValue()
+			_ = Unmanaged<Contained<R>>.fromOpaque(op).takeRetainedValue()
 			throw InvalidStateError()
 		}
 	}
@@ -56,9 +46,9 @@ public final class Future<R>:@unchecked Sendable {
 	/// 	- error: the error to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
 	public borrowing func setFailure(_ error:Swift.Error) throws {
-		let op = Unmanaged.passRetained(ContainedError(error:error)).toOpaque()
+		let op = Unmanaged.passRetained(Contained(error)).toOpaque()
 		guard _cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
-			_ = Unmanaged<ContainedError>.fromOpaque(op).takeRetainedValue()
+			_ = Unmanaged<Contained<Swift.Error>>.fromOpaque(op).takeRetainedValue()
 			throw InvalidStateError()
 		}
 	}
@@ -69,9 +59,9 @@ public final class Future<R>:@unchecked Sendable {
 	public func get() async throws -> R {
 		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
-				cont.resume(returning:Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result)
+				cont.resume(returning:Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value())
 			}, { errType, errPtr, ctx in
-				cont.resume(throwing:Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error)					
+				cont.resume(throwing:Unmanaged<Contained<Swift.Error>>.fromOpaque(errPtr!).takeUnretainedValue().value())					
 			}, { ctx in
 				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
 			})
@@ -83,9 +73,9 @@ public final class Future<R>:@unchecked Sendable {
 	public func result() async -> Result<R, Swift.Error> {
 		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
-				cont.resume(returning:.success(Unmanaged<ContainedResult>.fromOpaque(resPtr!).takeUnretainedValue().result))
+				cont.resume(returning:.success(Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value()))
 			}, { errType, errPtr, ctx in
-				cont.resume(returning:.failure(Unmanaged<ContainedError>.fromOpaque(errPtr!).takeUnretainedValue().error))
+				cont.resume(returning:.failure(Unmanaged<Contained<Swift.Error>>.fromOpaque(errPtr!).takeUnretainedValue().value()))
 			}, { ctx in
 				fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
 			})
@@ -97,9 +87,9 @@ public final class Future<R>:@unchecked Sendable {
 		var result:(R?, Swift.Error?) = (nil, nil)
 		guard withUnsafeMutablePointer(to:&result, { rptr in
 			return _cswiftslash_future_t_destroy(prim.pointee, rptr, { etyp, eptr, ctx in
-				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (Unmanaged<ContainedResult>.fromOpaque(eptr!).takeRetainedValue().result, nil)
+				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (Unmanaged<Contained<R>>.fromOpaque(eptr!).takeRetainedValue().value(), nil)
 			}, { etyp, eptr, ctx in
-				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (nil, Unmanaged<ContainedError>.fromOpaque(eptr!).takeRetainedValue().error)
+				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (nil, Unmanaged<Contained<Swift.Error>>.fromOpaque(eptr!).takeRetainedValue().value())
 			})
 		}) == 0 else {
 			fatalError("failed to destroy future - \(#file):\(#line)")
