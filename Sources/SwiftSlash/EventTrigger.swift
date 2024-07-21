@@ -1,5 +1,6 @@
 import __cswiftslash
 import SwiftSlashPThread
+import SwiftSlashFIFO
 
 #if os(Linux)
 import Glibc
@@ -7,20 +8,48 @@ import Glibc
 import Darwin
 #endif
 
-internal enum EventMode {
+internal enum EventMode:Hashable, Equatable {
 	case readableEvent(Int)
 	case writableEvent
 	case readingClosed
 	case writingClosed
+
+	internal static func == (lhs:EventMode, rhs:EventMode) -> Bool {
+		switch (lhs, rhs) {
+			case (.readableEvent(let l), .readableEvent(let r)):
+				return l == r
+			case (.writableEvent, .writableEvent):
+				return true
+			case (.readingClosed, .readingClosed):
+				return true
+			case (.writingClosed, .writingClosed):
+				return true
+			default:
+				return false
+		}
+	}
+
+	internal func hash(into hasher:inout Hasher) {
+		switch self {
+			case .readableEvent(let i):
+				hasher.combine(i)
+			case .writableEvent:
+				hasher.combine(0)
+			case .readingClosed:
+				hasher.combine(1)
+			case .writingClosed:
+				hasher.combine(2)
+		}
+	}
 }
 
-internal struct EventDescription {
+internal struct EventDescription:Hashable, Equatable {
 	internal let fh:Int32
 	internal let event:EventMode
 }
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
-internal protocol EventTrigger:PThreadWork {
+internal protocol EventTrigger {
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	static func register(_ ev:EventTriggerHandle, reader:Int32) throws
@@ -39,6 +68,8 @@ internal protocol EventTrigger:PThreadWork {
 
 	/// the primitive that is used to handle the event trigger.
 	var prim:EventTriggerHandle { get set }
+
+	func eventTriggerWork() throws
 }
 
 internal enum EventTriggerError:Swift.Error {
@@ -100,7 +131,7 @@ internal final class LinuxET {
 		}
 	}
 
-	func runEventTrigger() throws {
+	func eventTriggerWork() throws {
 		let epollET = epoll_wait(epoll, epollEventsAllocation, allocationSize, -1) 
 	}
 
@@ -113,7 +144,7 @@ internal final class LinuxET {
 internal final class MacOSET {
 	
 	/// the primitive that is used to handle the event trigger.
-	internal typealias Argument = Void
+	internal typealias Argument = FIFO<Set<EventDescription>>
 	/// the primitive that is used to handle the event trigger.
 	internal typealias ReturnType = Void
 	/// the primitive that is used to handle the event trigger.
@@ -122,15 +153,30 @@ internal final class MacOSET {
 	internal typealias EventType = kevent
 
 	/// the primitive that is used to handle the event trigger.
-	private var prim:EventTriggerHandle = kqueue()
+	private let prim:EventTriggerHandle = kqueue()
+	private var buildSet:Set<EventDescription> = Set<EventDescription>()
+
+	private let stream:FIFO<Set<EventDescription>>
+
+	internal init(_ stream:FIFO<Set<EventDescription>>) {
+		self.stream = stream
+		buildSet.reserveCapacity(32)
+	}
 
 	/// event buffer that allows us to process events.
-	private var allocationSize:Int32 = 32
-	private var events:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)	// no need to initialize this since the Pointee type is a c struct.
+	private var eventBufferSize:Int32 = 32
+	private var eventBuffer:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)	// no need to initialize this since the Pointee type is a c struct.
 	private func reallocate(size:Int32) {
-		events.deallocate()
-		allocationSize = size
-		events = UnsafeMutablePointer<EventType>.allocate(capacity:Int(size))
+		eventBuffer.deallocate()
+		eventBufferSize = size
+		eventBuffer = UnsafeMutablePointer<EventType>.allocate(capacity:Int(size))
+		buildSet.reserveCapacity(Int(size))
+	}
+
+	deinit {
+		close(prim)
+		eventBuffer.deallocate()	// no need to deinitialize since the Pointee type is a c struct.
+		stream.finish()
 	}
 
 	// ai gen need to audit
@@ -188,45 +234,48 @@ internal final class MacOSET {
 		}
 	}
 
-	func pthreadWork() throws {
-		let kqueueResult = kevent(prim, nil, 0, events, allocationSize, nil)
-		switch kqueueResult {
-			case Int32.min..<0:
-				switch errno {
-					case EINTR:
-						pthread_testcancel()
-						// signal was sent but thread is not cancelled. this means we are under memory pressure and need to make the buffer smaller.
-						reallocate(size:32)
-					default:
-						fatalError("kevent error - this should never happen")
-				}
-			case 0..<Int32.max:
-				var i = 0
-				while i < kqueueResult {
-					let currentEvent = events[i]
-					let curIdent = Int32(currentEvent.ident)
-					if currentEvent.flags & UInt16(EV_EOF) == 0 {
-						if currentEvent.filter == Int16(EVFILT_READ) {
-							let ed = EventDescription(fh:curIdent, event: .readableEvent(currentEvent.data))
-						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
-							let ed = EventDescription(fh:curIdent, event: .writableEvent)
-						}
-					} else {
-						if currentEvent.filter == Int16(EVFILT_READ) {
-							try! Self.deregister(prim, reader: curIdent)
-							let ed = EventDescription(fh:curIdent, event: .readingClosed)
-						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
-							try! Self.deregister(prim, writer: curIdent)
-							let ed = EventDescription(fh:curIdent, event: .writingClosed)
-						}
+	func eventTriggerWork() throws {
+		while true {
+			let kqueueResult = kevent(prim, nil, 0, eventBuffer, eventBufferSize, nil)
+			switch kqueueResult {
+				case Int32.min..<0:
+					switch errno {
+						case EINTR:
+							pthread_testcancel()
+						default:
+							fatalError("kevent error - this should never happen")
 					}
-					i = i + 1
+				case 0..<Int32.max:
+					var i = 0
+					buildSet.removeAll(keepingCapacity:true)
+					while i < kqueueResult {
+						let currentEvent = eventBuffer[i]
+						let curIdent = Int32(currentEvent.ident)
+						if currentEvent.flags & UInt16(EV_EOF) == 0 {
+							if currentEvent.filter == Int16(EVFILT_READ) {
+								buildSet.update(with:EventDescription(fh:curIdent, event: .readableEvent(currentEvent.data)))
+							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+								buildSet.update(with:EventDescription(fh:curIdent, event: .writableEvent))
+							}
+						} else {
+							if currentEvent.filter == Int16(EVFILT_READ) {
+								try! Self.deregister(prim, reader: curIdent)
+								buildSet.update(with:EventDescription(fh:curIdent, event: .readingClosed))
+							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+								try! Self.deregister(prim, writer: curIdent)
+								buildSet.update(with:EventDescription(fh:curIdent, event: .writingClosed))
+							}
+						}
+						i = i + 1
+					}
+					stream.yield(buildSet)
+					pthread_testcancel()
+					if (i*2 > eventBufferSize) {
+						reallocate(size:eventBufferSize*2)
+					}
+				default:
+					fatalError("eventtrigger error - this should never happen")
 				}
-				if (i*2 > allocationSize) {
-					reallocate(size:allocationSize*2)
-				}
-			default:
-				fatalError("eventtrigger error - this should never happen")
 		}
 	}
 }
