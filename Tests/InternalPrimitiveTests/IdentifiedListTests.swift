@@ -1,9 +1,9 @@
 import XCTest
-@testable import SwiftSlash
+@testable import SwiftSlashIdentifiedList
 
 class AtomicListTests: XCTestCase {
 	func testMemoryLifecycle() {
-		var atomicList:AtomicList<WhenDeinitTool<Int>>? = AtomicList<WhenDeinitTool<Int>>()
+		var atomicList:IdentifiedList<WhenDeinitTool<Int>>? = IdentifiedList<WhenDeinitTool<Int>>()
 
 		var deinitCount = 0
 		func didDeinit() {
@@ -44,7 +44,7 @@ class AtomicListTests: XCTestCase {
 	}
     
     func testRemoveNonExistingKey() {
-        let atomicList = AtomicList<String>()
+        let atomicList = IdentifiedList<String>()
         
         // Try to remove a non-existing key
         let removedValue = atomicList.remove(123)
@@ -52,7 +52,7 @@ class AtomicListTests: XCTestCase {
     }
     
     func testConcurrentInsertAndRemove() async {
-        let atomicList = AtomicList<Int>()
+        let atomicList = IdentifiedList<Int>()
         
 		let keptItems = await withTaskGroup(of:Optional<(UInt64, Int)>.self, returning:[UInt64:Int].self) { tg in
 			for index in 0..<100 {

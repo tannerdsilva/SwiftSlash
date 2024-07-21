@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftSlash
+@testable import SwiftSlashFIFO
 
 class FIFOTests: XCTestCase {
 	func testFIFOWithDeinitTool() async {

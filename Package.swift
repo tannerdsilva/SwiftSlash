@@ -9,7 +9,11 @@ fileprivate var packageDependencies:[Package.Dependency] = []
 
 // determine the dependencies for the swiftslash target
 fileprivate var targetSwiftSlashDependencies:[Target.Dependency] = [
-	"__cswiftslash"
+	"__cswiftslash",
+	"SwiftSlashPThread",
+	"SwiftSlashFuture",
+	"SwiftSlashFIFO",
+	"SwiftSlashIdentifiedList"
 ]
 // #if SWIFTSLASH_SHOULDLOG
 // targetSwiftSlashDependencies.append(.product(name:"Logging", package:"swift-log"))
@@ -58,7 +62,7 @@ fileprivate var targetList:[Target] = [
 		dependencies:targetSwiftSlashContainedDependencies
 	),
 	.target(
-		name:"SwfitSlashIdentifiedList",
+		name:"SwiftSlashIdentifiedList",
 		dependencies:[
 			"__cswiftslash",
 			"SwiftSlashContained"
@@ -81,7 +85,11 @@ fileprivate var targetList:[Target] = [
 		dependencies:[
 			"SwiftSlash",
 			"__cswiftslash",
-			"SwiftSlashPThread"
+			"SwiftSlashPThread",
+			"SwiftSlashFuture",
+			"SwiftSlashContained",
+			"SwiftSlashIdentifiedList",
+			"SwiftSlashFIFO"
 		]
 	),
 ]

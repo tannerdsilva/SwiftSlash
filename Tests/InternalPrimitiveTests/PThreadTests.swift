@@ -11,7 +11,7 @@ fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 	internal init(_ a:Argument) {
 		self.inputArgument = a
 	}
-	mutating func run() throws -> A {
+	mutating func pthreadWork() throws -> A {
 		return inputArgument
 	}
 }
@@ -56,7 +56,7 @@ class PThreadTests: XCTestCase {
 		Task.detached {
 			do {
 				let runTask = Task.detached {
-					try await pthreadRun {
+					try await SwiftSlashPThread.run {
 						let myTest = MyTest(freeExpect)
 						sleep(5)
 						returnExpect.fulfill()

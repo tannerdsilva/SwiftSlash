@@ -224,33 +224,33 @@ bool _cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_atomi
 }
 
 /// @return 0 if the operation was successful and a normal fifo element was consumed. 1 if the operation resulted in the cap element being returned. -1 if the operation would block. -2 if the operation occurred an internal error.
-int8_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
+_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
 	// get exclusivity of the state.
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
 	}
 
-	uint8_t returnval = 0;
+	_cswiftslash_fifo_consume_result_t returnval;
 	
 	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
 		// attempt to consume the next entry in the chain.
 		if (_cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
-			returnval = 0;
+			returnval = FIFO_CONSUME_RESULT;
 			goto returnTime;
 		} else {
-			returnval = -2;
+			returnval = FIFO_CONSUME_INTERNAL_ERROR;
 			goto returnTime;
 		}
 	} else {
 		// check if the chain is capped.
 		if (__builtin_expect(atomic_load_explicit(&chain->_is_capped, memory_order_acquire) == false, true)){
 			// no items and chain is NOT capped.
-			returnval = -1;
+			returnval = FIFO_CONSUME_WOULDBLOCK;
 			goto returnTime;
 		} else {
 			// the chain is capped. return the cap pointer.
 			*consumed_ptr = atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
-			returnval = 1;
+			returnval = FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
 	}
@@ -264,7 +264,7 @@ int8_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_pt
 	return returnval;
 }
 
-int8_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
+_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
 	bool wasLockClaimedByCallAlready = false;
 	
 	loadAgain:
@@ -280,15 +280,15 @@ int8_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t
 	}
 
 	// this is the code that will be returned when the function is done.
-	uint8_t returnval = 0;
+	_cswiftslash_fifo_consume_result_t returnval;
 	
 	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
 		// attempt to consume the next entry in the chain.
 		if (_cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
-			returnval = 0;
+			returnval = FIFO_CONSUME_RESULT;
 			goto returnTime;
 		} else {
-			returnval = -2;
+			returnval = FIFO_CONSUME_INTERNAL_ERROR;
 			goto returnTime;
 		}
 	} else {
@@ -310,7 +310,7 @@ int8_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t
 		} else {
 			// the chain is capped. return the cap pointer.
 			*consumed_ptr = atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
-			returnval = 1;
+			returnval = FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
 	}

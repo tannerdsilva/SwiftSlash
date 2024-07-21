@@ -2,33 +2,8 @@ import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
 
-/// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
-internal struct GenericPThread<R>:PThreadWork {
-	/// function to run.
-	private let funcToRun:Argument
-
-	/// the argument type for the function to run.
-	internal typealias Argument = () throws -> R
-	/// the return type for the function to run.
-	internal typealias ReturnType = R
-
-	/// creates a new instance of GenericPThread.
-	/// - parameters:
-	/// 	- argument: the function to run.
-	internal init(_ argument:@escaping Argument) {
-		self.funcToRun = argument
-	}
-
-	/// runs the function and returns the result.
-	/// - returns: the result of the function.
-	/// - throws: any error that prevents the work from being completed.
-	internal mutating func pthreadWork() throws -> R {
-		return try funcToRun()
-	}
-}
-
 /// runs any given arbitrary function on a pthread.
-public func run<R>(_ work:@escaping () throws -> R) async throws -> Result<R, Swift.Error> {
+public func run<R>(_ work:consuming @escaping () throws -> R) async throws -> Result<R, Swift.Error> {
 	return try await GenericPThread.run(work)
 }
 
@@ -55,6 +30,31 @@ extension PThreadWork {
 	}
 }
 
+/// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
+internal struct GenericPThread<R>:PThreadWork {
+	/// function to run.
+	private let funcToRun:Argument
+
+	/// the argument type for the function to run.
+	internal typealias Argument = () throws -> R
+	/// the return type for the function to run.
+	internal typealias ReturnType = R
+
+	/// creates a new instance of GenericPThread.
+	/// - parameters:
+	/// 	- argument: the function to run.
+	internal init(_ argument:@escaping Argument) {
+		self.funcToRun = argument
+	}
+
+	/// runs the function and returns the result.
+	/// - returns: the result of the function.
+	/// - throws: any error that prevents the work from being completed.
+	internal mutating func pthreadWork() throws -> R {
+		return try funcToRun()
+	}
+}
+
 extension PThreadWork {
 	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
@@ -64,7 +64,7 @@ extension PThreadWork {
 	fileprivate mutating func run(future:borrowing Future<UnsafeMutableRawPointer>) {
 		let op:UnsafeMutableRawPointer
 		do {
-			op = Unmanaged.passRetained(Contained(try run())).toOpaque()
+			op = Unmanaged.passRetained(Contained(try pthreadWork())).toOpaque()
 		} catch let error {
 			try! future.setFailure(error)
 			return

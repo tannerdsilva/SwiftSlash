@@ -195,6 +195,8 @@ internal final class MacOSET {
 				switch errno {
 					case EINTR:
 						pthread_testcancel()
+						// signal was sent but thread is not cancelled. this means we are under memory pressure and need to make the buffer smaller.
+						reallocate(size:32)
 					default:
 						fatalError("kevent error - this should never happen")
 				}
@@ -211,10 +213,10 @@ internal final class MacOSET {
 						}
 					} else {
 						if currentEvent.filter == Int16(EVFILT_READ) {
-							try? Self.deregister(prim, reader: curIdent)
+							try! Self.deregister(prim, reader: curIdent)
 							let ed = EventDescription(fh:curIdent, event: .readingClosed)
 						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
-							try? Self.deregister(prim, writer: curIdent)
+							try! Self.deregister(prim, writer: curIdent)
 							let ed = EventDescription(fh:curIdent, event: .writingClosed)
 						}
 					}
