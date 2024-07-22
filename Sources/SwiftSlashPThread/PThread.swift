@@ -2,31 +2,26 @@ import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
 
+/// launches a pthread that will run the given work function and return the result.
+public func launch<R>(_ work:consuming @escaping () throws -> R) async throws -> Running<R> {
+	let launchedPThread = try await _launch(GenericPThread<R>.self, argument:work)
+	return Running(alreadyLaunched:launchedPThread)
+}
+
 /// runs any given arbitrary function on a pthread.
 public func run<R>(_ work:consuming @escaping () throws -> R) async throws -> Result<R, Swift.Error> {
-	return try await GenericPThread.run(work)
+	let launchedThread = try await GenericPThread.launch(work)
+	return try await launchedThread.result()
 }
 
 extension PThreadWork {
-	/// launches a new pthread that will execute the work for the particular type of PThreadWork implementation.
-	/// - parameters:
-	/// 	- arg: the argument to pass into the work function.
-	/// - returns: a future that will contain the result of the work function.
+	public static func launch(_ arg:consuming Argument) async throws -> Running<ReturnType> {
+		let running = try await _launch(Self.self, argument:arg)
+		return Running(alreadyLaunched:running)
+	}
 	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, Swift.Error> {
-		let launchedPThread = try await launch(Self.self, argument:arg)
-		defer {
-			launchedPThread.join()
-		}
-		return await withTaskCancellationHandler(operation: {
-			switch await launchedPThread.result() {
-				case .success(let ptr):
-					return .success(Unmanaged<Contained<ReturnType>>.fromOpaque(ptr).takeRetainedValue().value())
-				case .failure(let error):
-					return .failure(error)
-			}
-		}, onCancel: {
-			try! launchedPThread.cancel()
-		})
+		let launched = try await Self.launch(arg)
+		return try await launched.result()
 	}
 }
 
@@ -108,7 +103,7 @@ fileprivate struct Workspace {
 	// set the configuration future to success.
 	private func setSuccessfulConfiguration() {
 		// set the configure future to success.
-		try? configureFuture.setSuccess(returnFuture) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
+		try! configureFuture.setSuccess(returnFuture)
 	}
 
 	// run the work and have it pass the result into the return future.
@@ -145,7 +140,7 @@ fileprivate struct Setup {
 }
 
 // this function makes three allocations. if the pthread is successfully launched, none of the memory needs to be deallocated. if the pthread fails to launch, the memory will be deallocated before the function throws.
-fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async throws -> LaunchedPThread where W:PThreadWork, W.Argument == A {
+fileprivate func _launch<W, A>(_ workType:W.Type, argument:consuming A) async throws -> Launched where W:PThreadWork, W.Argument == A {
 	// the primary role of this function is to manage the intersection between the calling memoryspace and the launched memoryspace. this configuration future is the primary way these two memoryspaces coordinate the timing of their memory allocations and freeing.
 	let configureFuture = Future<Future<UnsafeMutableRawPointer>>()
 
@@ -176,7 +171,7 @@ fileprivate func launch<W, A>(_ workType:W.Type, argument:consuming A) async thr
 	}
 	// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
 	let returnFuture = try await configureFuture.get()
-	return LaunchedPThread(pthr, future:returnFuture, type:workType)
+	return Launched(pthr, future:returnFuture)
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.

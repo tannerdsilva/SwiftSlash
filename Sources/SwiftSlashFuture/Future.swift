@@ -7,17 +7,6 @@ public final class Future<R>:@unchecked Sendable {
 	/// thrown when a result is set on a future that is already set.
 	public struct InvalidStateError:Swift.Error {}
 
-	// /// a private class that represents a swift error as a reference. initial referencing and dereferencing is managed entirely enternally by the future, the user never needs to know this exists.
-	// private final class ContainedError {
-	// 	/// the error that this instance is containing.
-	// 	internal let error:Swift.Error
-
-	// 	/// creates a new instance of ContainedError.
-	// 	internal init(error:Swift.Error) {
-	// 		self.error = error
-	// 	}
-	// }
-
 	/// the underlying c primitive that this future wraps.
 	private let prim:UnsafeMutablePointer<_cswiftslash_future_t>
 

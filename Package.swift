@@ -76,6 +76,14 @@ fileprivate var targetList:[Target] = [
 		]
 	),
 	.target(
+		name:"SwiftSlashEventTrigger",
+		dependencies:[
+			"__cswiftslash",
+			"SwiftSlashPThread",
+			"SwiftSlashFIFO"
+		]
+	),
+	.target(
 		name:"__cswiftslash",
 		publicHeadersPath:"."),
 	

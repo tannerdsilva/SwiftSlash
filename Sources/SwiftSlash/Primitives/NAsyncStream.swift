@@ -6,6 +6,7 @@ import SwiftSlashIdentifiedList
 /// NAsyncStream will buffer objects indefinitely until they are either consumed (by all registered consumers at the time of production) or the stream is dereferenced.
 public struct NAsyncStream<T>:AsyncSequence, Sendable {
 	public typealias Element = T
+	
 	public func makeAsyncIterator() -> AsyncIterator {
 		// each new consumer gets their own dedicated FIFO instance. that instance is initialized here.
 		return AsyncIterator(al:al, fifo:FIFO<T>())
