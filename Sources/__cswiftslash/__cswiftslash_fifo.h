@@ -47,9 +47,9 @@ typedef struct _cswiftslash_fifo_linkpair {
 	_Atomic uint64_t element_count;
 
 	/// atomic boolean flag indicating whether blocking is enabled on the chain.
-	_Atomic bool _is_capped;
+	_Atomic bool is_capped;
 	/// atomic pointer to the cap pointer, which is the final element in the chain.
-	_Atomic _cswiftslash_optr_t _cap_ptr;
+	_Atomic _cswiftslash_optr_t cap_ptr;
 	
 	/// mutex used to synchronize the internal state of the fifo. this is optional because there may be parent structures that are synchronized in the same way, therefore, can opt out of the built in synchronization to eliminate overhead.
 	bool has_mutex;
@@ -58,6 +58,10 @@ typedef struct _cswiftslash_fifo_linkpair {
 	/// mutex used to signal to waiting threads when a result is available again. one may argue that there are better pthread primitives to use for this, but the swift runtime only wants to operate with mutexes.
 	_Atomic bool is_waiters_mutex_locked;
 	pthread_mutex_t waiters_mutex;
+
+	/// maximum number of elements that can be stored in the chain.
+	_Atomic bool has_max_elements;
+	_Atomic size_t max_elements;
 } _cswiftslash_fifo_linkpair_t;
 
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
@@ -69,11 +73,17 @@ typedef _cswiftslash_fifo_linkpair_t*_Nonnull _cswiftslash_fifo_linkpair_ptr_t;
 /// @return a newly initialized mutex that can be passed directly into the fifo initializer.
 pthread_mutex_t _cswiftslash_fifo_mutex_new();
 
-/// initializes a new fifo pair. if this fifo is used as an independent concurrency unit, the mutex should be initialized and passed in. when a newly initialized mutex is passed in the initializer, it will automatically be destroyed at the apropriate time. a mutex is not required if the fifo is used in a single-threaded context.
+/// @brief initializes a new fifo pair. if this fifo is used as an independent concurrency unit, the mutex should be initialized and passed in. when a newly initialized mutex is passed in the initializer, it will automatically be destroyed at the apropriate time. a mutex is not required if the fifo is used in a single-threaded context.
 /// @return initialized fifo pair structure. NOTE: this structure must be closed with _cswiftslash_fifo_close to free all associated memory.
 _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex);
 
-/// deinitializes a fifo.
+/// @brief sets the maximum number of elements that can be buffered by the fifo if there is not a consumer immediately available.
+/// @param chain pointer to the fifo to be capped.
+/// @param max_elements maximum number of elements that can be stored in the chain.
+/// @return true if the max elements was successfully set; false if the max elements could not be set.
+bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t chain, const size_t max_elements);
+
+/// @brief deinitializes a fifo.
 /// @param chain pointer to the fifo to be deinitialized.
 /// @param deallocator_f function used for deallocating memory of data pointers.
 /// @return the cap pointer if the chain was capped; NULL if the chain was not capped. the caller is responsible for freeing this pointer from memory.
@@ -81,20 +91,22 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 
 // data handling
 
-/// cap off the fifo with a final element. any elements passed into the chain after capping it off will be stored and handled by the deallocator when this instance is closed (they will not be passed to a consumer).
+/// @brief cap off the fifo with a final element. any elements passed into the chain after capping it off will be stored and handled by the deallocator when this instance is closed (they will not be passed to a consumer).
 /// @param chain pointer to the fifo to be capped.
 /// @param ptr pointer to the final element to be added to the chain.
 /// @return true if the cap pointer was successfully added; false if the cap could not be added.
 bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_optr_t ptr);
 
-/// inserts a new data pointer into the chain for storage and future processing. if the chain is capped, the data will be stored and handled by the deallocator when this instance is closed (it will not be passed to a consumer).
+/// @brief inserts a new data pointer into the chain for storage and future processing. if the chain is capped, the data will be stored and handled by the deallocator when this instance is closed (it will not be passed to a consumer).
 /// @param chain pointer to the fifo where data will be inserted.
 /// @param ptr data pointer to be stored in the chain.
-/// @return 0 on success. 1 when a retry should be done on the function call. -1 when the fifo is capped and no retry is necessary.
+/// @return 0 on success. 1 when a retry should be done on the function call. -1 when the fifo is capped and no retry is necessary. -2 will be returned if the maximum number of elements has been reached.
 int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_ptr_t ptr);
 
+/// @brief consumes the next data pointer in the chain, removing it from the chain and returning it to the caller. if the chain is empty, the function will return immediately with the apropriate return status indicating that the chain is empty.
 _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr);
 
+/// @brief consumes the next data pointer in the chain, removing it from the chain and returning it to the caller. if the chain is empty, the function will block until a new element is added to the chain.
 _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr);
 
 #endif // _CSWIFTSLASH_FIFO_H

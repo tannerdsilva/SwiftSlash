@@ -8,6 +8,7 @@ import Glibc
 import Darwin
 #endif
 
+/// represents a pthread that is actively running. can be used to cancel a pthread before it returns or to await the result of the pthread.
 public final class Running<R> {
 
 	/// the pthread that is running.
@@ -34,6 +35,7 @@ public final class Running<R> {
 	}
 
 	deinit {
+		try? launched.cancel()
 		launched.join()
 	}
 }

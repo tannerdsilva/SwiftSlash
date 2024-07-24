@@ -18,16 +18,17 @@ pthread_mutex_t _cswiftslash_fifo_mutex_new() {
 /// - parameters:
 ///		- deallocator_f: the function that will be used to free the memory of the pointers in the chain.
 _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex) {
-	
 	if (mutex != NULL) {
 		_cswiftslash_fifo_linkpair_t chain = {
 			.base = NULL,
 			.tail = NULL,
 			.element_count = 0,
-			._is_capped = false,
+			.is_capped = false,
 			.has_mutex = true,
 			.mutex_optional = *mutex,
-			.is_waiters_mutex_locked = false
+			.is_waiters_mutex_locked = false,
+			.has_max_elements = false,
+			.max_elements = 0
 		};
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
 		return chain;
@@ -36,13 +37,50 @@ _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable m
 			.base = NULL,
 			.tail = NULL,
 			.element_count = 0,
-			._is_capped = false,
+			.is_capped = false,
 			.has_mutex = false,
-			.is_waiters_mutex_locked = false
+			.is_waiters_mutex_locked = false,
+			.has_max_elements = false,
+			.max_elements = 0
 		};
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
 		return chain;
 	}
+}
+
+bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t chain, const size_t max_elements) {
+	// acquire the resource lock to synchronize the state of the chain.
+	if (chain->has_mutex) {
+		pthread_mutex_lock(&chain->mutex_optional);
+	}
+
+	// validate that the chain is not already capped.
+	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == true) {
+		goto returnError;
+	}
+
+	// do not cap the chain if there are already more elements than the new cap.
+	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > max_elements) {
+		goto returnError;
+	}
+
+	// set the cap and store the max elements.
+	atomic_store_explicit(&chain->has_max_elements, true, memory_order_release);
+	atomic_store_explicit(&chain->max_elements, max_elements, memory_order_release);
+
+	// cleans up the function with an error indication as the return value.
+	returnError:
+		if (chain->has_mutex) {
+			pthread_mutex_unlock(&chain->mutex_optional);
+		}
+		return false;
+
+	// cleans up the function with a success indication as the return value.
+	returnSuccess:
+		if (chain->has_mutex) {
+			pthread_mutex_unlock(&chain->mutex_optional);
+		}
+		return true;
 }
 
 _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f) {
@@ -78,8 +116,8 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 	}
 	pthread_mutex_destroy(&chain->waiters_mutex);
 
-	if (atomic_load_explicit(&chain->_is_capped, memory_order_acquire) == true) {
-		return atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
+	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == true) {
+		return atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
 	} else {
 		return NULL;
 	}
@@ -92,9 +130,9 @@ bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, co
 	}
 
 	bool expected_cap = false;	// we expect the chain to NOT be capped
-	if (atomic_compare_exchange_weak_explicit(&chain->_is_capped, &expected_cap, true, memory_order_acq_rel, memory_order_relaxed)) {
+	if (atomic_compare_exchange_weak_explicit(&chain->is_capped, &expected_cap, true, memory_order_acq_rel, memory_order_relaxed)) {
 		// successfully capped. now assign the capper pointer and store the number of remaining elements in the fifo.
-		atomic_store_explicit(&chain->_cap_ptr, ptr, memory_order_release);
+		atomic_store_explicit(&chain->cap_ptr, ptr, memory_order_release);
 
 		// if there are waiters, unlock the waiters mutex.
 		if (atomic_load_explicit(&chain->is_waiters_mutex_locked, memory_order_acquire) == true) {
@@ -156,13 +194,31 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 		pthread_mutex_lock(&chain->mutex_optional);
 	}
 
-	if (atomic_load_explicit(&chain->_is_capped, memory_order_acquire) == false) {
+	// check if the chain is capped.
+	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false) {
+		// not capped. continue validation before adding.
+
+		// verify that the maximum number of elements has not been reached.
+		if (atomic_load_explicit(&chain->has_max_elements, memory_order_acquire) == true) {
+			// max elements is set. check if the chain is full.
+			if (atomic_load_explicit(&chain->element_count, memory_order_acquire) >= atomic_load_explicit(&chain->max_elements, memory_order_acquire)) {
+				returnval = -2;
+				goto returnTime;
+			}
+		}
+		
+		// create a new link to be added to the chain. this will be defined on the stack.
 		const struct _cswiftslash_fifo_link link_on_stack = {
 			.ptr = ptr,
 			.next = NULL
 		};
+
+		// copy the new link to the heap.
 		const _cswiftslash_fifo_link_ptr_t link_on_heap = memcpy(malloc(sizeof(link_on_stack)), &link_on_stack, sizeof(link_on_stack));
+
+		// attempt to pass the link into the chain.
 		if (_cswiftslash_fifo_pass_link(chain, link_on_heap) == false) {
+			// failure condition.
 			free(link_on_heap);
 			returnval = 1; // retry
 			goto returnTime;
@@ -177,19 +233,21 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 			atomic_store_explicit(&chain->is_waiters_mutex_locked, false, memory_order_release);
 		}
 
+		// success condition.
 		returnval = 0;
 		goto returnTime;
 	} else {
+
 		// the chain is capped. we cannot add any more elements.
 		returnval = -1;
 		goto returnTime;
 	}
 
 	returnTime:
-	if (chain->has_mutex) {
-		pthread_mutex_unlock(&chain->mutex_optional);
-	}
-	return returnval;
+		if (chain->has_mutex) {
+			pthread_mutex_unlock(&chain->mutex_optional);
+		}
+		return returnval;
 }
 
 /// internal function that flushes a single writerchain entry.
@@ -243,13 +301,13 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _
 		}
 	} else {
 		// check if the chain is capped.
-		if (__builtin_expect(atomic_load_explicit(&chain->_is_capped, memory_order_acquire) == false, true)){
+		if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)){
 			// no items and chain is NOT capped.
 			returnval = FIFO_CONSUME_WOULDBLOCK;
 			goto returnTime;
 		} else {
 			// the chain is capped. return the cap pointer.
-			*consumed_ptr = atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
+			*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
 			returnval = FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
@@ -293,7 +351,7 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _csw
 		}
 	} else {
 		// check if the chain is capped.
-		if (__builtin_expect(atomic_load_explicit(&chain->_is_capped, memory_order_acquire) == false, true)) {
+		if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)) {
 			// not capped, so we must wait for an element to be added.
 			bool expectedLock = false;
 			if (atomic_compare_exchange_weak_explicit(&chain->is_waiters_mutex_locked, &expectedLock, true, memory_order_acq_rel, memory_order_relaxed)) {
@@ -309,7 +367,7 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _csw
 			goto blockForNext;
 		} else {
 			// the chain is capped. return the cap pointer.
-			*consumed_ptr = atomic_load_explicit(&chain->_cap_ptr, memory_order_acquire);
+			*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
 			returnval = FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
