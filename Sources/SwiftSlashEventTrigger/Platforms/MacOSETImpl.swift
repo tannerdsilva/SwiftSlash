@@ -141,7 +141,6 @@ public final class MacOSImpl:EventTriggerEngine {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
 								// readable data.
-								// pass available byte count into the fifo for this handle.
 								readersDataOut[curIdent]!.yield(currentEvent.data)
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
