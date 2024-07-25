@@ -110,8 +110,12 @@ public final class MacOSImpl:EventTriggerEngine {
 	}
 
 	public func pthreadWork() throws -> Void {
+		// break by pthread cancel
 		while true {
+
+			// wait for events
 			let kqueueResult = kevent(prim, nil, 0, eventBuffer, eventBufferSize, nil)
+
 			switch kqueueResult {
 				// abnormal error conditions.
 				case Int32.min..<0:
