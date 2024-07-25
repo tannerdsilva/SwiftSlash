@@ -20,22 +20,22 @@ public struct NAsyncStream<T>:AsyncSequence, Sendable {
 
 	/// pass data to all registered consumers of the stream.
 	public borrowing func yield(_ data:consuming T) {
-		al.forEach({ [d = data] _, continuation in
-			continuation.yield(d)
+		al.forEach({ [d = data] _, fifo in
+			fifo.yield(d)
 		})
 	}
 
 	/// finish the stream. all consumers will be notified that the stream has finished.
 	public borrowing func finish() {
-		al.forEach({ _, continuation in
-			continuation.finish()
+		al.forEach({ _, fifo in
+			fifo.finish()
 		})
 	}
 
 	/// finish the stream with an error. all consumers will be notified that the stream has finished.
 	public borrowing func finish(throwing err:consuming Swift.Error) {
-		al.forEach({ [e = err] _, continuation in
-			continuation.finish(throwing:e)
+		al.forEach({ [e = err] _, fifo in
+			fifo.finish(throwing:e)
 		})
 	}
 }

@@ -236,6 +236,7 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 		// success condition.
 		returnval = 0;
 		goto returnTime;
+		
 	} else {
 
 		// the chain is capped. we cannot add any more elements.

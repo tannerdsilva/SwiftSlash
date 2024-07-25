@@ -28,6 +28,10 @@ fileprivate var ssInternalTargets:[Target] = [
 		]
 	),
 	.target(
+		name:"SwiftSlashFHHelpers",
+		dependencies:["__cswiftslash"]
+	),
+	.target(
 		name:"SwiftSlashPThread",
 		dependencies:[
 			"__cswiftslash",
