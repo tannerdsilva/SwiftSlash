@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftSlash
+@testable import SwiftSlashLineParser
 
 class LineParserTests: XCTestCase {
 

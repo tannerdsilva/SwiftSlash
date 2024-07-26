@@ -13,9 +13,6 @@ fileprivate var targetSwiftSlashFutureDependencies:[Target.Dependency] = [
 	"SwiftSlashContained"
 ]
 
-// determine the dependencies for the swiftslash contained target
-fileprivate var targetSwiftSlashContainedDependencies:[Target.Dependency] = []
-
 fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"SwiftSlash",
@@ -23,6 +20,22 @@ fileprivate var ssInternalTargets:[Target] = [
 			"__cswiftslash",
 			"SwiftSlashPThread",
 			"SwiftSlashFuture",
+			"SwiftSlashFIFO",
+			"SwiftSlashIdentifiedList",
+			"SwiftSlashNAsyncStream",
+			"SwiftSlashFHHelpers",
+		]
+	),
+	.target(
+		name:"SwiftSlashLineParser",
+		dependencies:[
+			"__cswiftslash",
+			"SwiftSlashNAsyncStream"	
+		]
+	),
+	.target(
+		name:"SwiftSlashNAsyncStream",
+		dependencies:[
 			"SwiftSlashFIFO",
 			"SwiftSlashIdentifiedList"
 		]
@@ -43,8 +56,7 @@ fileprivate var ssInternalTargets:[Target] = [
 		dependencies:targetSwiftSlashFutureDependencies
 	),
 	.target(
-		name:"SwiftSlashContained",
-		dependencies:targetSwiftSlashContainedDependencies
+		name:"SwiftSlashContained"
 	),
 	.target(
 		name:"SwiftSlashIdentifiedList",
@@ -72,7 +84,7 @@ fileprivate var ssInternalTargets:[Target] = [
 		name:"__cswiftslash",
 		publicHeadersPath:"."),
 	
-	/// 
+	// test target
 	.testTarget(
 		name: "InternalPrimitiveTests",
 		dependencies:[
@@ -82,7 +94,10 @@ fileprivate var ssInternalTargets:[Target] = [
 			"SwiftSlashFuture",
 			"SwiftSlashContained",
 			"SwiftSlashIdentifiedList",
-			"SwiftSlashFIFO"
+			"SwiftSlashFIFO",
+			"SwiftSlashNAsyncStream",
+			"SwiftSlashFHHelpers",
+			"SwiftSlashLineParser"
 		]
 	),
 ]

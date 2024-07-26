@@ -1,8 +1,13 @@
 import __cswiftslash
 
 extension Int32 {
+	/// close the file handle represented by self.
+	public func closeFileHandle() {
+		close(self)
+	}
+
 	/// reads data from self (represented as a system file handle) into the buffer provided.
-	internal func readFH(into dataBuffer:UnsafeMutableBufferPointer<UInt8>, size readSize:size_t) throws -> size_t {
+	public func readFH(into dataBuffer:UnsafeMutableBufferPointer<UInt8>, size readSize:size_t) throws -> size_t {
 		repeat {
 			// read the data from the file handle.
 			let amountRead = read(self, dataBuffer.baseAddress, readSize)
@@ -29,8 +34,13 @@ extension Int32 {
 		} while true
 	}
 
+	public func writeFH(_ dataToWrite:borrowing [UInt8]) throws -> size_t {
+		return try dataToWrite.withUnsafeBytes { (dataBuffer:UnsafeRawBufferPointer) in
+			try writeFH(from:dataBuffer.baseAddress!.assumingMemoryBound(to:UInt8.self), size: dataBuffer.count)
+		}
+	}
 	/// writes data from the buffer provided into self (represented as a system file handle).
-	internal func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws -> size_t {
+	public func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws -> size_t {
 		repeat {
 			// write the data to the file handle.
 			let amountWritten = write(self, dataBuffer, writeSize)

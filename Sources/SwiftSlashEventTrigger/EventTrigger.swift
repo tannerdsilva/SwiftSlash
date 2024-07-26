@@ -10,28 +10,32 @@ import Darwin
 internal let currentPlatformET = MacOSImpl.self
 #endif
 
-public actor EventTrigger<ET:EventTriggerEngine> {
+/// used to monitor file handles for activity.
+public actor EventTrigger {
 
 	/// the primitive that is used to handle the event trigger.
-	private let prim:ET.EventTriggerHandle?
+	private let prim:Int32?
 
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<Void>
 
-	/// the stream of registrations that are being made to the event trigger.
+	/// the stream of registrations that are being made to the event trigger. the system kernel allows for the file handle to be registered on any thread, but the corresponding FIFO must be passed to the pthread that is triggering the events
 	private let regStream:FIFO<Register>
 
+	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	internal init() async throws {
-		(self.prim, self.launchedThread, self.regStream) = try await ET.bootstrapEventTriggerService()
+		(self.prim, self.launchedThread, self.regStream) = try await currentPlatformET.bootstrapEventTriggerService()
 	}
 
-	internal func register(reader:Int32, _ fifo:FIFO<size_t>) throws {
-		try ET.register(prim!, reader:reader)
+	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
+	internal borrowing func register(reader:Int32, _ fifo:FIFO<size_t>) throws {
+		try currentPlatformET.register(prim!, reader:reader)
 		regStream.yield(.reader(reader, fifo))
 	}
 
-	internal func register(writer:Int32, _ fifo:FIFO<Void>) throws {
-		try ET.register(prim!, writer:writer)
+	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
+	internal borrowing func register(writer:Int32, _ fifo:FIFO<Void>) throws {
+		try currentPlatformET.register(prim!, writer:writer)
 		regStream.yield(.writer(writer, fifo))
 	}
 }
@@ -65,6 +69,9 @@ public protocol EventTriggerEngine:PThreadWork where Argument == Setup, ReturnTy
 }
 
 extension EventTriggerEngine {
+	/// launches a new event trigger service.
+	/// - async: waits for the event trigger service to be launched and running on a dedicated pthread before yielding back to the calling task.
+	/// - returns: the event trigger handle, the running pthread, and the FIFO that is used to register new file handles.
 	fileprivate static func bootstrapEventTriggerService() async throws -> (Self.EventTriggerHandle, Running<Void>, FIFO<Register>) {
 		let newP = Self.newPrimitive()
 		let regStream = FIFO<Register>()

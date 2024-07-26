@@ -19,7 +19,7 @@ fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 class PThreadTests: XCTestCase {
     func testPthreadReturn() async throws {
 		try await withThrowingTaskGroup(of:(String, String).self, returning:Void.self, body: { group in
-			for ii in 0..<50 {
+			for _ in 0..<50 {
 				for i in 0..<10 {
 					group.addTask {
 						let randomString = String.random(length:56)
@@ -42,6 +42,7 @@ class PThreadTests: XCTestCase {
 	func pthreadCancellationTest() async throws {
 		let cancelExpect = XCTestExpectation(description: "PThread delay")
 		let returnExpect = XCTestExpectation(description: "PThread delay")
+		returnExpect.isInverted = true
 		let freeExpect = XCTestExpectation(description: "PThread delay")
 		final class MyTest {
 			init(_ expect:XCTestExpectation) {
@@ -52,12 +53,11 @@ class PThreadTests: XCTestCase {
 				expect.fulfill()
 			}
 		}
-		returnExpect.isInverted = true
 		Task.detached {
 			do {
 				let runTask = Task.detached {
 					try await SwiftSlashPThread.run {
-						let myTest = MyTest(freeExpect)
+						_ = MyTest(freeExpect)
 						sleep(5)
 						returnExpect.fulfill()
 					}
@@ -69,6 +69,6 @@ class PThreadTests: XCTestCase {
 				cancelExpect.fulfill()
 			}
 		}
-		wait(for: [cancelExpect, returnExpect, freeExpect], timeout: 2)
+		await fulfillment(of:[cancelExpect, returnExpect, freeExpect], timeout: 2)
 	}
 }

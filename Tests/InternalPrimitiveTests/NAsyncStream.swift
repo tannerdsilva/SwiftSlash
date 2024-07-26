@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftSlash
+@testable import SwiftSlashNAsyncStream
 
 class NAsyncStreamTests: XCTestCase {
     func testNAsyncStreamMemoryManagement() async {

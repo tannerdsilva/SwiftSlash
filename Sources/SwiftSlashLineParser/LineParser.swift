@@ -1,10 +1,5 @@
 import __cswiftslash
-
-#if os(Linux)
-import Glibc
-#elseif os(macOS)
-import Darwin
-#endif
+import SwiftSlashNAsyncStream
 
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
