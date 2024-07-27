@@ -3,15 +3,15 @@ import __cswiftslash
 import SwiftSlashFIFO
 import SwiftSlashPThread
 
-public final class MacOSImpl:EventTriggerEngine {
+internal final class MacOSImpl:EventTriggerEngine {
 	
-	public typealias Argument = Setup
-	public typealias ReturnType = Void
-	public typealias EventTriggerHandle = Int32
+	internal typealias Argument = Setup
+	internal typealias ReturnType = Void
+	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = kevent
 
 	/// the event trigger primitive
-	public let prim:EventTriggerHandle
+	internal let prim:EventTriggerHandle
 
 	/// stores the fifo's that read data is passed into.
 	private var readersDataOut:[Int32:FIFO<size_t>] = [:]
@@ -38,7 +38,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		} while true
 	}
 	
-	public init(_ ptSetup:consuming Argument) {
+	internal init(_ ptSetup:consuming Argument) {
 		registrations = ptSetup.registersIn
 		prim = ptSetup.handle
 	}
@@ -57,7 +57,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		eventBuffer.deallocate()	// no need to deinitialize since the Pointee type is a c struct.
 	}
 
-	public static func register(_ ev:EventTriggerHandle, reader:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandle, reader:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -70,7 +70,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	public static func register(_ ev:EventTriggerHandle, writer:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandle, writer:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -83,7 +83,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	public static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
@@ -96,7 +96,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	public static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
@@ -109,7 +109,7 @@ public final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	public func pthreadWork() throws -> Void {
+	internal func pthreadWork() throws -> Void {
 		// break by pthread cancel
 		while true {
 
@@ -179,11 +179,11 @@ public final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	public static func newPrimitive() -> EventTriggerHandle {
+	internal static func newPrimitive() -> EventTriggerHandle {
 		return kqueue()
 	}
 
-	public static func closePrimitive(_ prim:EventTriggerHandle) {
+	internal static func closePrimitive(_ prim:EventTriggerHandle) {
 		close(prim)
 	}
 }

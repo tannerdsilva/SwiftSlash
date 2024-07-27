@@ -1,6 +1,7 @@
 import __cswiftslash
 import SwiftSlashNAsyncStream
 import SwiftSlashFHHelpers
+import SwiftSlashEventTrigger
 
 public actor ProcessInterface {
 	
@@ -27,7 +28,7 @@ public actor ProcessInterface {
 
 internal struct ProcessLogistics {
 
-	internal struct PackagedLaunch {
+	internal struct LaunchPackage {
 		// represents the path to the executable that will be launched.
 		internal let exe:Path
 
@@ -41,13 +42,13 @@ internal struct ProcessLogistics {
 		internal let env:[String:String]
 
 		// represents a mapping of the file handles of the child process. each file handle is written to by the parent process and read from by the child process.
-		internal let writables:[Int32:DataChannel.Outbound]
+		internal let writables:[Int32:DataChannel.Outbound.Configuration]
 
 		// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
-		internal let readables:[Int32:DataChannel.Inbound]
+		internal let readables:[Int32:DataChannel.Inbound.Configuration]
 	}
 
-	fileprivate static func launch(package:consuming PackagedLaunch) {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:borrowing EventTrigger) {
 		var fhReadersToDeregisterIfThrown = Set<Int32>() // if throw dereg read
 		var fhWritersToDeregisterIfThrown = Set<Int32>() // if throw dereg write
 		var fhToCloseIfThrown = Set<Int32>() // ?
@@ -56,7 +57,6 @@ internal struct ProcessLogistics {
 		var removeReadersFromSelfIfThrown = Set<Int32>() 
 		var removeWritersFromSelfIfThrown = Set<Int32>()
 
-		
 		do {
 			var nullPipes = Set<PosixPipe>()
 			var enabledWriters = Set<PosixPipe>()
@@ -70,7 +70,7 @@ internal struct ProcessLogistics {
 
 		}
 	}
-	fileprivate static func spawn(_ path:UnsafePointer<Int8>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) async throws -> Int32 {
+	fileprivate static func spawn(_ path:UnsafePointer<Int8>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> Int32 {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 
