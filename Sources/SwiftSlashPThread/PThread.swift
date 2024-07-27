@@ -1,3 +1,6 @@
+
+// this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone.
+
 import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained

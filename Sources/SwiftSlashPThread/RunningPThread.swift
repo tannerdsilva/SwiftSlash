@@ -49,7 +49,6 @@ internal struct Launched {
 	/// the future that will be set after the work is joined.
 	private let rf:Future<UnsafeMutableRawPointer>
 
-	
 	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, future:consuming Future<UnsafeMutableRawPointer>) {
 		pt = pthread
 		rf = future
