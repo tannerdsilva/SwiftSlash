@@ -7,10 +7,10 @@ extension Int32 {
 	}
 
 	/// reads data from self (represented as a system file handle) into the buffer provided.
-	public func readFH(into dataBuffer:UnsafeMutableBufferPointer<UInt8>, size readSize:size_t, retryOnInterrupt:Bool) throws -> size_t {
+	public func readFH(into dataBuffer:UnsafeMutablePointer<UInt8>, size readSize:size_t) throws -> size_t {
 		repeat {
 			// read the data from the file handle.
-			let amountRead = read(self, dataBuffer.baseAddress, readSize)
+			let amountRead = read(self, dataBuffer, readSize)
 			guard amountRead > -1 else {
 				// need to actually think about better ways to handle these at some point.
 				switch errno {
@@ -21,11 +21,7 @@ extension Int32 {
 					case EBADF:
 						throw FileHandleError.error_bad_fh;
 					case EINTR:
-						if retryOnInterrupt {
-							continue
-						} else {
-							throw FileHandleError.error_interrupted
-						}
+						throw FileHandleError.error_interrupted;
 					case EINVAL:
 						throw FileHandleError.error_invalid;
 					case EIO:
@@ -69,6 +65,9 @@ extension Int32 {
 						throw FileHandleError.error_unknown;
 				}
 			}
+			#if DEBUG
+			assert(amountWritten <= writeSize, "amount written is greater than the size of the buffer.")
+			#endif
 			return amountWritten
 		} while true
 	}

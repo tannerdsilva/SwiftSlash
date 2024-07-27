@@ -1,18 +1,6 @@
 // swift-tools-version:5.9
 import PackageDescription
 
-// determine the dependencies for the swiftslash pthread target
-fileprivate var targetSwiftSlashPThreadDependencies:[Target.Dependency] = [
-	"__cswiftslash",
-	"SwiftSlashFuture"
-]
-
-// determine the dependencies for the swiftslash future target
-fileprivate var targetSwiftSlashFutureDependencies:[Target.Dependency] = [
-	"__cswiftslash",
-	"SwiftSlashContained"
-]
-
 fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"SwiftSlash",
@@ -53,7 +41,10 @@ fileprivate var ssInternalTargets:[Target] = [
 	),
 	.target(
 		name:"SwiftSlashFuture",
-		dependencies:targetSwiftSlashFutureDependencies
+		dependencies:[
+			"__cswiftslash",
+			"SwiftSlashContained"
+		]
 	),
 	.target(
 		name:"SwiftSlashContained"

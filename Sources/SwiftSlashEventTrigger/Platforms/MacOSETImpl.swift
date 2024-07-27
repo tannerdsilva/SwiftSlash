@@ -14,15 +14,15 @@ internal final class MacOSImpl:EventTriggerEngine {
 	internal let prim:EventTriggerHandle
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:FIFO<size_t>] = [:]
+	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:FIFO<Void>] = [:]
+	private var writersDataTrigger:[Int32:FIFO<Void, Never>] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register>
+	private let registrations:FIFO<Register, Never>
 	private func extractPendingRegistrations() {
-		var getIterator = registrations.makeIterator(shouldBlock:false)
+		var getIterator = registrations.makeSyncConsumer(shouldBlock:false)
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let reg):

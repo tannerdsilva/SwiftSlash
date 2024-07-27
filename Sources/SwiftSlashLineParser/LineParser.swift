@@ -20,7 +20,7 @@ internal struct LineParser:~Copyable {
 		/// the line parser will handle the parsed lines with the given handler.
 		case handler(([[UInt8]]) -> Void)
 		/// the line parser will yield the parsed lines to the given nasyncstream.
-		case nasync(NAsyncStream<Array<[UInt8]>>)
+		// case nasync(NAsyncStream<Array<[UInt8]>>)
 	}
 
 	/// the line parser.
@@ -59,8 +59,8 @@ internal struct LineParser:~Copyable {
 			continuation.yield(result)
 		case .handler(let handler):
 			handler(result)
-		case .nasync(let nas):
-			nas.yield(result)
+		// case .nasync(let nas):
+		// 	nas.yield(result)
 		}
 	}
 
@@ -84,8 +84,8 @@ internal struct LineParser:~Copyable {
 					continuation.yield(buildItems)
 				case .handler(let handler):
 					handler(buildItems)
-				case .nasync(let nas):
-					nas.yield(buildItems)
+				// case .nasync(let nas):
+				// 	nas.yield(buildItems)
 				}
 			}
 		}

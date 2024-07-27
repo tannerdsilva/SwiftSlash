@@ -5,7 +5,7 @@ public struct Path {
 	private var components:[String]
 
 	/// initialize a path with a string.
-	public init<S>(_ p:consuming S = "/") where S:StringProtocol, S.SubSequence == Substring {
+	public init<S>(_ p:consuming S) where S:StringProtocol, S.SubSequence == Substring {
 		self.components = p.split(separator: "/", omittingEmptySubsequences:true).map(String.init)
 	}
 	

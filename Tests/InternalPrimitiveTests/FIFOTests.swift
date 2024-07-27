@@ -3,7 +3,7 @@ import XCTest
 
 class FIFOTests: XCTestCase {
 	func testFIFOWithDeinitTool() async {
-		var fifo:FIFO<WhenDeinitTool<Int>>? = FIFO<WhenDeinitTool<Int>>()
+		var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
 		var deinitCount = 0
 		func didDeinit() {
 			deinitCount += 1
@@ -11,7 +11,7 @@ class FIFOTests: XCTestCase {
 
 		// Create an async task for consuming data
 		let consumerTask = Task { [fifo] in
-			var fifoIterator = fifo!.makeAsyncIterator()
+			var fifoIterator = fifo!.makeAsyncConsumer()
 			do {
 				var result: [Int] = []
 				while let element = try await fifoIterator.next() {
@@ -39,7 +39,7 @@ class FIFOTests: XCTestCase {
 	}
 	func testNoConsumption() async {
 		// now test the same scenario without any consumption. ensure that the references are deinitialized properly when the fifo is deinitialized.
-		var fifo:FIFO<WhenDeinitTool<Int>>? = FIFO<WhenDeinitTool<Int>>()
+		var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
 		var deinitCount = 0
 		func didDeinit() {
 			deinitCount += 1
@@ -59,13 +59,13 @@ class FIFOTests: XCTestCase {
 	}
 	func testPartialConsumption() async {
 		// test a partial consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
-		var fifo:FIFO<WhenDeinitTool<Int>>? = FIFO<WhenDeinitTool<Int>>()
+		var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
 		var deinitCount = 0
 		func didDeinit() {
 			deinitCount += 1
 		}
 
-		var fifoIterator:FIFO<WhenDeinitTool<Int>>.AsyncIterator? = fifo!.makeAsyncIterator()
+		var fifoIterator:FIFO<WhenDeinitTool<Int>, Never>.AsyncConsumer? = fifo!.makeAsyncConsumer()
 		let consumer = Task { [fi = fifoIterator!] in
 			var fifoIterator = fi
 			do {
@@ -98,6 +98,5 @@ class FIFOTests: XCTestCase {
 
 		// Ensure all elements were deinitialized properly
 		XCTAssertEqual(deinitCount, 5)
-
 	}
 }

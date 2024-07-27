@@ -2,17 +2,11 @@ import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
 
-#if os(Linux)
-import Glibc
-#elseif os(macOS)
-import Darwin
-#endif
-
 /// represents a pthread that is actively running. can be used to cancel a pthread before it returns or to await the result of the pthread.
 public final class Running<R> {
 
 	/// the pthread that is running.
-	private var launched:Launched
+	private let launched:Launched
 
 	/// initialize a new Running instance from the internal representation.
 	internal init(alreadyLaunched pthread:consuming Launched) {
