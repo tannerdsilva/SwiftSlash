@@ -3,6 +3,9 @@ import SwiftSlashContained
 
 /// a reference type that represents a result that will be available in the future.
 public final class Future<R>:@unchecked Sendable {
+
+	// the deallocator function type for a successful result.
+	public typealias SuccessfulResultDeallocator = (R)->Void
 	
 	/// thrown when a result is set on a future that is already set.
 	public struct InvalidStateError:Swift.Error {}
@@ -10,12 +13,16 @@ public final class Future<R>:@unchecked Sendable {
 	/// the underlying c primitive that this future wraps.
 	private let prim:UnsafeMutablePointer<_cswiftslash_future_t>
 
+	/// the deallocator function that this instance will use when it is destroyed.
+	private let successDeallocator:SuccessfulResultDeallocator?
+
 	/// creates a new instance of Future.
 	/// - parameters:
-	/// 	- successfulResultDeallocator: a user defined deallocator function that is called when the future is destroyed and the result is successful.
-	public init() {
+	/// 	- successfulResultDeallocator: a user defined deallocator function that is called when the future is destroyed and the result is successful. if nil, the result is not have any deallocation work done (assumed to be a swift native type).
+	public init(successfulResultDeallocator:SuccessfulResultDeallocator? = nil) {
 		self.prim = UnsafeMutablePointer<_cswiftslash_future_t>.allocate(capacity:1)
 		self.prim.initialize(to:_cswiftslash_future_t_init())
+		self.successDeallocator = successfulResultDeallocator
 	}
 
 	/// assign a successful result to the future.
@@ -45,7 +52,7 @@ public final class Future<R>:@unchecked Sendable {
 	/// asyncronously wait for the result of the future.
 	/// - returns: the return value of the future.
 	/// - throws: any error that was assigned to the future in place of a valid return instance.
-	public func get() async throws -> R {
+	public borrowing func get() async throws -> R {
 		return try await withUnsafeThrowingContinuation({ (cont:UnsafeContinuation<R, Swift.Error>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value())
@@ -59,7 +66,7 @@ public final class Future<R>:@unchecked Sendable {
 
 	/// asyncronously wait for the result of the future.
 	/// - returns: the result of the future.
-	public func result() async -> Result<R, Swift.Error> {
+	public borrowing func result() async -> Result<R, Swift.Error> {
 		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
 			_cswiftslash_future_t_wait_sync(prim, nil, { resType, resPtr, ctx in
 				cont.resume(returning:.success(Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value()))
@@ -83,6 +90,12 @@ public final class Future<R>:@unchecked Sendable {
 		}) == 0 else {
 			fatalError("failed to destroy future - \(#file):\(#line)")
 		}
+
+		// call the explicit deallocator if the result is successful and one was provided.
+		if let successDeallocator = successDeallocator, let result = result.0 {
+			successDeallocator(result)
+		}
+
 		result = (nil, nil)
 		prim.deinitialize(count:1).deallocate()
 	}

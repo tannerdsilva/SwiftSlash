@@ -1,5 +1,5 @@
 
-// this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone.
+// this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone. the file consists of mostly private and fileprivate functions, with only a small handful of public/internal entrypoints being provided.
 
 import __cswiftslash
 import SwiftSlashFuture
@@ -28,31 +28,6 @@ extension PThreadWork {
 	}
 }
 
-/// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
-internal struct GenericPThread<R>:PThreadWork {
-	/// function to run.
-	private let funcToRun:Argument
-
-	/// the argument type for the function to run.
-	internal typealias Argument = () throws -> R
-	/// the return type for the function to run.
-	internal typealias ReturnType = R
-
-	/// creates a new instance of GenericPThread.
-	/// - parameters:
-	/// 	- argument: the function to run.
-	internal init(_ argument:@escaping Argument) {
-		self.funcToRun = argument
-	}
-
-	/// runs the function and returns the result.
-	/// - returns: the result of the function.
-	/// - throws: any error that prevents the work from being completed.
-	internal mutating func pthreadWork() throws -> R {
-		return try funcToRun()
-	}
-}
-
 extension PThreadWork {
 	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
@@ -69,6 +44,11 @@ extension PThreadWork {
 		}
 		try! future.setSuccess(op) // this is allowed to fail because the future may have been canceled at the instant before this is called.
 	}
+	fileprivate func configureNewReturnFuture() -> Future<UnsafeMutableRawPointer> {
+		return Future<UnsafeMutableRawPointer>(successfulResultDeallocator: { ptr in
+			_ = Unmanaged<Contained<ReturnType>>.fromOpaque(ptr).takeRetainedValue()
+		})
+	}
 }
 
 /// represents the memory space that is initialized and used within a pthread to accomplish a task.
@@ -84,23 +64,24 @@ fileprivate struct Workspace {
 	private var configureFuture:Future<Future<UnsafeMutableRawPointer>>
 
 	/// the future that will be set after the work result is returned.
-	private let returnFuture:Future<UnsafeMutableRawPointer> = Future<UnsafeMutableRawPointer>()
+	private let returnFuture:Future<UnsafeMutableRawPointer>
 
 	// call this from within the pthread. this will initialize the workspace for the work that is about to begin on the pthread.
 	fileprivate init(
 		_ setup:Setup
 	) {
-		self.workspaceInstance = setup.thread_worktype.init(setup.containedArg)
-		self.workspaceType = setup.thread_worktype
-		self.configureFuture = setup.configureFuture
+		workspaceInstance = setup.thread_worktype.init(setup.containedArg)
+		workspaceType = setup.thread_worktype
+		configureFuture = setup.configureFuture
+		returnFuture = workspaceInstance.configureNewReturnFuture()
 	}
 
 	// assign cancellation values to the relevant futures.
 	fileprivate func setCancellation() {
 		// set the return future to a failure error that is aproprate for cancellation.
-		try? returnFuture.setFailure(CancellationError()) // this try may fail because its theoretically possible that the work returns an instant moment before this is called.
+		try? returnFuture.setFailure(CancellationError())		// this try may fail because its theoretically possible that the work returns an instant moment before this is called.
 
-		try? configureFuture.setFailure(CancellationError()) // this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
+		try? configureFuture.setFailure(CancellationError())	// this may not fail because its presumed that if configureFuture is not already nil, then it is a valid future that must be set.
 	}
 
 	// set the configuration future to success.
@@ -172,6 +153,7 @@ fileprivate func _launch<W, A>(_ workType:W.Type, argument:consuming A) async th
 		_ = Unmanaged<Contained<A>>.fromOpaque(launchStructure.pointee.containedArg).takeRetainedValue()
 		throw LaunchFailure()
 	}
+
 	// wait for the pthread to configure itself. at this point we can return the RunningPThread object through the future but we cant do so until the pthread is ready to be canceled. this is what we wait for.
 	let returnFuture = try await configureFuture.get()
 	return Launched(pthr, future:returnFuture)
