@@ -7,7 +7,7 @@ extension Int32 {
 	}
 
 	/// reads data from self (represented as a system file handle) into the buffer provided.
-	public func readFH(into dataBuffer:UnsafeMutableBufferPointer<UInt8>, size readSize:size_t) throws -> size_t {
+	public func readFH(into dataBuffer:UnsafeMutableBufferPointer<UInt8>, size readSize:size_t, retryOnInterrupt:Bool) throws -> size_t {
 		repeat {
 			// read the data from the file handle.
 			let amountRead = read(self, dataBuffer.baseAddress, readSize)
@@ -21,7 +21,11 @@ extension Int32 {
 					case EBADF:
 						throw FileHandleError.error_bad_fh;
 					case EINTR:
-						continue
+						if retryOnInterrupt {
+							continue
+						} else {
+							throw FileHandleError.error_interrupted
+						}
 					case EINVAL:
 						throw FileHandleError.error_invalid;
 					case EIO:

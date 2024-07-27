@@ -83,7 +83,7 @@ internal struct ProcessLogistics {
 
 		func prepareLaunch() -> Never { 
 			
-			// close the reading end of the internal pipe immediately after fork.
+			// close the reading end of the internal pipe immediately after fork. the parent process will be reading, our job is to write.
 			internalNotify.reading.closeFileHandle()
 
 			// change the working directory.
@@ -167,8 +167,11 @@ internal struct ProcessLogistics {
 			case -1:
 				throw SystemErrno(errno)
 			case 0:
+				// in child: successful fork
 				prepareLaunch()
 			default:
+				// in parent: successful fork
+				// close the writing end of the internal pipe immediately after fork. the child process will be writing here, our job is to read the other end.
 				internalNotify.writing.closeFileHandle()
 		}
 
