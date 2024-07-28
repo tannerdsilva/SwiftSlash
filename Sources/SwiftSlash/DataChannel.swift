@@ -17,9 +17,19 @@ public struct DataChannel {
 		// the underlying nasyncstream that this struct wraps
 		private let nasync:NAsyncStream<[UInt8], Never>
 
-		public typealias AsyncIterator = NAsyncStream<[UInt8], Never>.AsyncConsumer
+		public struct AsyncIterator:AsyncIteratorProtocol {
+			private let nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer
 
-		public borrowing func makeAsyncIterator() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
+			internal init(nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer) {
+				self.nasync = nasync
+			}
+
+			public borrowing func next() async -> [UInt8]? {
+				return await nasync.next()
+			}
+		}
+
+		public borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
 			return nasync.makeAsyncConsumer()
 		}
 
@@ -58,8 +68,20 @@ public struct DataChannel {
 			nasync.finish()
 		}
 
-		internal borrowing func makeAsyncIterator() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
+		internal borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
 			return nasync.makeAsyncConsumer()
 		}
+	}
+}
+
+public struct AsyncNonthrowingIterator:AsyncIteratorProtocol {
+	private let nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer
+
+	internal init(nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer) {
+		self.nasync = nasync
+	}
+
+	public borrowing func next() async -> [UInt8]? {
+		return await nasync.next()
 	}
 }

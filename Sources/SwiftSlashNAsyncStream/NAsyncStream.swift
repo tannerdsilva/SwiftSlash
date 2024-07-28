@@ -6,7 +6,7 @@ import SwiftSlashIdentifiedList
 /// NAsyncStream will buffer objects indefinitely until they are either consumed (by all registered consumers at the time of production) or the stream is dereferenced.
 public struct NAsyncStream<Element, Failure>:Sendable {
 	
-	public borrowing func makeAsyncConsumer() -> AsyncConsumer {
+	public func makeAsyncConsumer() -> AsyncConsumer {
 		// each new consumer gets their own dedicated FIFO instance. that instance is initialized here.
 		return AsyncConsumer(al:al, fifo:FIFO<Element, Failure>())
 	}
@@ -64,7 +64,7 @@ extension NAsyncStream {
 extension NAsyncStream.AsyncConsumer where Failure == Never {
 	/// get the next element from the stream. this is a blocking call. if there is no data available, the call will block until data is available.
 	/// - returns: the next element in the stream.
-	public borrowing func next() async -> Element? {
+	public func next() async -> Element? {
 		return await fifoC.next()
 	}
 }
@@ -72,7 +72,7 @@ extension NAsyncStream.AsyncConsumer where Failure == Never {
 extension NAsyncStream.AsyncConsumer where Failure == Swift.Error {
 	/// get the next element from the stream. this is a blocking call. if there is no data available, the call will block until data is available.
 	/// - returns: the next element in the stream.
-	public borrowing func next() async throws -> Element? {
+	public func next() async throws -> Element? {
 		return try await fifoC.next()
 	}
 }

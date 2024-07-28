@@ -19,7 +19,7 @@ public actor ProcessInterface {
 	private var outbound:[Int32:NAsyncStream<[UInt8], Never>] = [:]
 	private var inbound:[Int32:NAsyncStream<[UInt8], Never>] = [:]
 
-	public var stdout:NAsyncStream<[UInt8]> {
+	public var stdout:NAsyncStream<[UInt8], Never> {
 		get {
 			return outbound[STDOUT_FILENO]!
 		}
@@ -42,10 +42,10 @@ internal struct ProcessLogistics {
 		internal let env:[String:String]
 
 		// represents a mapping of the file handles of the child process. each file handle is written to by the parent process and read from by the child process.
-		internal let writables:[Int32:DataChannel.Outbound.Configuration]
+		internal let writables:[Int32:DataChannel.ChildReadParentWrite.Configuration]
 
 		// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
-		internal let readables:[Int32:DataChannel.Inbound.Configuration]
+		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
 	}
 
 	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:borrowing EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
@@ -58,18 +58,18 @@ internal struct ProcessLogistics {
 		var removeWritersFromSelfIfThrown = Set<Int32>()
 
 		do {
-			var buildOut = [Int32:(PosixPipe, EventTrigger.WriterFIFO, DataChannel.Outbound?)]()
+			// var buildOut = [Int32:(PosixPipe, EventTrigger.WriterFIFO, DataChannel.Outbound?)]()
 			for (fh, config) in package.writables {
 				switch config {
 					case .active(let channel):
 						let newPipe = try PosixPipe(nonblockingReads:true, nonblockingWrites:true)
 						let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
 						try eventTrigger.register(writer:newPipe.writing, writerFIFO)
-						taskGroup.addTask { [userDataStream = channel.makeAsyncIterator(), writableEventStream = writerFIFO, wFH = newPipe.writing] in
+						taskGroup.addTask { [userDataStream = channel.makeAsyncConsumer(), writeConsumer = writerFIFO.makeAsyncConsumer(), wFH = newPipe.writing] in
 							// write loop here
 							var currentWrite:[UInt8] = []
-							writableEventLoop: for try await _ in writableEventStream {
-								if let newUserDataToWrite = try! await userDataStream.next() {
+							writableEventLoop: while await writeConsumer.next() != nil {
+								if let newUserDataToWrite = await userDataStream.next() {
 									currentWrite.append(contentsOf:newUserDataToWrite)
 								} else {
 									break writableEventLoop
@@ -82,10 +82,11 @@ internal struct ProcessLogistics {
 								}
 							}
 						}
-					case .closed:
-						buildOut[fh] = (nil, EventTrigger.WriterFIFO(), nil)
+					// case .closed:
+					// 	buildOut[fh] = (nil, EventTrigger.WriterFIFO(), nil)
 					case .nullPipe:
-						buildOut[fh] = (nil, EventTrigger.WriterFIFO(), nil)
+					break;
+						// buildOut[fh] = (nil, EventTrigger.WriterFIFO(), nil)
 				}
 			}
 		} catch let error {

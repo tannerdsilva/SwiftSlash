@@ -127,7 +127,7 @@ extension FIFO {
 }
 
 extension FIFO.Consumer where Failure == Swift.Error {
-	public mutating func next() throws -> Element? {
+	public func next() throws -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -171,7 +171,7 @@ extension FIFO.Consumer where Failure == Swift.Error {
 }
 
 extension FIFO.Consumer where Failure == Never {
-	public mutating func next() -> Element? {
+	public func next() -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -215,7 +215,7 @@ extension FIFO.Consumer where Failure == Never {
 }
 
 extension FIFO.AsyncConsumer where Failure == Never {
-	public mutating func next() async -> Element? {
+	public func next() async -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return await withUnsafeContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -240,7 +240,7 @@ extension FIFO.AsyncConsumer where Failure == Never {
 }
 
 extension FIFO.AsyncConsumer where Failure == Swift.Error {
-	public mutating func next() async throws -> Element? {
+	public func next() async throws -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return try await withUnsafeThrowingContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {

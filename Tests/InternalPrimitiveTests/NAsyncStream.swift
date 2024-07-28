@@ -3,15 +3,15 @@ import XCTest
 
 class NAsyncStreamTests: XCTestCase {
     func testNAsyncStreamMemoryManagement() async {
-        let stream = NAsyncStream<WhenDeinitTool<Int>>()
+        let stream = NAsyncStream<WhenDeinitTool<Int>, Never>()
         var deinitCount = 0
         func didDeinit() {
             deinitCount += 1
         }
 
         // Create a few consumers
-		let delayedConsumer = stream.makeAsyncIterator()
-        let consumerTask1 = Task { [asT = stream.makeAsyncIterator()] in
+		let delayedConsumer = stream.makeAsyncConsumer()
+        let consumerTask1 = Task { [asT = stream.makeAsyncConsumer()] in
 			var asyncStream = asT
             var result: [Int] = []
             while let item = try await asyncStream.next() {
