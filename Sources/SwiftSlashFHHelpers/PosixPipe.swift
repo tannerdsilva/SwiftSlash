@@ -7,6 +7,21 @@ public struct PosixPipe:Hashable, Equatable {
 	public let reading:Int32
 	// fh that is used for writing to the pipe.
 	public let writing:Int32
+
+	/// returns a pipe that is used for reading from the child process.
+	/// - writing end is blocking.
+	/// - reading end is nonblocking.
+	public static func forChildWriting() throws -> PosixPipe {
+		return try PosixPipe(nonblockingReads:true, nonblockingWrites:false)
+	}
+
+	/// returns a pipe that is used for writing to the child process.
+	/// - writing end is nonblocking.
+	/// - reading end is blocking.
+	public static func forChildReading() throws -> PosixPipe {
+		return try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
+	}
+
 	
 	/// create a new pipe with the specified options.
 	public init(nonblockingReads:Bool = false, nonblockingWrites:Bool = false) throws {

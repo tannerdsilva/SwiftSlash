@@ -10,12 +10,8 @@
 void lineparser_resize_up(_cswiftslash_lineparser_t *parser) {
 	// double the size of the buffer
 	parser->buffsize = parser->buffsize * 2;
-	// capture the old buffer so it may be freed
-	void *oldbuff = parser->intakebuff;
-	// copy the data to the new buffer
-	parser->intakebuff = memcpy(malloc(parser->buffsize), parser->intakebuff, parser->occupied);
-	// free the old buffer.
-	free(oldbuff);
+	// call realloc to resize the buffer
+	parser->intakebuff = realloc(parser->intakebuff, parser->buffsize);
 }
 
 /// @brief prepares the line parser to parse the next line. clears the previous line from the buffer.
@@ -42,25 +38,30 @@ _cswiftslash_lineparser_t _cswiftslash_lineparser_init(const uint8_t*_Nullable m
 	return newparser;
 }
 
+uint8_t *_Nonnull _cswiftslash_lineparser_intake_prepare(_cswiftslash_lineparser_t*_Nonnull parser, const size_t data_len) {
+	// resize the parser to fit the data, if necessary
+	while ((parser->occupied + data_len) > parser->buffsize) {
+		lineparser_resize_up(parser);
+	}
+	
+	// return the buffer to write data into
+	return parser->intakebuff + parser->occupied;
+}
+
+void _cswiftslash_lineparser_intake_apply(_cswiftslash_lineparser_t*_Nonnull parser, const size_t data_len) {
+	parser->occupied = parser->occupied + data_len;
+}
+
 // send data into the line parser
-void _cswiftslash_lineparser_intake(_cswiftslash_lineparser_t*_Nonnull parser, const uint8_t*_Nonnull intake_data, size_t data_len, const _cswiftslash_lineparser_handler_f dh) {
+void _cswiftslash_lineparser_intake_process(_cswiftslash_lineparser_t*_Nonnull parser, const _cswiftslash_lineparser_handler_f dh, _cswiftslash_cptr_t dh_context) {
 	if (parser->matchsize > 0) {
-		// resize the parser to fit the data, if necessary
-		while ((parser->occupied + data_len) > parser->buffsize) {
-			lineparser_resize_up(parser);
-		}
-		
-		// install the data in the intake buffer
-		memcpy(parser->intakebuff + parser->occupied, intake_data, data_len);
-		parser->occupied = parser->occupied + data_len;
-		
 		while (parser->i < parser->occupied) {
 			if (parser->match[parser->matched] == parser->intakebuff[parser->i]) {
 				parser->matched = parser->matched + 1;
 				if (parser->matchsize == parser->matched) {
 					parser->matched = 0;
 					parser->i = parser->i + 1;
-					dh(parser->intakebuff, parser->i - parser->matchsize);
+					dh(parser->intakebuff, parser->i - parser->matchsize, dh_context);
 					_cswiftslash_lineparser_trim(parser);
 				} else {
 					parser->i = parser->i + 1;
@@ -71,14 +72,14 @@ void _cswiftslash_lineparser_intake(_cswiftslash_lineparser_t*_Nonnull parser, c
 			}
 		}
 	} else {
-		dh(intake_data, data_len);
+		dh(parser->intakebuff, parser->occupied, dh_context);
 	}
 }
 
 // close the line parser from memory
-void _cswiftslash_lineparser_close(_cswiftslash_lineparser_t*_Nonnull parser, const _cswiftslash_lineparser_handler_f dh) {
+void _cswiftslash_lineparser_close(_cswiftslash_lineparser_t*_Nonnull parser, const _cswiftslash_lineparser_handler_f dh, _cswiftslash_cptr_t dh_context) {
 	if (parser->occupied > 0) {
-		dh(parser->intakebuff, parser->occupied);
+		dh(parser->intakebuff, parser->occupied, dh_context);
 	}
 	free(parser->intakebuff);
 	if (parser->matchsize > 0) {

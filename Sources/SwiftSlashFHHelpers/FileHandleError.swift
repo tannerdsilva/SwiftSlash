@@ -1,4 +1,4 @@
-internal enum FileHandleError:Swift.Error {
+public enum FileHandleError:Swift.Error {
 	case pollingError;
 	case readAllocationError;
 	

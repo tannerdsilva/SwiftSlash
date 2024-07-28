@@ -4,6 +4,7 @@ import SwiftSlashContained
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
 public final class FIFO<Element, Failure>:@unchecked Sendable {
 
+	// underlying c implementation
 	private let datachain_primitive_ptr:UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>
 	
 	/// initialize a new FIFO. an optional maximumElementCount may be passed to limit the number of elements that may be held in the FIFO at any given time.
@@ -17,11 +18,9 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 
 		// set the maximum element count if it was passed
 		if maximumElementCount != nil {
-			#if DEBUG
-			assert(_cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount!) == true)
-			#else
-			_cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount)
-			#endif
+			guard _cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount!) == true else {
+				fatalError("swiftslash - failed to set maximum element count - \(#file):\(#line)")
+			}
 		}
 
 		datachain_primitive_ptr = newPointer
@@ -39,7 +38,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 				i += 1
 			}
 			guard i < 255 else {
-				fatalError("yield infinite loop")
+				fatalError("swiftslash - yield infinite loop - \(#file):\(#line)")
 			}
 			#endif
 			switch _cswiftslash_fifo_pass(datachain_primitive_ptr, um.toOpaque()) {
@@ -61,7 +60,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 				case 1:
 				continue
 				default:
-					fatalError("unexpected return value from _cwskit_dc_pass")
+					fatalError("swiftslash - unexpected return value from _cwskit_dc_pass - \(#file):\(#line)")
 			}
 		} while Task.isCancelled == false
 	}
@@ -95,18 +94,17 @@ extension FIFO where Failure == Swift.Error {
 	}
 }
 
+// async consumer basics
 extension FIFO {
 	/// call this function to become the exclusive consumer for a FIFO. the returned object will be used to consume the FIFO.
 	public consuming func makeAsyncConsumer() -> AsyncConsumer {
 		return AsyncConsumer(self)
 	}
-
+	/// call this function to become the exclusive consumer for a FIFO. the returned object will be used to consume the FIFO.
+	/// - parameters:
+	/// 	- shouldBlock: if true, the consumer will block until an element is available. if false, the consumer will return nil if no element is available.
 	public consuming func makeSyncConsumer(shouldBlock:Bool) -> Consumer {
 		return Consumer(self, shouldBlock:shouldBlock)
-	}
-
-	public consuming func makeSyncConsumer() -> Consumer {
-		return makeSyncConsumer(shouldBlock:false)
 	}
 
 	public struct Consumer {
@@ -127,7 +125,7 @@ extension FIFO {
 }
 
 extension FIFO.Consumer where Failure == Swift.Error {
-	public func next() throws -> Element? {
+	public borrowing func next() throws -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -142,11 +140,11 @@ extension FIFO.Consumer where Failure == Swift.Error {
 								throw err
 						}
 					case FIFO_CONSUME_WOULDBLOCK:
-						fatalError("unexpected return value from _cswiftslash_fifo_consume_blocking \(#file):\(#line)")
+						fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					case FIFO_CONSUME_INTERNAL_ERROR:
-						fatalError("an internal error was encountered while consuming datachain \(#file):\(#line)")
+						fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					default:
-						fatalError("unexpected return value from _cswiftslash_fifo_consume_blocking \(#file):\(#line)")
+						fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				}
 			case false:
 				switch _cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -162,16 +160,16 @@ extension FIFO.Consumer where Failure == Swift.Error {
 					case FIFO_CONSUME_WOULDBLOCK:
 						return nil
 					case FIFO_CONSUME_INTERNAL_ERROR:
-						fatalError("an internal error was encountered while consuming datachain")
+						fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					default:
-						fatalError("unexpected return value from _cwskit_dc_consume_nonblocking")
+						fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				}
 		}
 	}
 }
 
 extension FIFO.Consumer where Failure == Never {
-	public func next() -> Element? {
+	public borrowing func next() -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -186,11 +184,11 @@ extension FIFO.Consumer where Failure == Never {
 								fatalError("unexpected error: \(err)")
 						}
 					case FIFO_CONSUME_WOULDBLOCK:
-						fatalError("unexpected return value from _cswiftslash_fifo_consume_blocking \(#file):\(#line)")
+						fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					case FIFO_CONSUME_INTERNAL_ERROR:
-						fatalError("an internal error was encountered while consuming datachain \(#file):\(#line)")
+						fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					default:
-						fatalError("unexpected return value from _cswiftslash_fifo_consume_blocking \(#file):\(#line)")
+						fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				}
 			case false:
 				switch _cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -206,16 +204,16 @@ extension FIFO.Consumer where Failure == Never {
 					case FIFO_CONSUME_WOULDBLOCK:
 						return nil
 					case FIFO_CONSUME_INTERNAL_ERROR:
-						fatalError("an internal error was encountered while consuming datachain")
+						fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 					default:
-						fatalError("unexpected return value from _cwskit_dc_consume_nonblocking")
+						fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				}
 		}
 	}
 }
 
 extension FIFO.AsyncConsumer where Failure == Never {
-	public func next() async -> Element? {
+	public borrowing func next() async -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return await withUnsafeContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -229,18 +227,18 @@ extension FIFO.AsyncConsumer where Failure == Never {
 							fatalError("unexpected error: \(err)")
 					}
 				case FIFO_CONSUME_WOULDBLOCK:
-					fatalError("unexpected return value from _cwskit_dc_consume_blocking")
+					fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				case FIFO_CONSUME_INTERNAL_ERROR:
-					fatalError("an internal error was encountered while consuming datachain")
+					fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				default:
-					fatalError("unexpected return value from _cwskit_dc_consume_nonblocking")
+					fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 			}
 		}
 	}
 }
 
 extension FIFO.AsyncConsumer where Failure == Swift.Error {
-	public func next() async throws -> Element? {
+	public borrowing func next() async throws -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return try await withUnsafeThrowingContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -254,11 +252,11 @@ extension FIFO.AsyncConsumer where Failure == Swift.Error {
 							continuation.resume(throwing:err)
 					}
 				case FIFO_CONSUME_WOULDBLOCK:
-					fatalError("unexpected return value from _cwskit_dc_consume_blocking")
+					fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				case FIFO_CONSUME_INTERNAL_ERROR:
-					fatalError("an internal error was encountered while consuming datachain")
+					fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 				default:
-					fatalError("unexpected return value from _cwskit_dc_consume_nonblocking")
+					fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 			}
 		}
 	}
