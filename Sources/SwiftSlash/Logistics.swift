@@ -2,6 +2,7 @@ import __cswiftslash
 import SwiftSlashNAsyncStream
 import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
+import SwiftSlashLineParser
 
 public actor ProcessInterface {
 	
@@ -134,17 +135,22 @@ internal struct ProcessLogistics {
 		// configure the file handles that we will read from
 		for (fh, config) in package.readables {
 			switch config {
-				case .active(let channel):
+				case .active(let channel, let buffer):
 					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildWriting()
 					let readerFIFO = EventTrigger.ReaderFIFO()
 					try eventTrigger.register(reader:newPipe.reading, readerFIFO)
 					readPipes[fh] = newPipe
 					taskGroup.addTask { [userDataStream = channel, systemReadEvents = readerFIFO.makeAsyncConsumer(), rFH = newPipe.reading] in
-						while let nextSize = await systemReadEvents.next() {
-							let getInfo = try [UInt8](unsafeUninitializedCapacity:nextSize, initializingWith: { buff, size in
-								size = try rFH.readFH(into:buff.baseAddress!, size:nextSize)
-							})
+						var lineParser = LineParser(separator:[], nasync:userDataStream.nasync)
+						while let readableSize = await systemReadEvents.next() {
+							do {
+								try lineParser.intake(bytes:readableSize) { wptr in
+									return try rFH.readFH(into:wptr, size:readableSize)
+								}
+							} catch FileHandleError.error_wouldblock {
+								continue
+							}
 						}
 					}
 

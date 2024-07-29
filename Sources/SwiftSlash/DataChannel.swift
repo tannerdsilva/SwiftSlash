@@ -9,13 +9,13 @@ public struct DataChannel {
 		/// specifies a configuration for an inbound data channel.
 		public enum Configuration {
 			/// configure the swiftslash to read this data channel as the running process writes to it.
-			case active(ChildWriteParentRead)
+			case active(ChildWriteParentRead, [UInt8])
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it writes will go directly to /dev/null (never touches the parent process). as such, the parent process has no associated work to do in this configuration.
 			case nullPipe
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		private let nasync:NAsyncStream<[UInt8], Never>
+		internal let nasync:NAsyncStream<[UInt8], Never>
 
 		public struct AsyncIterator:AsyncIteratorProtocol {
 			private let nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer
