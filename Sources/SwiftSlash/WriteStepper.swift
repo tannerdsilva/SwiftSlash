@@ -20,14 +20,22 @@ internal struct WriteStepper {
 	/// the offset of the data that has been written to the file handle.
 	private var offset:size_t = 0
 
-	internal init(_ dataIn:consuming [UInt8], writeFuture:Future<Void>) {
+	/// an optional future that will be set as finished when the write operation is complete.
+	internal let completeFuture:Future<Void>?
+
+	/// creates a new instance of WriteStepper.
+	internal init(_ dataIn:consuming [UInt8], writeFuture:Future<Void>?) {
 		data = dataIn
+		completeFuture = writeFuture
 	}
 
 	/// writes more data into the specified file handle.
 	internal mutating func write(to writerFH:Int32) throws -> Action {
-		offset += try writerFH.writeFH(from:&data, size:size_t(data.count))
+		offset += try data.withUnsafeBufferPointer { (dataBuffer:UnsafeBufferPointer<UInt8>) in
+			return try writerFH.writeFH(UnsafeBufferPointer<UInt8>(start:dataBuffer.baseAddress! + offset, count:dataBuffer.count - offset))
+		}
 		if offset == data.count {
+			try? completeFuture?.setSuccess(())
 			return .retireMe
 		} else {
 			return .holdMe

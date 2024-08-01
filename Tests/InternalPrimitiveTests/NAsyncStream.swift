@@ -14,7 +14,7 @@ class NAsyncStreamTests: XCTestCase {
         let consumerTask1 = Task { [asT = stream.makeAsyncConsumer()] in
 			var asyncStream = asT
             var result: [Int] = []
-            while let item = try await asyncStream.next() {
+            while let item = try await asyncStream.next(whenTaskCancelled:.noAction) {
                 result.append(item.value)
             }
             XCTAssertEqual(result, [1, 2, 3])
@@ -32,7 +32,7 @@ class NAsyncStreamTests: XCTestCase {
 		let consumerTask2 = Task { [delayedConsumer] in
 			var stream = delayedConsumer
             var result: [Int] = []
-            while let item = try await stream.next() {
+            while let item = try await stream.next(whenTaskCancelled:.noAction) {
                 result.append(item.value)
             }
             XCTAssertEqual(result, [1, 2, 3])

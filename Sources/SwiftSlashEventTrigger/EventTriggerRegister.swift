@@ -7,14 +7,14 @@ internal enum Register:Equatable, Hashable {
 	/// - parameters:
 	/// 	- Int32: the file handle to register.
 	/// 	- FIFO<Array<[UInt8]>: the fifo to write data to after it is captured from the file handle.
-	case reader(Int32, FIFO<size_t, Never>)
+	case reader(Int32, FIFO<size_t, Swift.Error>?)
 
 
 	/// register a writer.
 	/// - parameters:
 	/// 	- Int32: the file handle to register.
 	/// 	- FIFO<[UInt8]>: the fifo to read data from to write to the file handle.
-	case writer(Int32, FIFO<Void, Never>)
+	case writer(Int32, FIFO<Void, Swift.Error>?)
 
 	/// equatable implementation
 	internal static func == (lhs:Register, rhs:Register) -> Bool {

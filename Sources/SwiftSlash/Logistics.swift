@@ -70,7 +70,7 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:borrowing EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws {
 
 		var writePipes = [Int32:PosixPipe]()
 		var readPipes = [Int32:PosixPipe]()
@@ -80,49 +80,97 @@ internal struct ProcessLogistics {
 		for (fh, config) in package.writables {
 			switch config {
 				case .active(let channel):
+					
 					// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildReading()
 					let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
 					try eventTrigger.register(writer:newPipe.writing, writerFIFO)
+					
+					// close the reading end of the pipe after fork.
 					writePipes[fh] = newPipe
-					taskGroup.addTask { [userDataStream = channel.makeAsyncConsumer(), writeConsumer = writerFIFO.makeAsyncConsumer(), wFH = newPipe.writing] in
-						
-						// write loop here
-						var buffer:[UInt8] = []
-						// var isWriteable: Bool = true
-						systemEventLoop: while await writeConsumer.next() != nil {
-							do {
-								// system is indicating that the file handle is ready to be written to.
-								// this inner loop will repeat until a write handle would block.
-								repeat {
-									// only take new data from the stream if the current write buffer is empty.
-									if buffer.isEmpty {
-										// does not have any data to write. wait for the user to provide some data to write.
-										let newUserDataToWrite = await userDataStream.next()
-										if newUserDataToWrite != nil {
-											buffer.append(contentsOf:newUserDataToWrite!)
-										} else {
-											wFH.closeFileHandle()
-											break systemEventLoop
+					
+					// launch the writing task.
+					taskGroup.addTask { [ // capture some things from the current scope before escaping into the task.
+						/// the user data stream that will be written to the file handle. this is where we will consume the data the user wants to write. we have an obligation to ensure the user cant pass any futures into this that we cannot fufill. therefore, finishing this and handling any contents before returning is a must.
+						userDataStream = channel,
+						// claim the consumer for the system write event stream.
+						// despite being a fifo, we do not need to take any special steps when discarding this consumer after completing our work.
+						writeConsumer = writerFIFO.makeAsyncConsumer(),
+						// this is the file handle that we will write to.
+						wFH = newPipe.writing,
+						// this is the event trigger that we will use for register and deregister
+						et = eventTrigger
+					] in
+						defer {
+							try! et.deregister(writer:fh)
+							wFH.closeFileHandle()
+						}
+						let userDataConsume = userDataStream.makeAsyncConsumer()
+						func mainWork(_ currentStep:inout WriteStepper?) async throws {
+							defer {
+								userDataStream.finish()
+							}
+							// main system event loop for the file handle.
+							systemEventLoop: while let _ = try await writeConsumer.next(whenTaskCancelled:.finish) {
+								do {
+									// system is indicating that the file handle is ready to be written to.
+
+									// this inner loop will repeat until a write handle would block.
+									writeAvailLoop: repeat {
+
+										// only take new data from the stream if the current write buffer is empty.
+										if currentStep == nil {
+
+											// does not have any data to write. wait for the user to provide some data to write.
+											if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
+												// apply this as the data we will step through in one or more writes.
+												currentStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+											} else {
+												// user is ready for this stream to be closed.
+												break systemEventLoop
+											}
 										}
-									}
 
-									// write the data to the file handle.
-									let writtenBytes = try wFH.writeFH(buffer)
-
-									// remove the bytes that were written to the handle.
-									if writtenBytes < buffer.count {
-										buffer.removeFirst(writtenBytes)
-									} else {
-										buffer.removeAll(keepingCapacity:true)
-									}
-								} while true
-							} catch FileHandleError.error_wouldblock {
-								continue systemEventLoop
+										// write the data to the file handle.
+										switch try currentStep!.write(to:wFH) {
+											case .retireMe:
+												currentStep = nil
+												fallthrough
+											case .holdMe:
+												continue writeAvailLoop
+										}
+									} while true
+								} catch FileHandleError.error_wouldblock {
+									continue systemEventLoop
+								}
 							}
 						}
-					}
 
+						func flushRemainingFuturesFromUserStream(failure error:Swift.Error) async {
+							// implied task already cancelled.
+							while let (_, future) = await userDataConsume.next(whenTaskCancelled:.noAction) {
+								if future != nil {
+									try? future!.setFailure(error)
+								}
+							}
+						}
+
+						var currentStep:WriteStepper? = nil
+						do {
+							// do the main work.
+							try await mainWork(&currentStep)
+							if let currentStep = currentStep {
+								try? currentStep.completeFuture?.setFailure(DataChannelClosedError())
+							}
+							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
+						} catch let error {
+							if let currentStep = currentStep {
+								try? currentStep.completeFuture?.setFailure(error)
+							}
+							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
+						}
+						
+					}
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
 					writePipes[fh] = newPipe
@@ -135,17 +183,25 @@ internal struct ProcessLogistics {
 		// configure the file handles that we will read from
 		for (fh, config) in package.readables {
 			switch config {
-				case .active(let channel, let buffer):
-					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
+				case .active(let channel, let sep):
 					let newPipe = try PosixPipe.forChildWriting()
 					let readerFIFO = EventTrigger.ReaderFIFO()
 					try eventTrigger.register(reader:newPipe.reading, readerFIFO)
+
+					// close the writing end of the pipe after fork.
 					readPipes[fh] = newPipe
-					taskGroup.addTask { [userDataStream = channel, systemReadEvents = readerFIFO.makeAsyncConsumer(), rFH = newPipe.reading] in
-						var lineParser = LineParser(separator:[], nasync:userDataStream.nasync)
-						while let readableSize = await systemReadEvents.next() {
+					taskGroup.addTask { [userDataStream = channel, systemReadEvents = readerFIFO.makeAsyncConsumer(), rFH = newPipe.reading, et = eventTrigger] in
+						var lineParser = LineParser(separator:sep, nasync:userDataStream.nasync)
+						defer {
+							try! et.deregister(reader:fh)
+							rFH.closeFileHandle()
+						}
+						// wait for the system to indicate that the file handle is ready for reading.
+						while let readableSize = try await systemReadEvents.next(whenTaskCancelled:.finish) {
 							do {
+								// prepare the lineparser to intake the data.
 								try lineParser.intake(bytes:readableSize) { wptr in
+									// read the data directly from the handle to the lineparser.
 									return try rFH.readFH(into:wptr, size:readableSize)
 								}
 							} catch FileHandleError.error_wouldblock {

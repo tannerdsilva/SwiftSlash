@@ -64,15 +64,15 @@ extension NAsyncStream {
 extension NAsyncStream.AsyncConsumer where Failure == Never {
 	/// get the next element from the stream. this is a blocking call. if there is no data available, the call will block until data is available.
 	/// - returns: the next element in the stream.
-	public func next() async -> Element? {
-		return await fifoC.next()
+	public func next(whenTaskCancelled cancelAction:consuming FIFO<Element, Failure>.WhenConsumingTaskCancelled) async -> Element? {
+		return await fifoC.next(whenTaskCancelled:cancelAction)
 	}
 }
 
 extension NAsyncStream.AsyncConsumer where Failure == Swift.Error {
 	/// get the next element from the stream. this is a blocking call. if there is no data available, the call will block until data is available.
 	/// - returns: the next element in the stream.
-	public func next() async throws -> Element? {
-		return try await fifoC.next()
+	public func next(whenTaskCancelled cancelAction:consuming FIFO<Element, Failure>.WhenConsumingTaskCancelled) async throws -> Element? {
+		return try await fifoC.next(whenTaskCancelled:cancelAction)
 	}
 }

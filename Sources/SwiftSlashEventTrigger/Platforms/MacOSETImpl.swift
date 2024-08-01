@@ -14,15 +14,15 @@ internal final class MacOSImpl:EventTriggerEngine {
 	internal let prim:EventTriggerHandle
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
+	private var readersDataOut:[Int32:FIFO<size_t, Swift.Error>] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:FIFO<Void, Never>] = [:]
+	private var writersDataTrigger:[Int32:FIFO<Void, Swift.Error>] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<Register, Never>
 	private func extractPendingRegistrations() {
-		var getIterator = registrations.makeSyncConsumer(shouldBlock:false)
+		let getIterator = registrations.makeSyncConsumer(shouldBlock:false)
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let reg):
@@ -153,13 +153,11 @@ internal final class MacOSImpl:EventTriggerEngine {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 
 								// reader close.
-								try! Self.deregister(prim, reader:curIdent)
 								readersDataOut.removeValue(forKey:curIdent)!.finish()
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
-								try! Self.deregister(prim, writer:curIdent)
 								writersDataTrigger.removeValue(forKey:curIdent)!.finish()
 
 							}

@@ -102,6 +102,13 @@ public struct LineParser:~Copyable {
 					nas.yield(line)
 				}
 			}, om)
+			switch om.pointee {
+			case .handler(let h):
+				h(nil)
+				break
+			case .nasync(let nas):
+				nas.finish()
+			}
 		}
 		lp.deinitialize(count:1)
 		lp.deallocate()

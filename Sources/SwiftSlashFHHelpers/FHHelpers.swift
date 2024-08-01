@@ -21,7 +21,7 @@ extension Int32 {
 					case EBADF:
 						throw FileHandleError.error_bad_fh;
 					case EINTR:
-						throw FileHandleError.error_interrupted;
+						continue
 					case EINVAL:
 						throw FileHandleError.error_invalid;
 					case EIO:
@@ -34,13 +34,27 @@ extension Int32 {
 		} while true
 	}
 
+	/// writes the data provided into self (represented as a system file handle).
+	/// - parameter dataToWrite: the data to write into the file handle.
+	/// - returns: the number of bytes written.
+	/// - throws: FileHandleError.error_wouldblock, FileHandleError.error_bad_fh, FileHandleError.error_invalid, FileHandleError.error_io, FileHandleError.error_nospace, FileHandleError.error_unknown.
+	/// - note: error conditions for EAGAIN and EINTR are handled internally.
 	public func writeFH(_ dataToWrite:borrowing [UInt8]) throws -> size_t {
 		return try dataToWrite.withUnsafeBytes { (dataBuffer:UnsafeRawBufferPointer) in
 			try writeFH(from:dataBuffer.baseAddress!.assumingMemoryBound(to:UInt8.self), size: dataBuffer.count)
 		}
 	}
-	/// writes data from the buffer provided into self (represented as a system file handle).
-	public func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws -> size_t {
+
+	/// writes the data provided into self (represented as a system file handle).
+	/// - parameter dataToWrite: the data to write into the file handle.
+	/// - returns: the number of bytes written.
+	/// - throws: FileHandleError.error_wouldblock, FileHandleError.error_bad_fh, FileHandleError.error_invalid, FileHandleError.error_io, FileHandleError.error_nospace, FileHandleError.error_unknown.
+	/// - note: error conditions for EAGAIN and EINTR are handled internally.
+	public func writeFH(_ dataToWrite:UnsafeBufferPointer<UInt8>) throws -> size_t {
+		return try writeFH(from:dataToWrite.baseAddress!, size: dataToWrite.count)
+	}
+
+	fileprivate func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws -> size_t {
 		repeat {
 			// write the data to the file handle.
 			let amountWritten = write(self, dataBuffer, writeSize)

@@ -3,7 +3,15 @@ import SwiftSlashContained
 
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
 public final class FIFO<Element, Failure>:@unchecked Sendable {
-
+	public enum YieldResult {
+		/// the yield value was successfully passed into the FIFO
+		case success
+		/// the FIFO was closed, and the yield value was not passed into the FIFO
+		case fifoClosed
+		/// the FIFO was full, and the yield value was not passed into the FIFO
+		case fifoFull
+	}
+	
 	// underlying c implementation
 	private let datachain_primitive_ptr:UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>
 	
@@ -27,7 +35,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 	}
 
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
-	public borrowing func yield(_ element:consuming Element) {
+	@discardableResult public borrowing func yield(_ element:consuming Element) -> YieldResult {
 		let um = Unmanaged.passRetained(Contained(element))
 		#if DEBUG
 		var i:UInt8 = 0
@@ -44,17 +52,17 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 			switch _cswiftslash_fifo_pass(datachain_primitive_ptr, um.toOpaque()) {
 				// success return
 				case 0:
-					return
+					return .success
 
 				// the FIFO is closed
 				case -1:
 					_ = um.takeRetainedValue()
-					return
+					return .fifoClosed
 
 				// the FIFO is full
 				case -2:
 					_ = um.takeRetainedValue()
-					return
+					return .fifoFull
 
 				// try again
 				case 1:
@@ -62,7 +70,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 				default:
 					fatalError("swiftslash - unexpected return value from _cwskit_dc_pass - \(#file):\(#line)")
 			}
-		} while Task.isCancelled == false
+		} while true
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
@@ -96,6 +104,11 @@ extension FIFO where Failure == Swift.Error {
 
 // async consumer basics
 extension FIFO {
+	/// specifies the action to take when a task is cancelled while consuming the FIFO.
+	public enum WhenConsumingTaskCancelled {
+		case noAction
+		case finish
+	}
 	/// call this function to become the exclusive consumer for a FIFO. the returned object will be used to consume the FIFO.
 	public consuming func makeAsyncConsumer() -> AsyncConsumer {
 		return AsyncConsumer(self)
@@ -110,6 +123,7 @@ extension FIFO {
 	public struct Consumer {
 		private let fifo:FIFO
 		private let shouldBlock:Bool
+
 		internal init(_ fifo:consuming FIFO, shouldBlock:Bool) {
 			self.fifo = fifo
 			self.shouldBlock = shouldBlock
@@ -214,6 +228,21 @@ extension FIFO.Consumer where Failure == Never {
 
 extension FIFO.AsyncConsumer where Failure == Never {
 	public borrowing func next() async -> Element? {
+		return await next(whenTaskCancelled:.noAction)
+	}
+	public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async -> Element? {
+		switch cancelAction {
+			case .noAction:
+				return await _next()
+			case .finish:
+				return await withTaskCancellationHandler(operation: {
+					await _next()
+				}, onCancel: { [f = fifo] in
+					f.finish()
+				})
+		}
+	}
+	fileprivate borrowing func _next() async -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return await withUnsafeContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {
@@ -239,6 +268,21 @@ extension FIFO.AsyncConsumer where Failure == Never {
 
 extension FIFO.AsyncConsumer where Failure == Swift.Error {
 	public borrowing func next() async throws -> Element? {
+		return try await next(whenTaskCancelled:.noAction)
+	}
+	public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async throws -> Element? {
+		switch cancelAction {
+			case .noAction:
+				return try await _next()
+			case .finish:
+				return try await withTaskCancellationHandler(operation: {
+					try await _next()
+				}, onCancel: { [f = fifo] in
+					f.finish()
+				})
+		}
+	}
+	fileprivate borrowing func _next() async throws -> Element? {
 		var pointer:_cswiftslash_ptr_t? = nil
 		return try await withUnsafeThrowingContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			switch _cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {

@@ -1,4 +1,6 @@
 import SwiftSlashNAsyncStream
+import SwiftSlashFIFO
+import SwiftSlashFuture
 
 /// represents a uni-directional stream of data that can exist between a parent process and a child process.
 public struct DataChannel {
@@ -25,7 +27,7 @@ public struct DataChannel {
 			}
 
 			public borrowing func next() async -> [UInt8]? {
-				return await nasync.next()
+				return await nasync.next(whenTaskCancelled:.finish)
 			}
 		}
 
@@ -42,7 +44,7 @@ public struct DataChannel {
 		}
 	}
 
-	// used for writing
+	// used for writing data that a running process reads.
 	public struct ChildReadParentWrite {
 
 		/// specifies a configuration for an outbound data channel.
@@ -54,34 +56,20 @@ public struct DataChannel {
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		private let nasync:NAsyncStream<[UInt8], Never>
-
-		public typealias AsyncIterator = NAsyncStream<[UInt8], Never>.AsyncConsumer
+		private let fifo:FIFO<([UInt8], Future<Void>?), Never>
 
 		// create a new outbound data channel
-		public borrowing func yield(_ element:consuming [UInt8]) {
-			nasync.yield(element)
+		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void>?) {
+			fifo.yield((element, future))
 		}
 
 		// finish writing to the channel
 		public borrowing func finish() {
-			nasync.finish()
+			fifo.finish()
 		}
 
-		internal borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
-			return nasync.makeAsyncConsumer()
+		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void>?), Never>.AsyncConsumer {
+			return fifo.makeAsyncConsumer()
 		}
-	}
-}
-
-public struct AsyncNonthrowingIterator:AsyncIteratorProtocol {
-	private let nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer
-
-	internal init(nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer) {
-		self.nasync = nasync
-	}
-
-	public borrowing func next() async -> [UInt8]? {
-		return await nasync.next()
 	}
 }

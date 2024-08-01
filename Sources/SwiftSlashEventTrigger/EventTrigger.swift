@@ -14,10 +14,10 @@ internal let currentPlatformET = MacOSImpl.self
 public struct EventTrigger {
 
 	/// the type of registration that is being made to the event trigger.
-	public typealias ReaderFIFO = FIFO<size_t, Never>
+	public typealias ReaderFIFO = FIFO<size_t, Swift.Error>
 
 	/// the type of registration that is being made to the event trigger.
-	public typealias WriterFIFO = FIFO<Void, Never>
+	public typealias WriterFIFO = FIFO<Void, Swift.Error>
 
 	/// the primitive that is used to handle the event trigger.
 	private let prim:Int32?
@@ -43,6 +43,18 @@ public struct EventTrigger {
 	public borrowing func register(writer:Int32, _ fifo:WriterFIFO) throws {
 		try currentPlatformET.register(prim!, writer:writer)
 		regStream.yield(.writer(writer, fifo))
+	}
+
+	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
+	public borrowing func deregister(reader:Int32) throws {
+		try currentPlatformET.deregister(prim!, reader:reader)
+		regStream.yield(.reader(reader, nil))
+	}
+
+	/// deregisters a file handle. the handle must be of writer variant. if the handle is not of writer variant, behavior is undefined.
+	public borrowing func deregister(writer:Int32) throws {
+		try currentPlatformET.deregister(prim!, writer:writer)
+		regStream.yield(.writer(writer, nil))
 	}
 }
 
