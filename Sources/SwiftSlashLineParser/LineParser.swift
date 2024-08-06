@@ -107,7 +107,7 @@ public struct LineParser:~Copyable {
 	}
 
 	/// handles the given data.
-	///	- parameter data: the data to handle.
+	///	- parameter data: the data to pass into the line parser.
 	public mutating func handle(_ data:consuming [UInt8]) {
 		return data.withUnsafeBufferPointer({ datBuff in
 			return intake(bytes:datBuff.count, { wptr in

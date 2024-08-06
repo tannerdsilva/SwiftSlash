@@ -48,7 +48,7 @@ internal struct ProcessLogistics {
 		// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
 		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
 
-		internal borrowing func expose<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
+		internal borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
 			// declare the base array for the arguments. the last element of the array is nil.
 			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:args.count + 1)
 			defer {
@@ -65,13 +65,11 @@ internal struct ProcessLogistics {
 					free(baseArray[i])
 				}
 			}
-
 			return try aHandler(baseArray)
 		}
 	}
 
 	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws {
-
 		var writePipes = [Int32:PosixPipe]()
 		var readPipes = [Int32:PosixPipe]()
 		var nullPipes = Set<PosixPipe>()
