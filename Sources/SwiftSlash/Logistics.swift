@@ -105,9 +105,13 @@ internal struct ProcessLogistics {
 							try! et.deregister(writer:fh)
 							wFH.closeFileHandle()
 						}
+
 						let userDataConsume = userDataStream.makeAsyncConsumer()
+
+						// represents the main work that coordinates the written channel with the system file handle
 						func mainWork(_ currentStep:inout WriteStepper?) async throws {
 							defer {
+								// the user data stream should not store any more values after the main work returns.
 								userDataStream.finish()
 							}
 							// main system event loop for the file handle.
@@ -146,6 +150,7 @@ internal struct ProcessLogistics {
 							}
 						}
 
+						// the user data stream may be holding futures that need to be closed. this function will handle remaining futures from the user data stream.
 						func flushRemainingFuturesFromUserStream(failure error:Swift.Error) async {
 							// implied task already cancelled.
 							while let (_, future) = await userDataConsume.next(whenTaskCancelled:.noAction) {
@@ -155,27 +160,29 @@ internal struct ProcessLogistics {
 							}
 						}
 
+
 						var currentStep:WriteStepper? = nil
 						do {
 							// do the main work.
 							try await mainWork(&currentStep)
+
+							// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
 							if let currentStep = currentStep {
 								try? currentStep.completeFuture?.setFailure(DataChannelClosedError())
 							}
-							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
 						} catch let error {
+							// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
 							if let currentStep = currentStep {
 								try? currentStep.completeFuture?.setFailure(error)
 							}
-							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
 						}
+						await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
 						
 					}
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
 					writePipes[fh] = newPipe
 					nullPipes.insert(newPipe)
-
 					break;
 			}
 		}
@@ -184,20 +191,34 @@ internal struct ProcessLogistics {
 		for (fh, config) in package.readables {
 			switch config {
 				case .active(let channel, let sep):
+
+					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildWriting()
 					let readerFIFO = EventTrigger.ReaderFIFO()
 					try eventTrigger.register(reader:newPipe.reading, readerFIFO)
 
 					// close the writing end of the pipe after fork.
 					readPipes[fh] = newPipe
-					taskGroup.addTask { [userDataStream = channel, systemReadEvents = readerFIFO.makeAsyncConsumer(), rFH = newPipe.reading, et = eventTrigger] in
+					taskGroup.addTask { [
+						/// the user data stream that we will pass the parsed data into. the main purpose of this task is to execute the read when the system indicates it is time to do so. the data is then passed into a line parser that is configured to the users specifications. the resulting output of the line parser will go through this channel.
+						userDataStream = channel,
+						/// this is the FIFO that the system uses to signal to this task that it is time to read from the file handle.
+						systemReadEvents = readerFIFO.makeAsyncConsumer(),
+						/// this is the file handle that we will read from.
+						rFH = newPipe.reading,
+						/// this is the event trigger that we will use for register and deregister
+						et = eventTrigger
+					] in
+						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
 						var lineParser = LineParser(separator:sep, nasync:userDataStream.nasync)
 						defer {
+							// file handle should not remain registered after this task is complete.
 							try! et.deregister(reader:fh)
+							// this is the only place where action happens with the file handle, 
 							rFH.closeFileHandle()
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
-						while let readableSize = try await systemReadEvents.next(whenTaskCancelled:.finish) {
+						readLoop: while let readableSize = try await systemReadEvents.next(whenTaskCancelled:.finish) {
 							do {
 								// prepare the lineparser to intake the data.
 								try lineParser.intake(bytes:readableSize) { wptr in
@@ -205,7 +226,7 @@ internal struct ProcessLogistics {
 									return try rFH.readFH(into:wptr, size:readableSize)
 								}
 							} catch FileHandleError.error_wouldblock {
-								continue
+								continue readLoop
 							}
 						}
 					}

@@ -4,6 +4,7 @@ import SwiftSlashNAsyncStream
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
 public struct LineParser:~Copyable {
+	private static let defaultBufferSize:size_t = 1024
 
 	/// the output mode of the line parser.
 	internal enum Output {
@@ -13,104 +14,134 @@ public struct LineParser:~Copyable {
 		case nasync(NAsyncStream<[UInt8], Never>)
 	}
 
-	/// the line parser.
-	private let lp:UnsafeMutablePointer<_cswiftslash_lineparser_t>
-	/// the output mode of the line parser.
+	/// the line pattern to match
+	private let match:[UInt8]
+	/// the line pattern length
+	private var matched:size_t = 0
+
+	/// the intake buffer for the data
+	private var intakebuff:UnsafeMutablePointer<UInt8>
+	/// the intake buffer length
+	private var intakebufflen:size_t
+
+	/// the amount of bytes that have already been processed within the occupied space of the intake buffer
+	private var i:size_t = 0
+	/// the amount of bytes that are occupied within the intake buffer space
+	private var occupied:size_t = 0
+
+	/// the output mode of the line parser
 	private let outMode:Output
 
+	/// primary initializer for the line parser. initializes with a separator and the output handler for the parsed lines.
+	private init(separator:consuming [UInt8], output:consuming Output) {
+		match = separator
+		intakebuff = UnsafeMutablePointer<UInt8>.allocate(capacity:Self.defaultBufferSize)
+		intakebufflen = Self.defaultBufferSize
+		outMode = output
+	}
+	
+	/// initializes the line parser with a separator and a nasyncstream to yield the parsed lines to.
 	public init(separator configuration:consuming [UInt8], nasync output:consuming NAsyncStream<[UInt8], Never>) {
-		(lp, outMode) = configuration.withUnsafeBufferPointer { cPtr in 
-			switch cPtr.count {
-			case 0:
-				let lp = UnsafeMutablePointer<_cswiftslash_lineparser_t>.allocate(capacity:1)
-				lp.initialize(to:_cswiftslash_lineparser_init(nil, 0))
-				return (lp, Output.nasync(output))
-			default:
-				let lp = UnsafeMutablePointer<_cswiftslash_lineparser_t>.allocate(capacity:1)
-				lp.initialize(to:_cswiftslash_lineparser_init(cPtr.baseAddress!, UInt8(cPtr.count)))
-				return (lp, Output.nasync(output))
-			}
-		}
+		self.init(separator:configuration, output:.nasync(output))
 	}
 
+	/// initializes the line parser with a separator and a handler to handle the parsed lines.
 	public init(separator configuration:consuming [UInt8], handler output:consuming @escaping ([UInt8]?) -> Void) {
-		(lp, outMode) = configuration.withUnsafeBufferPointer { cPtr in 
-			switch cPtr.count {
-			case 0:
-				let lp = UnsafeMutablePointer<_cswiftslash_lineparser_t>.allocate(capacity:1)
-				lp.initialize(to:_cswiftslash_lineparser_init(nil, 0))
-				return (lp, Output.handler(output))
-			default:
-				let lp = UnsafeMutablePointer<_cswiftslash_lineparser_t>.allocate(capacity:1)
-				lp.initialize(to:_cswiftslash_lineparser_init(cPtr.baseAddress!, UInt8(cPtr.count)))
-				return (lp, Output.handler(output))
+		self.init(separator:configuration, output:.handler(output))
+	}
+
+	/// resizes the intake buffer to double its current size.
+	private mutating func resizeUp() {
+		intakebufflen = intakebufflen * 2
+		intakebuff = UnsafeMutablePointer<UInt8>.allocate(capacity:intakebufflen)
+	}
+
+	/// prepares the line parser such that it can accomodate up to the given amount of bytes.
+	private mutating func intakePrepare(_ bytes:size_t) -> UnsafeMutablePointer<UInt8> {
+		while occupied + bytes > intakebufflen {
+			resizeUp()
+		}
+		return intakebuff + occupied
+	}
+
+	/// processes the intake buffer.
+	private mutating func process() {
+		var start = 0
+		if match.isEmpty == false {
+			while i < occupied {
+				if match[matched] == intakebuff[i] {
+					matched += 1
+					if matched == match.count {
+						let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff + start, count: i - start - matched + 1))
+						switch outMode {
+						case .handler(let handler):
+							handler(line)
+						case .nasync(let nas):
+							nas.yield(line)
+						}
+						start = i + 1
+						matched = 0
+					}
+				} else {
+					matched = 0
+				}
+				i += 1
 			}
+			if start > 0 {
+				occupied -= start
+				memmove(intakebuff, intakebuff + start, occupied)
+			}
+			i = 0
 		}
 	}
 
+	/// intakes the given amount of bytes, and processes them with the given handler.
+	///	- parameter bytes: the amount of bytes to intake.
+	///	- parameter handler: the handler to process the bytes.
+	/// - throws: any error that the handler may throw.
 	public mutating func intake(bytes:size_t, _ handler:(UnsafeMutablePointer<UInt8>) throws -> size_t) rethrows {
-		try withUnsafePointer(to:outMode) { omPtr in
-			let wptr = _cswiftslash_lineparser_intake_prepare(lp, bytes)
-			let length = try handler(wptr)
-			_cswiftslash_lineparser_intake_apply(lp, length)
-			_cswiftslash_lineparser_intake_process(lp, { d, length, om in
-				let line = Array<UInt8>(UnsafeBufferPointer(start:d, count:length))
-				switch om.assumingMemoryBound(to:Output.self).pointee {
-				case .handler(let handler):
-					handler(line)
-				case .nasync(let nas):
-					nas.yield(line)
-				}
-			}, omPtr)
-		}
+		let wptr = intakePrepare(bytes)
+		let consumed = try handler(wptr)
+		occupied += consumed
+		process()
 	}
 
 	/// handles the given data.
 	///	- parameter data: the data to handle.
 	public mutating func handle(_ data:consuming [UInt8]) {
-		withUnsafePointer(to:outMode) { omPtr in
-			data.withUnsafeBufferPointer { buffer in
-				let wptr = _cswiftslash_lineparser_intake_prepare(lp, buffer.count)
-				memcpy(wptr, buffer.baseAddress!, buffer.count)
-				_cswiftslash_lineparser_intake_apply(lp, buffer.count)
-				_cswiftslash_lineparser_intake_process(lp, { d, length, om in
-					let line = Array<UInt8>(unsafeUninitializedCapacity: length, initializingWith: { buffer, count in
-						memcpy(buffer.baseAddress!, d, length)
-						count = length
-					})
-					switch om.assumingMemoryBound(to:Output.self).pointee {
-					case .handler(let handler):
-						handler(line)
-					case .nasync(let nas):
-						nas.yield(line)
-					}
-				}, omPtr)
+		return data.withUnsafeBufferPointer({ datBuff in
+			return intake(bytes:datBuff.count, { wptr in
+				memcpy(wptr, datBuff.baseAddress!, datBuff.count)
+				return datBuff.count
+			})
+		})
+	}
+
+	public consuming func finish() {
+		if occupied > 0 {
+			let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff, count: occupied))
+			switch outMode {
+			case .handler(let handler):
+				handler(line)
+			case .nasync(let nas):
+				nas.yield(line)
 			}
 		}
 	}
 
-	/// finishes the line parser. after calling this function, the line parser will not accept any more data. any attempts to call `handle(_:)` will result in undefined behavior.
-	/// - parameter discardingBufferedData: whether or not to discard any buffered data. if this is set to `true`, any buffered data will be discarded. if this is set to `false`, any buffered data will be passed to the configured output.
-	deinit {
-		withUnsafePointer(to:outMode) { om in
-			_cswiftslash_lineparser_close(lp, { data, length, om in
-				let line = [UInt8](UnsafeBufferPointer(start:data, count:length))
-				switch om.assumingMemoryBound(to:Output.self).pointee {
-				case .handler(let handler):
-					handler(line)
-				case .nasync(let nas):
-					nas.yield(line)
-				}
-			}, om)
-			switch om.pointee {
-			case .handler(let h):
-				h(nil)
-				break
+	public consuming func finishDataloss() {
+		if occupied > 0 {
+			let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff, count: occupied))
+			switch outMode {
+			case .handler(let handler):
+				handler(line)
 			case .nasync(let nas):
-				nas.finish()
+				nas.yield(line)
 			}
 		}
-		lp.deinitialize(count:1)
-		lp.deallocate()
+	}
+
+	deinit {
+		intakebuff.deallocate()
 	}
 }
