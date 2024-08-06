@@ -111,7 +111,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 
 	internal func pthreadWork() throws -> Void {
 		// break by pthread cancel
-		while true {
+		repeat {
 
 			// wait for events
 			let kqueueResult = kevent(prim, nil, 0, eventBuffer, eventBufferSize, nil)
@@ -174,7 +174,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 				default:
 					fatalError("eventtrigger error - this should never happen")
 			}
-		}
+		} while true
 	}
 
 	internal static func newPrimitive() -> EventTriggerHandle {
