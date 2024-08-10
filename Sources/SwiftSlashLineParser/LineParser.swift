@@ -1,10 +1,82 @@
 import __cswiftslash
 import SwiftSlashNAsyncStream
 
+/// the part of the line parser that handles the byte buffer logistics. helps reduce data copying and excessive memory allocation.
+fileprivate struct BufferLogistics:~Copyable {
+	/// the size of buffer to allocate on initialization.
+	private static let defaultBufferSize:size_t = 256
+	/// the intake buffer for the data.
+	private var intakebuff:UnsafeMutableBufferPointer<UInt8> = UnsafeMutableBufferPointer<UInt8>.allocate(capacity:defaultBufferSize)
+	/// the space in the buffer that is occupied.
+	private var occupied:size_t = 0
+
+	/// intakes the given amount of bytes.
+	///	- parameter bytes: the amount of bytes to intake.
+	///	- parameter writeHandler: the handler to write the bytes to the buffer after the space has been prepared.
+	/// - throws: any error that the handler may throw. if the handler is thrown, any bytes written to the buffer will be discarded.
+	fileprivate mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows {
+		// prepare the buffer to accept the specified number of bytes
+		let wptr: UnsafeMutableBufferPointer<UInt8> = intakePrepare(addingBytes:bytes)
+		let written = try writeHandler(wptr)
+		occupied += written
+	}
+
+	fileprivate borrowing func access<R>(_ accessHandler:(UnsafeBufferPointer<UInt8>) throws -> R) rethrows -> R {
+		return try accessHandler(UnsafeBufferPointer<UInt8>(start:intakebuff.baseAddress, count:occupied))
+	}
+
+	fileprivate mutating func rebase(offset:size_t) {
+		occupied -= offset
+		if occupied > 0 {
+			memcpy(intakebuff.baseAddress, intakebuff.baseAddress! + offset, occupied)
+		}
+	}
+
+	/// prepare the buffer to accept the specified number of bytes.
+	/// - returns: the region of memory that can accomodate the specified number of bytes.
+	/// - parameter newByteAddition: the number of bytes to accomodate.
+	private mutating func intakePrepare(addingBytes newByteAddition:size_t) -> UnsafeMutableBufferPointer<UInt8> {
+		// if the buffer does not have enough space to accomodate the new bytes, resize so that there is room for the specified number of bytes to occupy the buffer.
+		if (occupied + newByteAddition) > intakebuff.count {
+			resizeUp(accomodate:occupied + newByteAddition)
+		}
+
+		#if DEBUG
+		// this should never happen but throwing this in here for good measure
+		guard occupied + newByteAddition <= intakebuff.count else {
+			fatalError("intake buffer overflow. \(occupied) + \(newByteAddition) > \(intakebuff.count)")
+		}
+		#endif
+
+		return UnsafeMutableBufferPointer<UInt8>(start:intakebuff.baseAddress! + occupied, count:intakebuff.count - occupied)
+	}
+
+	/// resizes the intake buffer to accomodate a specified amount of bytes.
+	private mutating func resizeUp(accomodate:size_t) {
+		#if DEBUG
+		// this should never happen but its here to check things when in debug mode for good measure.
+		guard accomodate > 0 else {
+			fatalError("cannot resize intake buffer to accomodate zero bytes.")
+		}
+		#endif
+
+		let targetSize = size_t(ceil(Double(accomodate) / 8) * 8) * 2
+		let newBuffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity:targetSize)
+		if occupied > 0 {
+			memcpy(newBuffer.baseAddress, intakebuff.baseAddress, occupied)
+		}
+		intakebuff.deallocate()
+		intakebuff = newBuffer
+	}
+
+	deinit {
+		intakebuff.deallocate()
+	}
+}
+
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
 public struct LineParser:~Copyable {
-	private static let defaultBufferSize:size_t = 1024
 
 	/// the output mode of the line parser.
 	internal enum Output {
@@ -14,29 +86,59 @@ public struct LineParser:~Copyable {
 		case nasync(NAsyncStream<[UInt8], Never>)
 	}
 
-	/// the line pattern to match
-	private let match:[UInt8]
-	/// the line pattern length
-	private var matched:size_t = 0
+	/// contains the variables relevant to separating individual lines of the byte stream.
+	internal struct SeparatorInfo {
+		private let match:[UInt8]
+		private var matched:size_t = 0
+		internal init(exactBytes:consuming [UInt8]) {
+			match = exactBytes
+		}
 
-	/// the intake buffer for the data
-	private var intakebuff:UnsafeMutablePointer<UInt8>
-	/// the intake buffer length
-	private var intakebufflen:size_t
+		// returns true if the separator is zero length
+		internal borrowing func isEmpty() -> Bool {
+			return match.count == 0
+		}
 
-	/// the amount of bytes that have already been processed within the occupied space of the intake buffer
-	private var i:size_t = 0
-	/// the amount of bytes that are occupied within the intake buffer space
-	private var occupied:size_t = 0
+		// returns true if the current byte matches the current matching index of the pattern
+		internal borrowing func doesMatch(_ byte:UInt8) -> Bool {
+			#if DEBUG
+			guard match.count > 0 else {
+				fatalError("this should never happen")
+			}
+			#endif
+			return match[matched] == byte
+		}
+
+		/// steps the matcher.
+		internal mutating func step(isComplete:inout Bool) {
+			matched += 1
+			if matched == match.count {
+				isComplete = true
+			} else {
+				isComplete = false
+			}
+		}
+
+		internal mutating func reset() {
+			matched = 0
+		}
+	}
+
+	/// defines the separator that a given instance is searching for. also helps manage the state of this 'seek' exercise.
+	private var separator:SeparatorInfo
+
+	/// primary data buffer for the line parser to process and intake data.
+	private var dataLogistics = BufferLogistics()
+
+	/// the intake buffer pointer
+	private var stepper:size_t = 0
 
 	/// the output mode of the line parser
 	private let outMode:Output
 
 	/// primary initializer for the line parser. initializes with a separator and the output handler for the parsed lines.
-	private init(separator:consuming [UInt8], output:consuming Output) {
-		match = separator
-		intakebuff = UnsafeMutablePointer<UInt8>.allocate(capacity:Self.defaultBufferSize)
-		intakebufflen = Self.defaultBufferSize
+	private init(separator lineSep:consuming [UInt8], output:consuming Output) {
+		separator = SeparatorInfo(exactBytes:lineSep)
 		outMode = output
 	}
 	
@@ -50,60 +152,74 @@ public struct LineParser:~Copyable {
 		self.init(separator:configuration, output:.handler(output))
 	}
 
-	/// resizes the intake buffer to double its current size.
-	private mutating func resizeUp() {
-		intakebufflen = intakebufflen * 2
-		intakebuff = UnsafeMutablePointer<UInt8>.allocate(capacity:intakebufflen)
-	}
-
-	/// prepares the line parser such that it can accomodate up to the given amount of bytes.
-	private mutating func intakePrepare(_ bytes:size_t) -> UnsafeMutablePointer<UInt8> {
-		while occupied + bytes > intakebufflen {
-			resizeUp()
-		}
-		return intakebuff + occupied
-	}
-
-	/// processes the intake buffer.
-	private mutating func process() {
-		var start = 0
-		if match.isEmpty == false {
-			while i < occupied {
-				if match[matched] == intakebuff[i] {
-					matched += 1
-					if matched == match.count {
-						let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff + start, count: i - start - matched + 1))
-						switch outMode {
-						case .handler(let handler):
-							handler(line)
-						case .nasync(let nas):
-							nas.yield(line)
-						}
-						start = i + 1
-						matched = 0
+	/// parses through the storage buffer up to the completion of the line separator.
+	private static func processLine(separatorInfo:inout SeparatorInfo, storageBuffer:UnsafeBufferPointer<UInt8>, stepper:inout size_t, outputMode:Output) -> UnsafePointer<UInt8>? {
+		stepLoop: while stepper < storageBuffer.count {
+			if separatorInfo.doesMatch(storageBuffer[stepper]) {
+				print("PROCESSLINE stepper \(stepper) - stepping through next byte \(String(describing:storageBuffer.baseAddress![stepper])) ( MATCHED )")
+				var isMatchComplete = false
+				separatorInfo.step(isComplete: &isMatchComplete)
+				if isMatchComplete {
+					separatorInfo.reset()
+					let matchedLine = Array<UInt8>(UnsafeBufferPointer(start:storageBuffer.baseAddress!, count:stepper))
+					switch outputMode {
+					case .handler(let handler):
+						handler(matchedLine)
+					case .nasync(let nas):
+						nas.yield(matchedLine)
 					}
-				} else {
-					matched = 0
+					defer {
+						stepper = 0
+					}
+					return storageBuffer.baseAddress! + stepper + 1
 				}
-				i += 1
+			} else {
+				print("PROCESSLINE stepper \(stepper) - stepping through next byte \(String(describing:storageBuffer.baseAddress![stepper])) ( NO MATCH )")
+				separatorInfo.reset()
 			}
-			if start > 0 {
-				occupied -= start
-				memmove(intakebuff, intakebuff + start, occupied)
-			}
-			i = 0
+			stepper += 1
 		}
+		return nil
 	}
 
 	/// intakes the given amount of bytes, and processes them with the given handler.
 	///	- parameter bytes: the amount of bytes to intake.
-	///	- parameter handler: the handler to process the bytes.
+	///	- parameter writeHandler: the handler to write the bytes to the buffer.
 	/// - throws: any error that the handler may throw.
-	public mutating func intake(bytes:size_t, _ handler:(UnsafeMutablePointer<UInt8>) throws -> size_t) rethrows {
-		let wptr = intakePrepare(bytes)
-		let consumed = try handler(wptr)
-		occupied += consumed
-		process()
+	public mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows {
+		try dataLogistics.intake(bytes:bytes, writeHandler)
+		var alreadyFired:Int = 0
+		defer {
+			if alreadyFired != 0 {
+				dataLogistics.rebase(offset:alreadyFired)
+				stepper -= alreadyFired
+			}
+		}
+		if separator.isEmpty() == false {
+			dataLogistics.access { buff in
+				var currentPtr = buff.baseAddress!
+				var currentCount = buff.count
+				seekLoop: while currentPtr < (buff.baseAddress! + buff.count) {
+					if let newLineCompleted = Self.processLine(separatorInfo:&separator, storageBuffer:UnsafeBufferPointer(start:currentPtr, count:currentCount), stepper:&stepper, outputMode:outMode) {
+						currentCount -= (newLineCompleted - currentPtr)
+						currentPtr = newLineCompleted
+					} else {
+						break seekLoop
+					}
+				}
+			}
+		} else {
+			dataLogistics.access { buff in
+				let data = Array<UInt8>(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
+				switch outMode {
+				case .handler(let handler):
+					handler(data)
+				case .nasync(let nas):
+					nas.yield(data)
+				}
+				alreadyFired = (buff.baseAddress! + buff.count) - buff.baseAddress!
+			}
+		}
 	}
 
 	/// handles the given data.
@@ -111,37 +227,50 @@ public struct LineParser:~Copyable {
 	public mutating func handle(_ data:consuming [UInt8]) {
 		return data.withUnsafeBufferPointer({ datBuff in
 			return intake(bytes:datBuff.count, { wptr in
-				memcpy(wptr, datBuff.baseAddress!, datBuff.count)
+				memcpy(wptr.baseAddress, datBuff.baseAddress!, datBuff.count)
 				return datBuff.count
 			})
 		})
 	}
 
 	public consuming func finish() {
-		if occupied > 0 {
-			let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff, count: occupied))
-			switch outMode {
-			case .handler(let handler):
-				handler(line)
-			case .nasync(let nas):
-				nas.yield(line)
+		dataLogistics.access { buff in
+			if buff.count > 0 {
+				let line = Array<UInt8>(UnsafeBufferPointer(start:buff.baseAddress, count:buff.count))
+				switch outMode {
+				case .handler(let handler):
+					handler(line)
+					handler(nil)
+				case .nasync(let nas):
+					nas.yield(line)
+					nas.finish()
+				}
+			} else {
+				switch outMode {
+				case .handler(let handler):
+					handler(nil)
+				case .nasync(let nas):
+					nas.finish()
+				}
 			}
 		}
 	}
 
 	public consuming func finishDataloss() {
-		if occupied > 0 {
-			let line = Array<UInt8>(UnsafeBufferPointer(start: intakebuff, count: occupied))
-			switch outMode {
+		switch outMode {
 			case .handler(let handler):
-				handler(line)
+				handler(nil)
 			case .nasync(let nas):
-				nas.yield(line)
-			}
+				nas.finish()
 		}
 	}
 
 	deinit {
-		intakebuff.deallocate()
+		switch outMode {
+			case .handler(let handler):
+				handler(nil)
+			case .nasync(let nas):
+				nas.finish()
+		}
 	}
 }

@@ -8,6 +8,7 @@ public actor ProcessInterface {
 	
 	/// this represents the state of a process that is being managed by the ProcessInterface actor.
 	public enum State:Equatable {
+		/// the process interface is initialized 
 		case initialized
 		case launching
 		case running(pid_t)
@@ -34,10 +35,10 @@ internal struct ProcessLogistics {
 		internal let exe:Path
 
 		// represents the arguments that will be passed to the child process.
-		internal let args:[String]
+		internal let arguments:[String]
 
 		// represents the working directory of the child process when it is launched.
-		internal let wd:Path
+		internal let workingDirectory:Path
 
 		// represents the environment variables that will be assigned to the child process.
 		internal let env:[String:String]
@@ -50,18 +51,18 @@ internal struct ProcessLogistics {
 
 		internal borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
 			// declare the base array for the arguments. the last element of the array is nil.
-			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:args.count + 1)
+			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:arguments.count + 1)
 			defer {
 				baseArray.deallocate()
 			}
 			// populate the base array with the arguments.
-			for (i, arg) in args.enumerated() {
+			for (i, arg) in arguments.enumerated() {
 				baseArray[i] = strdup(arg)
 			}
 			// cap the base array with nil.
-			baseArray[args.count] = nil
+			baseArray[arguments.count] = nil
 			defer {
-				for i in 0..<args.count {
+				for i in 0..<arguments.count {
 					free(baseArray[i])
 				}
 			}
@@ -69,7 +70,7 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
 		var writePipes = [Int32:PosixPipe]()
 		var readPipes = [Int32:PosixPipe]()
 		var nullPipes = Set<PosixPipe>()
@@ -158,7 +159,6 @@ internal struct ProcessLogistics {
 							}
 						}
 
-
 						var currentStep:WriteStepper? = nil
 						do {
 							// do the main work.
@@ -175,7 +175,6 @@ internal struct ProcessLogistics {
 							}
 						}
 						await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
-						
 					}
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
@@ -221,7 +220,7 @@ internal struct ProcessLogistics {
 								// prepare the lineparser to intake the data.
 								try lineParser.intake(bytes:readableSize) { wptr in
 									// read the data directly from the handle to the lineparser.
-									return try rFH.readFH(into:wptr, size:readableSize)
+									return try rFH.readFH(into:wptr.baseAddress!, size:readableSize)
 								}
 							} catch FileHandleError.error_wouldblock {
 								continue readLoop
@@ -233,14 +232,45 @@ internal struct ProcessLogistics {
 					let newPipe = try PosixPipe.createNull()
 					readPipes[fh] = newPipe
 					nullPipes.insert(newPipe)
-
 					break;
 			}
 		}
 
+		// launch the application
+		let launchedPID = try package.exposeArguments({ argumentArr in
+			return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
+		})
 
+		// now that the child process is launched, we can close the file handles that are not intended for this process to use.
+		
+		// handle the write pipes
+		for (_, possibleEnabledWriter) in writePipes {
+			if nullPipes.contains(possibleEnabledWriter) == false {
+				// the user configured this pipe to be "enabled" so we must close the reading end of the pipe
+				possibleEnabledWriter.reading.closeFileHandle()
+			} else {
+				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+				possibleEnabledWriter.writing.closeFileHandle()
+				possibleEnabledWriter.reading.closeFileHandle()
+			}
+		}
+
+		// handle the read pipes
+		for (_, possibleEnabledReader) in readPipes {
+			if nullPipes.contains(possibleEnabledReader) == false {
+				// the user configured this pipe to be "enabled" so we must close the writing end of the pipe
+				possibleEnabledReader.writing.closeFileHandle()
+			} else {
+				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+				possibleEnabledReader.writing.closeFileHandle()
+				possibleEnabledReader.reading.closeFileHandle()
+			}
+		}
+
+		return launchedPID
 	}
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, args:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> pid_t {
+
+	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 
@@ -330,7 +360,7 @@ internal struct ProcessLogistics {
 			}
 			closedir(openFileHandlesPointer)
 
-			_cswiftslash_execvp(path, args)
+			_cswiftslash_execvp(path, arguments)
 			exit(0)
 		}
 

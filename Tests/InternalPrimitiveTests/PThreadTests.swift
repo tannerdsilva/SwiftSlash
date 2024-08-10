@@ -2,7 +2,6 @@ import XCTest
 @testable import SwiftSlash
 import __cswiftslash
 import SwiftSlashPThread
-// import Foundation
 
 fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 	typealias Argument = A
