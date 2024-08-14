@@ -40,19 +40,17 @@ class LineParserTests: XCTestCase {
 	// Test handling data with no separator configuration.
 	func testSingleSeparatorFuzz() {
 		func runNumberOfHandles(number:size_t) {
-			let sep:UInt8 = 10
+			let sep:UInt8 = UInt8.random(in:1..<255)
 			var readLines = [[UInt8]]()
 			var parser = LineParser(separator:[sep], handler: { newLines in
 				if let hasNewLines = newLines {
-					print("got line \(hasNewLines)")
 					readLines.append([UInt8](hasNewLines))
 				}
 			})
 			var writeLines = [String]()
-			for _ in 0..<number {
-				print("ITERATING")
+			for i in 0..<number {
 				let data:[UInt8]
-				switch Bool.random() {
+				switch true {
 					case true:
 						var makeData:[UInt8]
 						buildLoop: repeat {
@@ -62,31 +60,23 @@ class LineParserTests: XCTestCase {
 							}
 							break buildLoop
 						} while true
-						defer {
-							print("EXIT")
-						}
-						parser.handle(makeData + [sep])
 						data = makeData
 					case false:
-						parser.handle([UInt8]([sep]))
 						data = [UInt8]([])
-						print("writing line terminator")
 				}
+				parser.handle(data + [sep])
 				writeLines.append(String(bytes:data, encoding:.utf8)!)
 			}
-			// parser.finish()
-			XCTAssertEqual(readLines.count, number)
-			for (index, line) in readLines.enumerated() {
-				// XCTAssertEqual(line, Array(writeLines[index].utf8))
-			}
+			parser.finish()
+			XCTAssertEqual(readLines, writeLines.map { Array($0.utf8) })
 		}
-		for _ in 0..<1 {
-			runNumberOfHandles(number:2)
+		for _ in 0..<512 {
+			runNumberOfHandles(number:Int.random(in:2..<1024))
 		}
 	}
 
 	// Test handling data with multi-character separator configuration.
-	/*func testHandleDataWithMultiCharacterSeparator() {
+	func testHandleDataWithMultiCharacterSeparator() {
 		var lines = [[UInt8]]()
 		let separator: [UInt8] = Array("--sep--".utf8)
 		var parser = LineParser(separator:separator, handler: { newLines in
@@ -99,12 +89,35 @@ class LineParserTests: XCTestCase {
 		parser.finish()
 		XCTAssertEqual(lines.count, 2)
 		XCTAssertEqual(lines[0], Array("Hello".utf8))
-		XCTAssertEqual(lines[1], Array("World".utf8))
-		fatalError("'\(String(describing:String(bytes: lines[0], encoding: .utf8)))'")
-	}*/
+		XCTAssertEqual(String(bytes:lines[1], encoding:.utf8)!, "World")
+	}
 
-	// // Test handling random-length data with random single-byte separator.
-	/*func testHandleRandomDataWithRandomSingleByteSeparator() {
+	func testRepetitiveMultiCharacterSeparator() {
+		var counter = 0
+		var negCounter = 0
+		let separator: [UInt8] = Array("--sep--".utf8)
+		var parser = LineParser(separator:separator, handler: { newLines in
+			if let hasNewLines = newLines {
+				if hasNewLines.count == 0 {
+					counter += 1
+				} else {
+					XCTAssertEqual(Array("-".utf8), hasNewLines)
+					negCounter += 1
+				}
+			}
+		})
+		let data: [UInt8] = Array("--sep----sep----sep----sep----sep-----sep----sep----sep----sep--".utf8)
+		parser.handle(data)
+		parser.handle(Array("--se".utf8))
+		XCTAssertEqual(counter, 8)
+		parser.handle(Array("p--".utf8))
+		XCTAssertEqual(counter, 9)
+		parser.finish()
+		XCTAssertEqual(negCounter, 1)
+	}
+
+	// Test handling random-length data with random single-byte separator.
+	func testHandleRandomDataWithRandomSingleByteSeparator() {
 		var lines = [[UInt8]]()
 		let separator = String.random(length: 1)
 		var randomStrings = [String]()
@@ -130,16 +143,16 @@ class LineParserTests: XCTestCase {
 			XCTAssertEqual(line, Array(randomStrings[index].utf8))
 		}
 	}
-*/
-	// // Test handling random-length data with random multi-byte separator.
-/*	func testLineParserFuzz() {
+
+	// Test handling random-length data with random multi-byte separator.
+	func testLineParserFuzz() {
 		var lines = [[UInt8]]()
-		let separator = String.random(length: Int.random(in: 1...10))
+		let separator = String.random(length: Int.random(in:8..<16))
 		var randomStrings = [String]()
-		while randomStrings.count < 512 {
-			let thisRandomString = String.random(length: Int.random(in: 1...256))
+		assembleLoop: while randomStrings.count < 512 {
+			let thisRandomString = String.random(length: Int.random(in:256..<1024))
 			guard thisRandomString.contains(separator) == false else {
-				continue
+				continue assembleLoop
 			}
 			randomStrings.append(thisRandomString)
 		}
@@ -153,15 +166,8 @@ class LineParserTests: XCTestCase {
 		let data: [UInt8] = Array(combinedString.utf8)
 		parser.handle(data)
 		parser.finish()
-
-		XCTAssertEqual(lines.count, 512)
-		// return
-		for (index, line) in lines.enumerated() {
-			XCTAssertEqual(line, Array(randomStrings[index].utf8))
-			XCTAssertEqual(line, Array(randomStrings[index].utf8))
-		}
+		XCTAssertEqual(lines, randomStrings.map { Array($0.utf8) })
 	}
-	*/
 }
 
 extension String {

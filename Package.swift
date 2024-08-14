@@ -88,7 +88,8 @@ fileprivate var ssInternalTargets:[Target] = [
 			"SwiftSlashFIFO",
 			"SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
-			"SwiftSlashLineParser"
+			"SwiftSlashLineParser",
+			"SwiftSlashEventTrigger"
 		]
 	),
 ]

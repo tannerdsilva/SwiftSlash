@@ -21,14 +21,18 @@ fileprivate struct BufferLogistics:~Copyable {
 		occupied += written
 	}
 
-	fileprivate borrowing func access<R>(_ accessHandler:(UnsafeBufferPointer<UInt8>) throws -> R) rethrows -> R {
-		return try accessHandler(UnsafeBufferPointer<UInt8>(start:intakebuff.baseAddress, count:occupied))
-	}
-
-	fileprivate mutating func rebase(offset:size_t) {
-		occupied -= offset
-		if occupied > 0 {
-			memcpy(intakebuff.baseAddress, intakebuff.baseAddress! + offset, occupied)
+	fileprivate mutating func process(_ accessHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t?) rethrows {
+		let stride = try accessHandler(UnsafeMutableBufferPointer<UInt8>(start:intakebuff.baseAddress, count:occupied))
+		#if DEBUG
+		if stride != nil {
+			guard stride! <= occupied else {
+				fatalError("this should never happen")
+			}
+		}
+		#endif
+		if stride != nil {
+			occupied -= stride!
+			memmove(intakebuff.baseAddress!, intakebuff.baseAddress! + stride!, occupied)
 		}
 	}
 
@@ -99,28 +103,43 @@ public struct LineParser:~Copyable {
 			return match.count == 0
 		}
 
-		// returns true if the current byte matches the current matching index of the pattern
-		internal borrowing func doesMatch(_ byte:UInt8) -> Bool {
+		/// steps the parser through the matching process.
+		/// - parameter bytePtr: the pointer to the byte to match. this inout parameter is modified to point to the next byte in the buffer.
+		/// - returns: a pointer to the last byte in the line if the line is completed, nil if the data was stepped without matching the separator.
+		internal mutating func stepMatch(_ bytePtr:inout UnsafeMutablePointer<UInt8>) -> UnsafeMutablePointer<UInt8>? {
+			
 			#if DEBUG
 			guard match.count > 0 else {
 				fatalError("this should never happen")
 			}
 			#endif
-			return match[matched] == byte
-		}
-
-		/// steps the matcher.
-		internal mutating func step(isComplete:inout Bool) {
-			matched += 1
-			if matched == match.count {
-				isComplete = true
+			
+			// determine if the match pattern is fully stepped.
+			if bytePtr.pointee == match[matched] {
+				matched += 1
+				if matched == match.count {
+					matched = 0
+					bytePtr += 1
+					return bytePtr - match.count
+				} else {
+					bytePtr += 1
+					return nil
+				}
 			} else {
-				isComplete = false
+				switch matched {
+					case 0:
+						break
+					default:
+						bytePtr -= matched
+						matched = 0
+				}
+				bytePtr += 1
+				return nil
 			}
 		}
 
-		internal mutating func reset() {
-			matched = 0
+		internal borrowing func matchLength() -> size_t {
+			return match.count
 		}
 	}
 
@@ -131,7 +150,7 @@ public struct LineParser:~Copyable {
 	private var dataLogistics = BufferLogistics()
 
 	/// the intake buffer pointer
-	private var stepper:size_t = 0
+	private var existingSeekOffset:size_t = 0
 
 	/// the output mode of the line parser
 	private let outMode:Output
@@ -153,33 +172,26 @@ public struct LineParser:~Copyable {
 	}
 
 	/// parses through the storage buffer up to the completion of the line separator.
-	private static func processLine(separatorInfo:inout SeparatorInfo, storageBuffer:UnsafeBufferPointer<UInt8>, stepper:inout size_t, outputMode:Output) -> UnsafePointer<UInt8>? {
-		stepLoop: while stepper < storageBuffer.count {
-			if separatorInfo.doesMatch(storageBuffer[stepper]) {
-				print("PROCESSLINE stepper \(stepper) - stepping through next byte \(String(describing:storageBuffer.baseAddress![stepper])) ( MATCHED )")
-				var isMatchComplete = false
-				separatorInfo.step(isComplete: &isMatchComplete)
-				if isMatchComplete {
-					separatorInfo.reset()
-					let matchedLine = Array<UInt8>(UnsafeBufferPointer(start:storageBuffer.baseAddress!, count:stepper))
-					switch outputMode {
-					case .handler(let handler):
-						handler(matchedLine)
-					case .nasync(let nas):
-						nas.yield(matchedLine)
-					}
-					defer {
-						stepper = 0
-					}
-					return storageBuffer.baseAddress! + stepper + 1
+	private static func processLine(separatorInfo:inout SeparatorInfo, storageBuffer:UnsafeMutableBufferPointer<UInt8>, existingSeekOffset:inout size_t, outputMode:Output) -> size_t {
+		var seekPointer = storageBuffer.baseAddress! + existingSeekOffset
+		var lineStart = storageBuffer.baseAddress!
+		let overflowPointer = storageBuffer.baseAddress! + storageBuffer.count
+		stepLoop: while seekPointer < overflowPointer {
+			if let newItem = separatorInfo.stepMatch(&seekPointer) {
+				let asBuffer = UnsafeBufferPointer(start:lineStart, count:newItem - lineStart)
+				defer {
+					lineStart = seekPointer
 				}
-			} else {
-				print("PROCESSLINE stepper \(stepper) - stepping through next byte \(String(describing:storageBuffer.baseAddress![stepper])) ( NO MATCH )")
-				separatorInfo.reset()
+				switch outputMode {
+				case .handler(let handler):
+					handler(Array(asBuffer))
+				case .nasync(let nas):
+					nas.yield(Array(asBuffer))
+				}
 			}
-			stepper += 1
 		}
-		return nil
+		existingSeekOffset = seekPointer - lineStart
+		return (lineStart - storageBuffer.baseAddress!)
 	}
 
 	/// intakes the given amount of bytes, and processes them with the given handler.
@@ -188,36 +200,20 @@ public struct LineParser:~Copyable {
 	/// - throws: any error that the handler may throw.
 	public mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows {
 		try dataLogistics.intake(bytes:bytes, writeHandler)
-		var alreadyFired:Int = 0
-		defer {
-			if alreadyFired != 0 {
-				dataLogistics.rebase(offset:alreadyFired)
-				stepper -= alreadyFired
-			}
-		}
 		if separator.isEmpty() == false {
-			dataLogistics.access { buff in
-				var currentPtr = buff.baseAddress!
-				var currentCount = buff.count
-				seekLoop: while currentPtr < (buff.baseAddress! + buff.count) {
-					if let newLineCompleted = Self.processLine(separatorInfo:&separator, storageBuffer:UnsafeBufferPointer(start:currentPtr, count:currentCount), stepper:&stepper, outputMode:outMode) {
-						currentCount -= (newLineCompleted - currentPtr)
-						currentPtr = newLineCompleted
-					} else {
-						break seekLoop
-					}
-				}
+			dataLogistics.process { buff in
+				return LineParser.processLine(separatorInfo:&separator, storageBuffer:buff, existingSeekOffset:&existingSeekOffset, outputMode:outMode)
 			}
 		} else {
-			dataLogistics.access { buff in
-				let data = Array<UInt8>(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
+			dataLogistics.process { buff in
+				let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
 				switch outMode {
 				case .handler(let handler):
 					handler(data)
 				case .nasync(let nas):
 					nas.yield(data)
 				}
-				alreadyFired = (buff.baseAddress! + buff.count) - buff.baseAddress!
+				return buff.count
 			}
 		}
 	}
@@ -233,30 +229,28 @@ public struct LineParser:~Copyable {
 		})
 	}
 
-	public consuming func finish() {
-		dataLogistics.access { buff in
-			if buff.count > 0 {
-				let line = Array<UInt8>(UnsafeBufferPointer(start:buff.baseAddress, count:buff.count))
-				switch outMode {
-				case .handler(let handler):
-					handler(line)
-					handler(nil)
-				case .nasync(let nas):
-					nas.yield(line)
-					nas.finish()
+	public mutating func finish() {
+		dataLogistics.process { buff in
+			switch outMode {
+			case .handler(let handler):
+				if buff.count > 0 {
+					let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
+					handler(data)
 				}
-			} else {
-				switch outMode {
-				case .handler(let handler):
-					handler(nil)
-				case .nasync(let nas):
-					nas.finish()
+				handler(nil)
+
+			case .nasync(let nas):
+				if buff.count > 0 {
+					let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
+					nas.yield(data)
 				}
+				nas.finish()
 			}
+			return buff.count
 		}
 	}
 
-	public consuming func finishDataloss() {
+	public mutating func finishDataloss() {
 		switch outMode {
 			case .handler(let handler):
 				handler(nil)
