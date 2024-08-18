@@ -35,14 +35,14 @@ public struct EventTrigger {
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	public borrowing func register(reader:Int32, _ fifo:ReaderFIFO) throws {
-		try currentPlatformET.register(prim!, reader:reader)
 		regStream.yield(.reader(reader, fifo))
+		try currentPlatformET.register(prim!, reader:reader)
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
 	public borrowing func register(writer:Int32, _ fifo:WriterFIFO) throws {
-		try currentPlatformET.register(prim!, writer:writer)
 		regStream.yield(.writer(writer, fifo))
+		try currentPlatformET.register(prim!, writer:writer)
 	}
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.

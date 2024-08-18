@@ -48,6 +48,17 @@ public final class Future<R>:@unchecked Sendable {
 			throw InvalidStateError()
 		}
 	}
+
+	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 
+	public borrowing func whenResult(_ callback:@escaping (Result<R, Swift.Error>) -> Void) {
+		_cswiftslash_future_t_wait_async(prim, nil, { resType, resPtr, ctx in
+			callback(.success(Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value()))
+		}, { errType, errPtr, ctx in
+			callback(.failure(Unmanaged<Contained<Swift.Error>>.fromOpaque(errPtr!).takeUnretainedValue().value()))
+		}, { ctx in
+			fatalError("swiftslash - cancellation on c primitive not utilized - \(#file):\(#line)")
+		})
+	}
 	
 	/// asyncronously wait for the result of the future.
 	/// - returns: the return value of the future.

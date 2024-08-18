@@ -146,33 +146,38 @@ class LineParserTests: XCTestCase {
 
 	// Test handling random-length data with random multi-byte separator.
 	func testLineParserFuzz() {
-		var lines = [[UInt8]]()
-		let separator = String.random(length: Int.random(in:8..<16))
-		var randomStrings = [String]()
-		assembleLoop: while randomStrings.count < 512 {
-			let thisRandomString = String.random(length: Int.random(in:256..<1024))
-			guard thisRandomString.contains(separator) == false else {
-				continue assembleLoop
+		func lpFuzzIteration() {
+			var lines = [[UInt8]]()
+			let separator = String.random(length: Int.random(in:1..<16))
+			var randomStrings = [String]()
+			assembleLoop: while randomStrings.count < 512 {
+				let thisRandomString = String.random(length: Int.random(in:256..<1024))
+				guard thisRandomString.contains(separator) == false else {
+					continue assembleLoop
+				}
+				randomStrings.append(thisRandomString)
 			}
-			randomStrings.append(thisRandomString)
+			let combinedString = randomStrings.joined(separator:separator)
+			XCTAssertEqual(combinedString.split(separator:separator).count, 512)
+			var parser = LineParser(separator:Array(separator.utf8), handler: { newLines in
+				if let hasNewLines = newLines {
+					lines.append([UInt8](hasNewLines))
+				}
+			})
+			let data: [UInt8] = Array(combinedString.utf8)
+			parser.handle(data)
+			parser.finish()
+			XCTAssertEqual(lines, randomStrings.map { Array($0.utf8) })
 		}
-		let combinedString = randomStrings.joined(separator:separator)
-		XCTAssertEqual(combinedString.split(separator:separator).count, 512)
-		var parser = LineParser(separator:Array(separator.utf8), handler: { newLines in
-			if let hasNewLines = newLines {
-				lines.append([UInt8](hasNewLines))
-			}
-		})
-		let data: [UInt8] = Array(combinedString.utf8)
-		parser.handle(data)
-		parser.finish()
-		XCTAssertEqual(lines, randomStrings.map { Array($0.utf8) })
+		for _ in 0..<64 {
+			lpFuzzIteration()
+		}
 	}
 }
 
 extension String {
 	// Utility function to generate a random string of given length
-	static func random(length: Int) -> String {
+	internal static func random(length: Int) -> String {
 		let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+=-`~/?.>,<;:'\""
 		return String((0..<length).map { _ in characters.randomElement()! })
 	}
