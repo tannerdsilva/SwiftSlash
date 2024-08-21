@@ -12,6 +12,7 @@ fileprivate var ssInternalTargets:[Target] = [
 			"SwiftSlashIdentifiedList",
 			"SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
+			"SwiftSlashLineParser",
 		]
 	),
 	.target(

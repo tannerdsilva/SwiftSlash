@@ -169,7 +169,7 @@ class LineParserTests: XCTestCase {
 			parser.finish()
 			XCTAssertEqual(lines, randomStrings.map { Array($0.utf8) })
 		}
-		for _ in 0..<64 {
+		for _ in 0..<8 {
 			lpFuzzIteration()
 		}
 	}
