@@ -4,8 +4,6 @@
 #define _CSWIFTSLASH_ATOMICMODE_H
 
 #include "__cswiftslash_types.h"
-#include <stdint.h>
-#include <stdbool.h>
 
 /// @brief a structure that encapsulates an atomic uint8_t.
 typedef struct _cswiftslash_atomic_uint8 {

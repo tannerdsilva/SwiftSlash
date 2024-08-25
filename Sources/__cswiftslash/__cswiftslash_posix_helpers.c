@@ -1,4 +1,5 @@
 #include "__cswiftslash_posix_helpers.h"
+#include <unistd.h>
 
 pid_t _cswiftslash_fork() {
 	return fork();

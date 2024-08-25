@@ -3,7 +3,6 @@
 #include "__cswiftslash_threads.h"
 #include <signal.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdlib.h>
 
 _cswiftslash_pthread_config_t _cswiftslash_pthread_config_garbage(void) {

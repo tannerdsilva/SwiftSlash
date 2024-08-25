@@ -2,7 +2,7 @@
 #define _CSWIFTSLASH_ERRNO_HELPERS_H
 
 #include <errno.h>
-#include <unistd.h>
+#include <sys/types.h>
 
 pid_t _cswiftslash_fork();
 
