@@ -12,14 +12,17 @@ public final class Running<R> {
 		/// indicates that a pthread is running.
 		case running = 0
 
-		/// indicates that a pthread is canceling.
+		/// indicates that a pthread is cancelled. this does not mean that the pthread has exited.
 		case cancelled = 1
+
+		// indicates that the pthread is no longer running.
+		case exited = 2
 		
 		/// indicates that a pthread is joining.
-		case joining = 2
+		case joining = 3
 
 		/// indicates that a pthread is joined.
-		case joined = 3
+		case joined = 4
 	}
 
 	/// the pthread that is running.
@@ -32,32 +35,27 @@ public final class Running<R> {
 		launched = pthread
 		aStatus = UnsafeMutablePointer<_cswiftslash_atomic_uint8_t>.allocate(capacity:1)
 		launched.rf.whenResult({ [weak self] _ in
-			self?.cleanup()
+			self?.setExitedFromRunning()
 		})
 	}
 
-	private func cleanup() {
-		switch Mode(rawValue:_cswiftslash_auint8_load(aStatus))! {
-			case Mode.running:
-				var expected = Mode.running.rawValue
-				guard _cswiftslash_auint8_compare_exchange_weak(aStatus, &expected, Mode.joining.rawValue) else {
-					return
-				}
-				launched.join()
-				_cswiftslash_auint8_store(aStatus, Mode.joined.rawValue)
-				break;
-			case Mode.cancelled:
-				var expected = Mode.cancelled.rawValue
-				guard _cswiftslash_auint8_compare_exchange_weak(aStatus, &expected, Mode.joining.rawValue) else {
-					return
-				}
-				launched.join()
-				_cswiftslash_auint8_store(aStatus, Mode.joined.rawValue)
-				break;
-			case Mode.joining:
-				break;
-			case Mode.joined:
-				break;
+	private func setExitedFromRunning() {
+		var expected = Mode(rawValue:_cswiftslash_auint8_load(aStatus))!
+		switch expected {
+		case .running:
+			guard _cswiftslash_auint8_compare_exchange_weak(aStatus, &expected, Mode.exited.rawValue) else {
+				return
+			}
+		case .cancelled:
+			guard _cswiftslash_auint8_compare_exchange_weak(aStatus, &expected, Mode.exited.rawValue) else {
+				return
+			}
+		case .exited:
+			fatalError("unexpected state")
+		case .joining:
+			return
+		case .joined:
+			return
 		}
 	}
 
@@ -75,7 +73,7 @@ public final class Running<R> {
 		try launched.cancel()
 	}
 
-	public func result() async throws -> Result<R, Swift.Error> {
+	public func result() async -> Result<R, Swift.Error> {
 		let result = await launched.result()
 		switch result {
 		case .success(let ptr):
@@ -86,7 +84,16 @@ public final class Running<R> {
 	}
 
 	deinit {
-		cleanup()
+		// determine if the thread needs to be cancelled before it is joined.
+		switch Mode(rawValue:_cswiftslash_auint8_load(aStatus))! {
+		case .running:
+			try! cancel()
+			fallthrough
+		default:
+			_cswiftslash_auint8_store(aStatus, Mode.joining.rawValue)
+			launched.join()
+			_cswiftslash_auint8_store(aStatus, Mode.joined.rawValue)
+		}
 		aStatus.deallocate()
 	}
 }
@@ -107,12 +114,13 @@ internal struct Launched {
 
 	/// cancels a pthread before it returns.
 	internal borrowing func cancel() throws {
-		// cancel pthread
-		guard pthread_cancel(pt) == 0 else {
-			throw CancellationError()
-		}
 		// send signal
 		guard pthread_kill(pt, SIGUSR1) == 0 else {
+			throw CancellationError()
+		}
+
+		// cancel pthread
+		guard pthread_cancel(pt) == 0 else {
 			throw CancellationError()
 		}
 	}

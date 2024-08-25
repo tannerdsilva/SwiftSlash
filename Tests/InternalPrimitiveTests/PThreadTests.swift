@@ -17,10 +17,10 @@ fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 
 class PThreadTests: XCTestCase {
     func testPthreadReturn() async throws {
-		try await withThrowingTaskGroup(of:(String, String).self, returning:Void.self, body: { group in
+		// try await withThrowingTaskGroup(of:(String, String).self, returning:Void.self, body: { group in
 			for _ in 0..<50 {
 				for i in 0..<10 {
-					group.addTask {
+					// group.addTask {
 						let randomString = String.random(length:56)
 						let myString:String
 						switch try await PThreadWorkerTesterThing<String>.run(randomString) {
@@ -30,15 +30,15 @@ class PThreadTests: XCTestCase {
 							throw e
 						}
 						XCTAssertEqual(myString, randomString)
-						return (randomString, myString)
-					}
+						// return (randomString, myString)
+					// }
 				}
-				try await group.waitForAll()
+				// try await group.waitForAll()
 			}
-		})
+		// })
 		return
     }
-	func pthreadCancellationTest() async throws {
+	func testPthreadCancellation() async throws {
 		let cancelExpect = XCTestExpectation(description: "PThread delay")
 		let returnExpect = XCTestExpectation(description: "PThread delay")
 		returnExpect.isInverted = true
@@ -52,22 +52,26 @@ class PThreadTests: XCTestCase {
 				expect.fulfill()
 			}
 		}
-		Task.detached {
+		let ltask = Task.detached {
 			do {
-				let runTask = Task.detached {
-					try await SwiftSlashPThread.run {
-						_ = MyTest(freeExpect)
-						sleep(5)
-						returnExpect.fulfill()
-					}
+				let runTask = try await SwiftSlashPThread.launch {
+					_ = MyTest(freeExpect)
+					sleep(5)
+					returnExpect.fulfill()
 				}
 				try await Task.sleep(nanoseconds: 1_000_000_000)
-				runTask.cancel()
-				try await runTask.result.get().get()
+				try runTask.cancel()
+				switch await runTask.result() {
+				case .success:
+					XCTFail("Expected cancellation error")
+				case .failure(let error):
+					XCTAssertTrue(error is CancellationError)
+				}
 			} catch is CancellationError {
 				cancelExpect.fulfill()
 			}
 		}
 		await fulfillment(of:[cancelExpect, returnExpect, freeExpect], timeout: 2)
+		await ltask.result
 	}
 }

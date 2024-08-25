@@ -5,7 +5,7 @@ import __cswiftslash
 import SwiftSlashFuture
 import SwiftSlashContained
 
-/// launches a pthread that will run the given work function and return the result.
+/// launches a pthread that will run the given work function and return the running pthread.
 public func launch<R>(_ work:consuming @escaping () throws -> R) async throws -> Running<R> {
 	let launchedPThread = try await _launch(GenericPThread<R>.self, argument:work)
 	return Running(alreadyLaunched:launchedPThread)
@@ -14,7 +14,7 @@ public func launch<R>(_ work:consuming @escaping () throws -> R) async throws ->
 /// runs any given arbitrary function on a pthread.
 public func run<R>(_ work:consuming @escaping () throws -> R) async throws -> Result<R, Swift.Error> {
 	let launchedThread = try await GenericPThread.launch(work)
-	return try await launchedThread.result()
+	return await launchedThread.result()
 }
 
 extension PThreadWork {
@@ -24,7 +24,7 @@ extension PThreadWork {
 	}
 	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, Swift.Error> {
 		let launched = try await Self.launch(arg)
-		return try await launched.result()
+		return await launched.result()
 	}
 }
 
