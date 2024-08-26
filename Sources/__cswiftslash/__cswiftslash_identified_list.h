@@ -4,8 +4,6 @@
 #define _CSWIFTSLASH_IDENTIFIED_LIST_H
 
 #include "__cswiftslash_types.h"
-#include <sys/types.h>
-#include <stdint.h>
 #include <pthread.h>
 
 /// forward declaration of the atomiclist structure. represents a single element in the atomic list.
@@ -67,11 +65,11 @@ uint64_t _cswiftslash_identified_list_insert(const _cswiftslash_identified_list_
 /// @param chain pointer to the atomic list pair instance.
 /// @param key the key value of the element to be removed.
 /// @return the data pointer that was removed from the atomic list. nil if the key was not found.
-_cswiftslash_optr_t _cswiftslash_identified_list_remove(const _cswiftslash_identified_list_pair_ptr_t chain, const uint64_t key);
+// _cswiftslash_optr_t _cswiftslash_identified_list_remove(const _cswiftslash_identified_list_pair_ptr_t chain, const uint64_t key);
 
 /// iterate through all elements in the atomic list, processing each data pointer with the provided consumer function.
 /// @param list pointer to the atomic list pair instance.
 /// @param consumer_f function used to process each data pointer in the atomic list.
-void _cswiftslash_identified_list_iterate(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f);
+// void _cswiftslash_identified_list_iterate(const _cswiftslash_identified_list_pair_ptr_t list, const _cswiftslash_identified_list_ptr_f consumer_f);
 
 #endif // _CSWIFTSLASH_IDENTIFIED_LIST_H
