@@ -1,11 +1,23 @@
-#ifndef _CSWIFTSLASH_ERRNO_HELPERS_H
-#define _CSWIFTSLASH_ERRNO_HELPERS_H
+#ifndef _CSWIFTSLASH_POSIX_HELPERS_H
+#define _CSWIFTSLASH_POSIX_HELPERS_H
 
 #include <errno.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 pid_t _cswiftslash_fork();
 
 int _cswiftslash_execvp(const char *file, char *const argv[]);
 
-#endif // _CSWIFTSLASH_ERRNO_HELPERS_H
+int _cswiftslash_get_errno();
+
+int _cswiftslash_open_nomode(const char *path, int flags);
+
+/// @brief swift cannot call variadic functions, so this function is a wrapper around the fcntl function that sets the flags.
+/// @param fd the file descriptor to set the flags on.
+/// @param flags the flags to set on the file descriptor.
+/// @return the result of the fcntl function call.
+int _cswiftslash_fcntl_setfl(int fd, int flags);
+
+#endif // _CSWIFTSLASH_POSIX_HELPERS_H

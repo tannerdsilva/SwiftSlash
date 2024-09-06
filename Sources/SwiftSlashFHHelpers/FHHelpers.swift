@@ -13,7 +13,7 @@ extension Int32 {
 			let amountRead = read(self, dataBuffer, readSize)
 			guard amountRead > -1 else {
 				// need to actually think about better ways to handle these at some point.
-				switch errno {
+				switch _cswiftslash_get_errno() {
 					case EAGAIN:
 						continue
 					case EWOULDBLOCK:
@@ -60,7 +60,7 @@ extension Int32 {
 			let amountWritten = write(self, dataBuffer, writeSize)
 			guard amountWritten > -1 else {
 				// need to actually think about better ways to handle these at some point.
-				switch errno {
+				switch _cswiftslash_get_errno() {
 					case EAGAIN:
 						continue
 					case EWOULDBLOCK:

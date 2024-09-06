@@ -4,6 +4,7 @@
 #define _CSWIFTSLASH_PTHREADS_H
 
 #include <pthread.h>
+#include <signal.h>
 #include "__cswiftslash_types.h"
 
 #if defined(__APPLE__)

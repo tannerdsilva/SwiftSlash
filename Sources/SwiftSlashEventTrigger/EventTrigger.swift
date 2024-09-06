@@ -60,6 +60,8 @@ public struct EventTrigger {
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
 public protocol EventTriggerEngine:PThreadWork where Argument == Setup, ReturnType == Void, EventTriggerHandle == Int32 {
+	/// the type of runtime error that might be thrown while the eventtrigger process is running. 
+	associatedtype RuntimeErrors:Swift.Error
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	static func register(_ ev:EventTriggerHandle, reader:Int32) throws

@@ -31,16 +31,16 @@ public struct PosixPipe:Hashable, Equatable {
 				case 0:
 					return (fdsPtr.pointee.0, fdsPtr.pointee.1)
 				default:
-					throw SystemErrno(errno)
+					throw SystemErrno(_cswiftslash_get_errno())
 			}
 		}
 		if (nonblockingReads == true) {
-			guard fcntl(reading, F_SETFD, O_NONBLOCK) == 0 else {
+			guard _cswiftslash_fcntl_setfl(reading, O_NONBLOCK) == 0 else {
 				throw FileHandleError.fcntlError
 			}
 		}
 		if (nonblockingWrites == true) {
-			guard fcntl(writing, F_SETFD, O_NONBLOCK) == 0 else {
+			guard _cswiftslash_fcntl_setfl(writing, O_NONBLOCK) == 0 else {
 				throw FileHandleError.fcntlError
 			}
 		}
@@ -54,10 +54,10 @@ public struct PosixPipe:Hashable, Equatable {
 	
 	/// creates a "pseudo pipe" that reads and writes directly to /dev/null.
 	public static func createNull() throws -> PosixPipe {
-		let read = open("/dev/null", O_RDWR)
-		let write = open("/dev/null", O_WRONLY)
-		_ = fcntl(read, F_SETFL, O_NONBLOCK)
-		_ = fcntl(write, F_SETFL, O_NONBLOCK)
+		let read = _cswiftslash_open_nomode("/dev/null", O_RDONLY)
+		let write = _cswiftslash_open_nomode("/dev/null", O_WRONLY)
+		_ = _cswiftslash_fcntl_setfl(read, O_NONBLOCK)
+		_ = _cswiftslash_fcntl_setfl(write, O_NONBLOCK)
 		guard read != -1 && write != -1 else {
 			throw FileHandleError.pipeOpenError
 		}

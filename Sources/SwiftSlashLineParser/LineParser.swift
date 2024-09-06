@@ -67,7 +67,7 @@ fileprivate struct BufferLogistics:~Copyable {
 		let targetSize = size_t(ceil(Double(accomodate) / 8) * 8) * 2
 		let newBuffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity:targetSize)
 		if occupied > 0 {
-			memcpy(newBuffer.baseAddress, intakebuff.baseAddress, occupied)
+			memcpy(newBuffer.baseAddress!, intakebuff.baseAddress!, occupied)
 		}
 		intakebuff.deallocate()
 		intakebuff = newBuffer
@@ -223,7 +223,7 @@ public struct LineParser:~Copyable {
 	public mutating func handle(_ data:consuming [UInt8]) {
 		return data.withUnsafeBufferPointer({ datBuff in
 			return intake(bytes:datBuff.count, { wptr in
-				memcpy(wptr.baseAddress, datBuff.baseAddress!, datBuff.count)
+				memcpy(wptr.baseAddress!, datBuff.baseAddress!, datBuff.count)
 				return datBuff.count
 			})
 		})
