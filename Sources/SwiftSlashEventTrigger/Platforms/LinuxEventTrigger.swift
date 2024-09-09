@@ -3,7 +3,24 @@ import __cswiftslash
 import SwiftSlashFIFO
 import SwiftSlashPThread
 
-internal final class LinuxET {
+internal final class LinuxET:EventTriggerEngine {
+
+	internal enum RuntimeErrors:Swift.Error {
+		// register
+		/// thrown when the reader could not be registered to the event trigger.
+		case readerRegistrationFailure
+		/// thrown when the writer couuld not be registere to the event trigger.
+		case writerRegistrationFailure
+
+		// deregister
+		/// thrown when the reader could not be deregistered to the event trigger.
+		case readerDeregistrationFailure
+		/// thrown when the writer could not be deregistered to the event trigger.
+		case writerDeregistrationFailure
+
+		/// thrown when there is a problem with the fcntl call, which is used to determine how many bytes are available to read from the file descriptor.
+		case fcntlError
+	}
 
 	/// the primitive that is used to handle the event trigger.
 	internal typealias Argument = Setup
@@ -15,7 +32,7 @@ internal final class LinuxET {
 	internal typealias EventType = epoll_event
 
 	/// the primitive that is used to handle the event trigger.
-	private var prim:EventTriggerHandle = epoll_create1(0)
+	internal var prim:EventTriggerHandle = epoll_create1(0)
 
 	/// stores the fifo's that read data is passed into.
 	private var readersDataOut:[Int32:FIFO<size_t, Swift.Error>] = [:]
@@ -43,8 +60,9 @@ internal final class LinuxET {
 	}
 	
 	internal init(_ ptSetup:consuming Argument) {
-		registrations = ptSetup.registersIn
-		prim = ptSetup.handle
+		(prim, registrations) = withUnsafeMutablePointer(to:&ptSetup) { ptsPtr in
+			return (ptsPtr.pointee.handle, ptsPtr.pointee.registersIn)
+		}
 	}
 
 	/// event buffer that allows us to process events. this buffer is passed directly to the system call and is the first place returned events are stored.
@@ -66,7 +84,7 @@ internal final class LinuxET {
 		newEvent.data.fd = reader
 		newEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_ADD, reader, &newEvent) == 0 else {
-			throw Error.unableToRegister
+			throw RuntimeErrors.readerRegistrationFailure
 		}
 	}
 
@@ -75,7 +93,7 @@ internal final class LinuxET {
 		newEvent.data.fd = writer
 		newEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_ADD, writer, &newEvent) == 0 else {
-			throw Error.unableToRegister
+			throw RuntimeErrors.writerRegistrationFailure
 		}
 	}
 
@@ -84,7 +102,7 @@ internal final class LinuxET {
 		buildEvent.data.fd = reader
 		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_DEL, reader, &buildEvent) == 0 else {
-			throw Error.unableToRegister
+			throw RuntimeErrors.readerDeregistrationFailure
 		}
 	}
 
@@ -93,7 +111,7 @@ internal final class LinuxET {
 		buildEvent.data.fd = writer
 		buildEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_DEL, writer, &buildEvent) == 0 else {
-			throw Error.unableToRegister
+			throw RuntimeErrors.writerDeregistrationFailure
 		}
 	}
 
@@ -142,7 +160,7 @@ internal final class LinuxET {
 							// read data available
 							var byteCount:Int32 = 0
 							guard _cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
-								return 
+								throw RuntimeErrors.fcntlError
 							}
 							readersDataOut[currentEvent.data.fd]!.yield(Int(currentEvent.data.fd))
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {

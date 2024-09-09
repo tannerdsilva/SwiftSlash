@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <math.h> // arguably this include doesn't belong in this particular file but I'm not gonna make a new header file just for this oddball include so whatever, here it is.
+#include <stdlib.h>
 
 // a non-optional pointer
 typedef void*_Nonnull _cswiftslash_ptr_t;

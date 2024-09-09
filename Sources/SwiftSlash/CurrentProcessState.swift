@@ -1,5 +1,11 @@
 import __cswiftslash
 
+#if os(Linux)
+import Glibc
+#elseif os(macOS)
+import Darwin
+#endif
+
 public struct CurrentProcess {
 	private init() {} // this is just a namespace - no instances allowed.
 	public enum PathSearchError:Swift.Error {

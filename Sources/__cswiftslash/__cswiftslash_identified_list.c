@@ -81,8 +81,7 @@ bool _cswiftslash_al_insert_internal(const _cswiftslash_identified_list_pair_ptr
 		// increment the element count
 		atomic_fetch_add_explicit(&list->element_count, 1, memory_order_acq_rel);
 		
-		return true; // successful write.
-	
+		return true; // successful write
 	} else {
 		return false; // unsuccessful write
 	}

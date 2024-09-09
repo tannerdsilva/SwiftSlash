@@ -92,7 +92,7 @@ extension EventTriggerEngine {
 	/// launches a new event trigger service.
 	/// - async: waits for the event trigger service to be launched and running on a dedicated pthread before yielding back to the calling task.
 	/// - returns: the event trigger handle, the running pthread, and the FIFO that is used to register new file handles.
-	fileprivate static func bootstrapEventTriggerService() async throws -> (Self.EventTriggerHandle, Running<Void>, FIFO<Register, Never>) {
+	internal static func bootstrapEventTriggerService() async throws -> (Self.EventTriggerHandle, Running<Void>, FIFO<Register, Never>) {
 		let newP = Self.newPrimitive()
 		let regStream = FIFO<Register, Never>()
 		let launchedThread:Running<Void>
