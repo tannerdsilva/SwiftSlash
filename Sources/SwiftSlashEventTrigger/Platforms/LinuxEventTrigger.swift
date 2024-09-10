@@ -153,18 +153,29 @@ internal final class LinuxET:EventTriggerEngine {
 						let eventFlags = currentEvent.events
 						
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
+
 							// reading handle closed
+							readersDataOut.removeValue(forKey:currentEvent.data.fd)!.finish()
+
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
+
 							// writing handle closed
+							writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!.finish()
+
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
+							
 							// read data available
 							var byteCount:Int32 = 0
 							guard _cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
 								throw RuntimeErrors.fcntlError
 							}
+							
 							readersDataOut[currentEvent.data.fd]!.yield(Int(currentEvent.data.fd))
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
+							
 							// write data available
+							writersDataTrigger[currentEvent.data.fd]!.yield(())
+							
 						}
 					}
 
