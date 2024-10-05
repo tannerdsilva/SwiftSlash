@@ -13,8 +13,8 @@ struct _cswiftslash_fifo_link;
 typedef struct _cswiftslash_fifo_link* _Nullable _cswiftslash_fifo_link_ptr_t;
 /// defines an atomic version of `_cswiftslash_fifo_link_ptr_t` to ensure thread-safe manipulation of the fifo links.
 typedef _Atomic _cswiftslash_fifo_link_ptr_t _cswiftslash_fifo_link_aptr_t;
-/// function prototype for consuming data from the chain. does not free the memory of the consumed pointer.
-typedef void (^ _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
+/// function prototype for consuming data from the chain.
+typedef void (* _cswiftslash_fifo_link_ptr_consume_f)(const _cswiftslash_ptr_t);
 
 // fifo consumption results.
 typedef enum fifo_consume_result {
@@ -73,7 +73,7 @@ typedef _cswiftslash_fifo_linkpair_t*_Nonnull _cswiftslash_fifo_linkpair_ptr_t;
 /// @return a newly initialized mutex that can be passed directly into the fifo initializer.
 pthread_mutex_t _cswiftslash_fifo_mutex_new();
 
-/// @brief initializes a new fifo pair. if this fifo is used as an independent concurrency unit, the mutex should be initialized and passed in. when a newly initialized mutex is passed in the initializer, it will automatically be destroyed at the apropriate time. a mutex is not required if the fifo is used in a single-threaded context.
+/// @brief initializes a new fifo pair. if this fifo is used as an independent concurrency unit, the mutex should be initialized and passed in. when a newly initialized mutex is passed in the initializer, it will automatically be destroyed at the apropriate time (pass and forget). a mutex is not required if the fifo is used in a single-threaded context.
 /// @return initialized fifo pair structure. NOTE: this structure must be closed with _cswiftslash_fifo_close to free all associated memory.
 _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex);
 

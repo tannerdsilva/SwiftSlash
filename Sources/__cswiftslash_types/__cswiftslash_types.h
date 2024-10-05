@@ -12,6 +12,8 @@
 
 // a non-optional pointer
 typedef void*_Nonnull _cswiftslash_ptr_t;
+
+// a constant non-optional pointer
 typedef const void*_Nonnull _cswiftslash_cptr_t;
 
 // an optional pointer

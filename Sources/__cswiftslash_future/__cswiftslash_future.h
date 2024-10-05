@@ -5,43 +5,48 @@
 
 #include "__cswiftslash_fifo.h"
 #include "__cswiftslash_types.h"
-#include "__cswiftslash_future.h"
 
 #include <pthread.h>
 
 // handler types -----
 
-/// @brief a future result handler.
+// RESULT
+
+// - FUNCTION
+/// @brief a future result handler function.
 /// @param res_typ the result type value.
 /// @param res_ptr the result pointer (optional).
 /// @param ctx_ptr the context pointer (optional).
-typedef void(^ future_result_val_handler_f)(
+typedef void(* future_result_val_handler_f)(
 	const uint8_t res_typ,
 	const _cswiftslash_optr_t res_ptr,
 	const _cswiftslash_optr_t ctx_ptr
 );
 
-/// @brief a future error handler.
+// ERROR
+// - FUNCTION
+/// @brief a future error handler function.
 /// @param err_typ the error type value.
 /// @param err_ptr the error pointer (optional).
 /// @param ctx_ptr the context pointer (optional).
-typedef void(^ future_result_err_handler_f)(
+typedef void(* future_result_err_handler_f)(
 	const uint8_t err_type,
 	const _cswiftslash_optr_t err_ptr,
 	const _cswiftslash_optr_t ctx_ptr
 );
 
-/// @brief a future cancel handler.
+// - FUNCTION
+/// @brief a future cancel handler function.
 /// @param ctx_ptr the context pointer (optional).
-typedef void(^ future_result_cancel_handler_f)(
+typedef void(* future_result_cancel_handler_f)(
 	const _cswiftslash_optr_t ctx_ptr
 );
 
 /// @brief a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct _cswiftslash_future {
 	// internal state mechanisms for the future itself.
-	_Atomic uint8_t statVal;		// internal status value.
-	pthread_mutex_t mutex;			// internal mutex for the condition.
+	_Atomic uint8_t statVal;						// internal status value.
+	pthread_mutex_t mutex;							// internal mutex for the condition.
 	
 	// user fields related to the result.
 	_Atomic uint8_t fres_val_type;					// result value type (user field).
@@ -57,18 +62,18 @@ typedef _cswiftslash_future_t*_Nonnull _cswiftslash_future_ptr_t;
 // init and deinit -----
 
 /// @brief initialize a future.
-/// @return the initialized future stackspace
-_cswiftslash_future_t _cswiftslash_future_t_init(void);
+/// @return the initialized future pointer.
+_cswiftslash_future_ptr_t _cswiftslash_future_t_init(void);
 
 /// @brief destroy a future. behavior is undefined if this is called while the future is still in use.
-/// @param future the future to deallocate.
+/// @param future a pointer to the future to deallocate.
 /// @param ctx_ptr the context pointer to pass to the result handler.
 /// @param res_handler the result handler to call when the future is complete.
 /// @param err_handler the error handler to call when the future is complete.
-/// @return 0 if the future was destroyed, -1 if the future was not destroyed.
-int _cswiftslash_future_t_destroy(
-	_cswiftslash_future_t future,
-	_cswiftslash_optr_t ctx_ptr,
+/// @return void is returned after the future is safely deallocated.
+void _cswiftslash_future_t_destroy(
+	_cswiftslash_future_ptr_t future,
+	const _cswiftslash_optr_t ctx_ptr,
 	const _Nonnull future_result_val_handler_f res_handler,
 	const _Nonnull future_result_err_handler_f err_handlerf
 );
@@ -127,13 +132,6 @@ bool _cswiftslash_future_t_broadcast_res_throw(
 	const _cswiftslash_future_ptr_t future,
 	const uint8_t res_type,
 	const _cswiftslash_optr_t res_val
-);
-
-/// @brief broadcast a cancellation to all threads waiting on the future.
-/// @param future the future to broadcast to.
-/// @return whether the broadcast was successful.
-bool _cswiftslash_future_t_broadcast_cancel(
-	const _cswiftslash_future_ptr_t future
 );
 
 #endif // CLIBSWIFTSLASH_PTRFUTURE_H

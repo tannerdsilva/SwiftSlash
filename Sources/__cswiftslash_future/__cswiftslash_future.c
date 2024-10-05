@@ -26,73 +26,184 @@ typedef enum future_status {
 
 
 /// @brief used to represent a thread that is synchronously waiting and blocking for the result of a future.
-typedef struct _cswiftslash_future_syncwait_t {
+typedef struct _cswiftslash_future_wait_t {
+	/// @brief the context pointer that will be transparenly passed to the result handler.
 	_cswiftslash_optr_t ctx_ptr;
 
+	/// @brief if the waiter is synchronous, this will be true.
 	const bool is_sync;
+	/// @brief the mutex that is used to block the thread until the future is complete. this is only used if the waiter is synchronous.
 	pthread_mutex_t sync_wait;
 
-	const _Nullable future_result_val_handler_f res_handler;
-	const _Nullable future_result_err_handler_f err_handler;
-	const _Nullable future_result_cancel_handler_f cancel_handler;
+	/// @brief the result handler to call when the future is complete.
+	future_result_val_handler_f res_handler_ptr;
+	/// @brief the error handler to call when the future is complete.
+	future_result_err_handler_f err_handler_ptr;
+	/// @brief the cancel handler to call when the future is cancelled and a result will never be available.
+	future_result_cancel_handler_f cancel_handler_ptr;
 	
-} _cswiftslash_future_syncwait_t;
+} _cswiftslash_future_wait_t;
 
-_cswiftslash_future_t _cswiftslash_future_t_init(void) {
-	_cswiftslash_future_t newfuture;
+/// @brief a pointer to a future waiter.
+typedef _cswiftslash_future_wait_t *_Nonnull _cswiftslash_future_wait_ptr_t;
 
-	// initialize the status related variables
-    atomic_store_explicit(&newfuture.statVal, FUTURE_STATUS_PEND, memory_order_release);
-	pthread_mutex_init(&newfuture.mutex, NULL);
+/// @brief create a new synchronous waiter for a future.
+/// @param ctx_ptr the context pointer to pass to the result handler when it comes time to fire.
+/// @param res_handler the handler to call when the future is complete with a valid result.
+/// @param err_handler the handler to call when the future is complete with an error.
+/// @param cancel_handler the handler to call when the future is cancelled and a result will never be available.
+/// @return a pointer to the waiter structure on the heap.
+_cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_sync(_cswiftslash_optr_t ctx_ptr, future_result_val_handler_f res_handler, future_result_err_handler_f err_handler, future_result_cancel_handler_f cancel_handler) {
+	// declare the new structure value on the stack.
+	_cswiftslash_future_wait_t newwaiter = {
+		.ctx_ptr = ctx_ptr,
+		.is_sync = true,
+		.res_handler_ptr = res_handler,
+		.err_handler_ptr = err_handler,
+		.cancel_handler_ptr = cancel_handler
+	};
 
-	// initialize the result related variables
-	newfuture.waiters = _cswiftslash_fifo_init(NULL);
+	// initialize a new mutex onto the stack space.
+	if (pthread_mutex_init(&newwaiter.sync_wait, NULL) != 0) {
+		// fatal error. this would be a bug.
+		printf("swiftslash future internal error: couldn't initialize future sync_wait mutex\n");
+		abort();
+	}
 
-	// return the stack space
-	return newfuture;
+	// copy the waiter to the heap.
+	_cswiftslash_future_wait_ptr_t heapwaiter = malloc(sizeof(_cswiftslash_future_wait_t));
+	memcpy(heapwaiter, &newwaiter, sizeof(_cswiftslash_future_wait_t));
+
+	return heapwaiter;
 }
 
-int _cswiftslash_future_t_destroy(
-	_cswiftslash_future_t future,
-	void *_Nullable ctx_ptr,
+/// @brief create a new asynchronous waiter for a future.
+/// @param ctx_ptr the context pointer to pass to the result handler when it comes time to fire.
+/// @param res_handler the handler to call when the future is complete with a valid result.
+/// @param err_handler the handler to call when the future is complete with an error.
+/// @param cancel_handler the handler to call when the future is cancelled and a result will never be available.
+/// @return the waiter structure.
+_cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_async(_cswiftslash_optr_t ctx_ptr, future_result_val_handler_f res_handler, future_result_err_handler_f err_handler, future_result_cancel_handler_f cancel_handler) {
+	// create a new waiter structure in the stack.
+	_cswiftslash_future_wait_t newwaiter = {
+		.ctx_ptr = ctx_ptr,
+		.is_sync = false,
+		.res_handler_ptr = (_cswiftslash_ptr_t)res_handler,
+		.err_handler_ptr = (_cswiftslash_ptr_t)err_handler,
+		.cancel_handler_ptr = (_cswiftslash_ptr_t)cancel_handler
+	};
+
+	// no mutex to initialize for async waiters.
+
+	// copy the waiter to the heap.
+	_cswiftslash_future_wait_ptr_t heapwaiter = malloc(sizeof(_cswiftslash_future_wait_t));
+	memcpy(heapwaiter, &newwaiter, sizeof(_cswiftslash_future_wait_t));
+
+	// return the heap waiter.
+	return heapwaiter;
+}
+
+void ____cswiftslash_future_wait_t_destroy_sync(_cswiftslash_future_wait_ptr_t waiter) {
+	// destroy the mutex for the sync_wait stack.
+	pthread_mutex_destroy(&waiter->sync_wait);
+
+	// free the memory from the heap.
+	free((void*)waiter);
+}
+
+void ____cswiftslash_future_wait_t_destroy_async(_cswiftslash_future_wait_ptr_t waiter) {
+	// free the heap pointer from memory
+	free((void*)waiter);
+}
+
+bool ____cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t future) {	
+	// flip the status from pending to successfully fufilled.
+	uint8_t expected_complete = FUTURE_STATUS_PEND;
+	if (atomic_compare_exchange_strong_explicit(&future->statVal, &expected_complete, FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_acquire) == false) {
+		// the item was not the expected value and therefore NOT assigned.
+		// this means that someone else is working to close the structure, so we should return failure and do nothing (dont want to double close).
+		return false;
+	}
+
+	// other threads may have been waiting on this result. notify the waiters.
+	_cswiftslash_optr_t wptr; // each waiter is stored here as the fifo pipeline is consumed.
+	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
+		// fire the result handler function any and all waiters.
+		if (((_cswiftslash_future_wait_ptr_t)wptr)->is_sync == true) {
+			// this is a synchronous waiter. we can unlock their mutex and move on.
+			pthread_mutex_unlock(&((_cswiftslash_future_wait_ptr_t)wptr)->sync_wait);
+		} else {
+			((_cswiftslash_future_wait_ptr_t)wptr)->cancel_handler_ptr(((_cswiftslash_future_wait_ptr_t)wptr)->ctx_ptr);
+			// free the heap pointer from memory
+			_cswiftslash_future_wait_destroy_async((_cswiftslash_future_wait_ptr_t)wptr);
+		}
+	}
+
+	return true;
+}
+
+/// @brief this is an internal function used to close the future waiters fifo.
+/// @param ptr the pointer to a waiter info structure that should be freed.
+void ____cswiftslash_future_fifo_close(void *_Nonnull ptr) {
+	printf("swiftslash future internal error: future waiter fifo was closed while containing waiters. this should be mechanically impossible - this is a bug\n");
+	abort();
+}
+
+_cswiftslash_future_ptr_t _cswiftslash_future_t_init(void) {
+	_cswiftslash_future_ptr_t fptr = malloc(sizeof(_cswiftslash_future_t));
+
+	atomic_store_explicit(&fptr->statVal, FUTURE_STATUS_PEND, memory_order_release);
+	if (pthread_mutex_init(&fptr->mutex, NULL) != 0) {
+		// fatal error. this would be a bug.
+		printf("swiftslash future internal error: couldn't initialize future mutex\n");
+		abort();
+	}
+
+	fptr->waiters = _cswiftslash_fifo_init(NULL);
+
+	// return the stack space
+	return fptr;
+}
+
+void _cswiftslash_future_t_destroy(
+	_cswiftslash_future_ptr_t future,
+	const _cswiftslash_optr_t ctx_ptr,
 	const _Nonnull future_result_val_handler_f res_handler,
 	const _Nonnull future_result_err_handler_f err_handler
 ) {
-
-	// destroy the condition related to this future
-	pthread_mutex_destroy(&future.mutex);
-
-	_cswiftslash_fifo_close(&future.waiters, ^(void *_Nonnull ptr) {
-		free(ptr);
-	});
-
-	// load the state of the future
-	int8_t curstat = atomic_load_explicit(&future.statVal, memory_order_acquire);
+	// lock the internal state of the future to set the state to cancelled (if it needs to be).
+	pthread_mutex_lock(&future->mutex);
+	int8_t curstat = atomic_load_explicit(&future->statVal, memory_order_acquire);
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
-			return -1;
+			if (____cswiftslash_future_t_broadcast_cancel(future) == false) {
+				printf("swiftslash future internal error: couldn't cancel future\n");
+				abort();
+			}
+			break;
 
 		case FUTURE_STATUS_RESULT:
-			// the future is fufilled with a result.
-			
-			// fire the result handler.
-			res_handler(atomic_load_explicit(&future.fres_val_type, memory_order_acquire), atomic_load_explicit(&future.fres_val, memory_order_acquire), ctx_ptr);
-
-			return 0;
+			res_handler(atomic_load_explicit(&future->fres_val_type, memory_order_acquire), atomic_load_explicit(&future->fres_val, memory_order_acquire), ctx_ptr);
+			break;
 
 		case FUTURE_STATUS_THROW:
-			// the future is fufilled with an error.
+			err_handler(atomic_load_explicit(&future->fres_val_type, memory_order_acquire), atomic_load_explicit(&future->fres_val, memory_order_acquire), ctx_ptr);
+			break;
 
-			// fire the error handler.
-			err_handler(atomic_load_explicit(&future.fres_val_type, memory_order_acquire), atomic_load_explicit(&future.fres_val, memory_order_acquire), ctx_ptr);
-
-			return 0;
-
-		case FUTURE_STATUS_CANCEL:
-			return 0;
 		default:
-			return -1;
+			printf("swiftslash future internal error: invalid future status\n");
+			abort();
 	}
+	pthread_mutex_unlock(&future->mutex);
+
+	// destroy the fifo of waiters.
+	pthread_mutex_lock(&future->mutex);
+	_cswiftslash_fifo_close(&future->waiters, ____cswiftslash_future_fifo_close);
+	pthread_mutex_unlock(&future->mutex);
+
+	// destroy the memory.
+	pthread_mutex_destroy(&future->mutex);
+	free(future);
 }
 
 void _cswiftslash_future_t_wait_sync(
@@ -103,17 +214,6 @@ void _cswiftslash_future_t_wait_sync(
 	const _Nonnull future_result_cancel_handler_f cancel_handler
 ) {
 
-	// configure the waiter information for this function call. none of the fields are used except for the is_sync bool and its sync_wait mutex, since everything is handled synchronously in this function.
-	_cswiftslash_future_syncwait_t waitersStack = {
-		.ctx_ptr = NULL,
-		.is_sync = true,
-		.res_handler = NULL,
-		.err_handler = NULL,
-		.cancel_handler = NULL,
-	};
-	pthread_mutex_init(&waitersStack.sync_wait, NULL);		// initialize the mutex for the sync_wait stack.
-	pthread_mutex_lock(&waitersStack.sync_wait);			// claim this lock in anticipation of passing it into the waiters fifo.
-
 	// lock the future mutex so that the structure can be kept in a consistent state.
 	pthread_mutex_lock(&future->mutex);
 
@@ -122,15 +222,18 @@ void _cswiftslash_future_t_wait_sync(
 	uint32_t loopCount = 0;
 	#endif
 
+	_cswiftslash_future_wait_ptr_t waitHeap = _cswiftslash_future_wait_init_sync(ctx_ptr, res_handler, err_handler, cancel_handler);
+	pthread_mutex_lock(&waitHeap->sync_wait);
+
 	checkStat:	// goto checkStat requires the local and global locks to be held.
 
 	// acquire the status of the future.
 	switch (atomic_load_explicit(&future->statVal, memory_order_acquire)) {
 		case FUTURE_STATUS_PEND:
-			// the future is pending a result.
 
 			// broadcast our thread as a waiter.
-			if (_cswiftslash_fifo_pass(&future->waiters, (void*)&waitersStack) != 0) {
+			if (_cswiftslash_fifo_pass(&future->waiters, (_cswiftslash_ptr_t)waitHeap) != 0) {
+
 				// internal fatal error. this would be a bug
 				printf("swiftslash future internal error: couldn't insert waiter into the queue\n");
 				abort();
@@ -179,9 +282,9 @@ void _cswiftslash_future_t_wait_sync(
 		// no longer need to be synchronized with the global memory, lets free that first.
 		pthread_mutex_unlock(&future->mutex);
 		// unlock the local lock.
-		pthread_mutex_unlock(&waitersStack.sync_wait);
-		// destroy the local lock.
-		pthread_mutex_destroy(&waitersStack.sync_wait);
+		pthread_mutex_unlock(&waitHeap->sync_wait);
+		// destroy the local waiter.
+		_cswiftslash_future_wait_destroy_sync(waitHeap);
 
 		return; // cleanup complete, return to the caller.
 
@@ -195,7 +298,7 @@ void _cswiftslash_future_t_wait_sync(
 		// remove the lock which keeps us synchronized with the global memory of the future.
 		pthread_mutex_unlock(&future->mutex);
 		// wait for the result to be broadcasted.
-		pthread_mutex_lock(&waitersStack.sync_wait);
+		pthread_mutex_lock(&waitHeap->sync_wait);
 		// relock the global memory of the future.
 		pthread_mutex_lock(&future->mutex);
 		
@@ -209,16 +312,8 @@ void _cswiftslash_future_t_wait_async(
 	const _Nonnull future_result_err_handler_f err_handler,
 	const _Nonnull future_result_cancel_handler_f cancel_handler
 ) {
-	// build the memory that defines how we want to wait for the future. this might not be used if the future is already complete.
-	const _cswiftslash_future_syncwait_t waitersStack = {
-		.ctx_ptr = ctx_ptr,
-		.is_sync = false,
-		.res_handler = res_handler,
-		.err_handler = err_handler,
-		.cancel_handler = cancel_handler,
-	};
-	// this is an async call so the waiter information must be heap allocated.
-	const _cswiftslash_future_syncwait_t* waiters = (const _cswiftslash_future_syncwait_t*)memcpy(malloc(sizeof(_cswiftslash_future_syncwait_t)), &waitersStack, sizeof(_cswiftslash_future_syncwait_t));
+	// create a new waiter for this future.
+	_cswiftslash_future_wait_ptr_t waiterHeap = _cswiftslash_future_wait_init_async(ctx_ptr, res_handler, err_handler, cancel_handler);
 
 	// acquire the global lock for this instance.
 	pthread_mutex_lock(&future->mutex);
@@ -231,7 +326,7 @@ void _cswiftslash_future_t_wait_async(
 		case FUTURE_STATUS_PEND:
 
 			// broadcast our thread as a waiter.
-			if (_cswiftslash_fifo_pass(&future->waiters, (void*)&waitersStack) != 0) {
+			if (_cswiftslash_fifo_pass(&future->waiters, (_cswiftslash_ptr_t)waiterHeap) != 0) {
 				// internal fatal error. this would be a bug
 				printf("swiftslash future internal error: couldn't insert waiter into the queue\n");
 				abort();
@@ -270,12 +365,18 @@ void _cswiftslash_future_t_wait_async(
 
 	returnTimeNoWait:
 		// a result was immediately available, so we can free the memory and return.
-		free((void*)waiters);
+
+		// unlock the global lock.
 		pthread_mutex_unlock(&future->mutex);
+
+		// free the local waiter.
+		_cswiftslash_future_wait_destroy_async(waiterHeap);
 		return;
 
 	returnTimeWaiting:
 		// the future is not yet complete, so we must not free the newly allocated memory.
+
+		// unlock the global lock.
 		pthread_mutex_unlock(&future->mutex);
 		return;
 }
@@ -298,16 +399,16 @@ bool _cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t fut
 
 	// broadcast the result to all waiters.
 	_cswiftslash_optr_t wptr;
-	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, (void*)&wptr) == 0) {
+	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
 		// fire the result handler function any and all waiters.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == true) {
+		if (((_cswiftslash_future_wait_ptr_t)wptr)->is_sync == true) {
 			// this is a synchronous waiter. we can unlock their mutex and move on.
-			pthread_mutex_unlock(&((_cswiftslash_future_syncwait_t*)wptr)->sync_wait);
+			pthread_mutex_unlock(&((_cswiftslash_future_wait_ptr_t)wptr)->sync_wait);
 		} else {
 			// fire the async handler. there is no mutex to handle in this scenario.
-			((_cswiftslash_future_syncwait_t*)wptr)->res_handler(res_type, res_val, ((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
+			((_cswiftslash_future_wait_ptr_t)wptr)->res_handler_ptr(res_type, res_val, ((_cswiftslash_future_wait_ptr_t)wptr)->ctx_ptr);
 			// free the heap pointer from memory
-			free((void*)wptr);
+			_cswiftslash_future_wait_destroy_async((_cswiftslash_future_wait_ptr_t)wptr);
 		}
 	}
 
@@ -344,55 +445,14 @@ bool _cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t f
 	_cswiftslash_optr_t wptr;
 	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
 		// fire the result handler function any and all waiters.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == true) {
+		if (((_cswiftslash_future_wait_ptr_t)wptr)->is_sync == true) {
 			// this is a synchronous waiter. we can unlock their mutex and move on.
-			pthread_mutex_unlock(&((_cswiftslash_future_syncwait_t*)wptr)->sync_wait);
+			pthread_mutex_unlock(&((_cswiftslash_future_wait_ptr_t)wptr)->sync_wait);
 		} else {
 			// fire the async handler. there is no mutex to handle in this scenario.
-			((_cswiftslash_future_syncwait_t*)wptr)->err_handler(res_type, res_val, ((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
+			((_cswiftslash_future_wait_ptr_t)wptr)->err_handler_ptr(res_type, res_val, ((_cswiftslash_future_wait_ptr_t)wptr)->ctx_ptr);
 			// free the heap pointer from memory
-			free((void*)wptr);
-		}
-	}
-
-	goto returnSuccess;
-
-	returnSuccess:
-		// return true, since we successfully broadcasted the result.
-		pthread_mutex_unlock(&future->mutex);
-		return true;
-
-	returnFailure:
-		// return false, since we failed to broadcast the result.
-		pthread_mutex_unlock(&future->mutex);
-		return false;
-}
-
-
-bool _cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t future) {
-	// acquire the global lock for synchronization.
-	pthread_mutex_lock(&future->mutex);
-	
-	// flip the status from pending to successfully fufilled.
-	uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&future->statVal, &expected_complete, FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_acquire) == false) {
-		// the item was not the expected value and therefore NOT assigned.
-		// this means that someone else is working to close the structure, so we should return failure and do nothing (dont want to double close).
-		goto returnFailure;
-	}
-
-	// other threads may have been waiting on this result. notify the waiters.
-	_cswiftslash_optr_t wptr;
-	while (_cswiftslash_fifo_consume_nonblocking(&future->waiters, &wptr) == 0) {
-		// fire the result handler function any and all waiters.
-		if (((_cswiftslash_future_syncwait_t*)wptr)->is_sync == true) {
-			// this is a synchronous waiter. we can unlock their mutex and move on.
-			pthread_mutex_unlock(&((_cswiftslash_future_syncwait_t*)wptr)->sync_wait);
-		} else {
-			// fire the async handler. there is no mutex to handle in this scenario.
-			((_cswiftslash_future_syncwait_t*)wptr)->cancel_handler(((_cswiftslash_future_syncwait_t*)wptr)->ctx_ptr);
-			// free the heap pointer from memory
-			free((void*)wptr);
+			_cswiftslash_future_wait_destroy_async((_cswiftslash_future_wait_ptr_t)wptr);
 		}
 	}
 

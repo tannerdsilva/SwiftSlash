@@ -1,11 +1,11 @@
-import __cswiftslash
+import __cswiftslash_future
 import SwiftSlashContained
 
 /// a reference type that represents a result that will be available in the future.
 public final class Future<R>:@unchecked Sendable {
 
 	// the deallocator function type for a successful result.
-	public typealias SuccessfulResultDeallocator = (R)->Void
+	public typealias SuccessfulResultDeallocator = (R) -> Void
 	
 	/// thrown when a result is set on a future that is already set.
 	public struct InvalidStateError:Swift.Error {}
@@ -20,8 +20,7 @@ public final class Future<R>:@unchecked Sendable {
 	/// - parameters:
 	/// 	- successfulResultDeallocator: a user defined deallocator function that is called when the future is destroyed and the result is successful. if nil, the result is not have any deallocation work done (assumed to be a swift native type).
 	public init(successfulResultDeallocator:SuccessfulResultDeallocator? = nil) {
-		self.prim = UnsafeMutablePointer<_cswiftslash_future_t>.allocate(capacity:1)
-		self.prim.initialize(to:_cswiftslash_future_t_init())
+		self.prim = _cswiftslash_future_t_init()
 		self.successDeallocator = successfulResultDeallocator
 	}
 
@@ -92,15 +91,13 @@ public final class Future<R>:@unchecked Sendable {
 	deinit {
 		// destroy the c primitive. capture the result 
 		var result:(R?, Swift.Error?) = (nil, nil)
-		guard withUnsafeMutablePointer(to:&result, { rptr in
-			return _cswiftslash_future_t_destroy(prim.pointee, rptr, { etyp, eptr, ctx in
+		withUnsafeMutablePointer(to:&result, { rptr in
+			_cswiftslash_future_t_destroy(prim, rptr, { etyp, eptr, ctx in
 				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (Unmanaged<Contained<R>>.fromOpaque(eptr!).takeRetainedValue().value(), nil)
 			}, { etyp, eptr, ctx in
 				ctx!.assumingMemoryBound(to:(R?, Swift.Error?).self).pointee = (nil, Unmanaged<Contained<Swift.Error>>.fromOpaque(eptr!).takeRetainedValue().value())
 			})
-		}) == 0 else {
-			fatalError("failed to destroy future - \(#file):\(#line)")
-		}
+		})
 
 		// call the explicit deallocator if the result is successful and one was provided.
 		if let successDeallocator = successDeallocator, let result = result.0 {
@@ -111,3 +108,9 @@ public final class Future<R>:@unchecked Sendable {
 		prim.deinitialize(count:1).deallocate()
 	}
 }
+
+
+fileprivate let _cswiftslash_future_t_valH:future_result_val_handler_f = { resType, resPtr, ctx in
+	return _cswiftslash_future_t_init(resType, resPtr, ctx)
+}
+

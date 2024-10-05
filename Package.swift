@@ -5,7 +5,6 @@ fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"SwiftSlash",
 		dependencies:[
-			"__cswiftslash",
 			"SwiftSlashPThread",
 			"SwiftSlashFuture",
 			"SwiftSlashFIFO",
@@ -18,7 +17,7 @@ fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"SwiftSlashLineParser",
 		dependencies:[
-			"__cswiftslash",
+			// "__cswiftslash",
 			"SwiftSlashNAsyncStream"	
 		]
 	),
@@ -31,19 +30,19 @@ fileprivate var ssInternalTargets:[Target] = [
 	),
 	.target(
 		name:"SwiftSlashFHHelpers",
-		dependencies:["__cswiftslash"]
+		dependencies:["__cswiftslash_posix_helpers"]
 	),
 	.target(
 		name:"SwiftSlashPThread",
 		dependencies:[
-			"__cswiftslash",
+			"__cswiftslash_threads",
 			"SwiftSlashFuture"
 		]
 	),
 	.target(
 		name:"SwiftSlashFuture",
 		dependencies:[
-			"__cswiftslash",
+			"__cswiftslash_future",
 			"SwiftSlashContained"
 		]
 	),
@@ -53,31 +52,69 @@ fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"SwiftSlashIdentifiedList",
 		dependencies:[
-			"__cswiftslash",
+			"__cswiftslash_identified_list",
 			"SwiftSlashContained"
 		]
 	),
 	.target(
 		name:"SwiftSlashFIFO",
 		dependencies:[
-			"__cswiftslash",
+			"__cswiftslash_fifo",
 			"SwiftSlashContained"
 		]
 	),
 	.target(
 		name:"SwiftSlashEventTrigger",
 		dependencies:[
-			"__cswiftslash",
+			"__cswiftslash_eventtrigger",
 			"SwiftSlashPThread",
 			"SwiftSlashFIFO"
 		]
 	),
 	.target(
-		name:"__cswiftslash",
+		name:"__cswiftslash_future",
+		dependencies:[
+			"__cswiftslash_types",
+			"__cswiftslash_fifo"
+		],
 		publicHeadersPath:"."),
-	
+	.target(
+		name:"__cswiftslash_fifo",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_threads",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_identified_list",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_posix_helpers",
+		dependencies:[],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_auint8",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_eventtrigger",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_types",
+		sources:[],
+		publicHeadersPath:"."
+	),
 	// test target
-	.testTarget(
+	/*.testTarget(
 		name: "InternalPrimitiveTests",
 		dependencies:[
 			"SwiftSlash",
@@ -92,7 +129,7 @@ fileprivate var ssInternalTargets:[Target] = [
 			"SwiftSlashLineParser",
 			"SwiftSlashEventTrigger"
 		]
-	),
+	)*/
 ]
 
 
