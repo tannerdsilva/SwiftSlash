@@ -1,7 +1,46 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.0
 import PackageDescription
 
-fileprivate var ssInternalTargets:[Target] = [
+fileprivate let cswiftslashTargets:[Target] = [
+	.target(
+		name:"__cswiftslash_auint8",
+		dependencies:[],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_eventtrigger",
+		dependencies:[],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_types",
+		sources:[],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_fifo",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_future",
+		dependencies:["__cswiftslash_fifo"],
+		publicHeadersPath:"."
+	),
+	.testTarget(
+		name:"__cswiftslash_tests",
+		dependencies:["__cswiftslash_auint8", "__cswiftslash_fifo", "__cswiftslash_future", "__cswiftslash_types"],
+		path: "Tests/__cswiftslash"
+	)
+]
+
+fileprivate let swiftTargets:[Target] = [
+	.target(
+		name:"SwiftSlashContained"
+	)
+]
+
+fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets /* + [
 	.target(
 		name:"SwiftSlash",
 		dependencies:[
@@ -79,11 +118,6 @@ fileprivate var ssInternalTargets:[Target] = [
 		],
 		publicHeadersPath:"."),
 	.target(
-		name:"__cswiftslash_fifo",
-		dependencies:["__cswiftslash_types"],
-		publicHeadersPath:"."
-	),
-	.target(
 		name:"__cswiftslash_threads",
 		dependencies:["__cswiftslash_types"],
 		publicHeadersPath:"."
@@ -96,21 +130,6 @@ fileprivate var ssInternalTargets:[Target] = [
 	.target(
 		name:"__cswiftslash_posix_helpers",
 		dependencies:[],
-		publicHeadersPath:"."
-	),
-	.target(
-		name:"__cswiftslash_auint8",
-		dependencies:["__cswiftslash_types"],
-		publicHeadersPath:"."
-	),
-	.target(
-		name:"__cswiftslash_eventtrigger",
-		dependencies:["__cswiftslash_types"],
-		publicHeadersPath:"."
-	),
-	.target(
-		name:"__cswiftslash_types",
-		sources:[],
 		publicHeadersPath:"."
 	),
 	// test target
@@ -130,7 +149,7 @@ fileprivate var ssInternalTargets:[Target] = [
 			"SwiftSlashEventTrigger"
 		]
 	)*/
-]
+]*/
 
 
 let package = Package(
@@ -141,7 +160,7 @@ let package = Package(
 	products:[
 		.library(
 			name:"SwiftSlash",
-			targets:["SwiftSlash"])
+			targets:["SwiftSlashContained"])
 	],
 	targets:ssInternalTargets,
 	cLanguageStandard:.c11

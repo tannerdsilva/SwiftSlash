@@ -1,6 +1,15 @@
-// LICENSE MIT
-// copyright (c) tanner silva 2024. all rights reserved.
+/* LICENSE MIT
+copyright (c) tanner silva 2024. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 #include "__cswiftslash_fifo.h"
+
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -14,11 +23,10 @@ pthread_mutex_t _cswiftslash_fifo_mutex_new() {
 	return mutex;
 }
 
-/// internal function that initializes a chain pair.
-/// - parameters:
-///		- deallocator_f: the function that will be used to free the memory of the pointers in the chain.
-_cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex) {
+_cswiftslash_fifo_linkpair_ptr_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex) {
 	if (mutex != NULL) {
+
+		// initialize WITH a mutex
 		_cswiftslash_fifo_linkpair_t chain = {
 			.base = NULL,
 			.tail = NULL,
@@ -31,8 +39,15 @@ _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable m
 			.max_elements = 0
 		};
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
-		return chain;
+
+		void *rptr = malloc(sizeof(_cswiftslash_fifo_linkpair_t));
+		memcpy(rptr, &chain, sizeof(_cswiftslash_fifo_linkpair_t));\
+
+		return rptr;
+
 	} else {
+
+		// initialize WITHOUT a mutex
 		_cswiftslash_fifo_linkpair_t chain = {
 			.base = NULL,
 			.tail = NULL,
@@ -44,11 +59,19 @@ _cswiftslash_fifo_linkpair_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable m
 			.max_elements = 0
 		};
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
-		return chain;
+
+		void *rptr = malloc(sizeof(_cswiftslash_fifo_linkpair_t));
+		memcpy(rptr, &chain, sizeof(_cswiftslash_fifo_linkpair_t));
+
+		return rptr;
+
 	}
 }
 
 bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t chain, const size_t max_elements) {
+	// this is the value that the function will return.
+	bool returnValue = false;
+
 	// acquire the resource lock to synchronize the state of the chain.
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
@@ -56,31 +79,25 @@ bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t c
 
 	// validate that the chain is not already capped.
 	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == true) {
-		goto returnError;
+		goto returnTime;
 	}
 
 	// do not cap the chain if there are already more elements than the new cap.
 	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > max_elements) {
-		goto returnError;
+		goto returnTime;
 	}
 
 	// set the cap and store the max elements.
 	atomic_store_explicit(&chain->has_max_elements, true, memory_order_release);
 	atomic_store_explicit(&chain->max_elements, max_elements, memory_order_release);
+	returnValue = true;
 
-	// cleans up the function with an error indication as the return value.
-	returnError:
+	// cleans up the function and returns the result value to the caller.
+	returnTime:
 		if (chain->has_mutex) {
 			pthread_mutex_unlock(&chain->mutex_optional);
 		}
-		return false;
-
-	// cleans up the function with a success indication as the return value.
-	returnSuccess:
-		if (chain->has_mutex) {
-			pthread_mutex_unlock(&chain->mutex_optional);
-		}
-		return true;
+		return returnValue;
 }
 
 _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f) {
@@ -107,29 +124,46 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 		}
 	}
 	
+	// destroy the mutexes if they exist.
 	if (chain->has_mutex) {
 		pthread_mutex_destroy(&chain->mutex_optional);
 	}
 
+	// unlock the waiters mutex if it is locked.
 	if (atomic_load_explicit(&chain->is_waiters_mutex_locked, memory_order_acquire) == true) {
 		pthread_mutex_unlock(&chain->waiters_mutex);
 	}
+
+	// destroy the waiters mutex.
 	pthread_mutex_destroy(&chain->waiters_mutex);
 
+	// this will store the return value of the function.
+	_cswiftslash_optr_t rptr = NULL;
+
+	// return the cap pointer if the chain is capped.
 	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == true) {
-		return atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
+		rptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
 	} else {
-		return NULL;
+		rptr = NULL;
 	}
+
+	// free the chain structure.
+	free(chain);
+
+	return rptr;
 }
 
 bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_optr_t ptr) {
+	// this is the value that the function will return.
+	bool returnValue = false;
+
 	// claim the internal sync mutex
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
 	}
 
 	bool expected_cap = false;	// we expect the chain to NOT be capped
+
 	if (atomic_compare_exchange_weak_explicit(&chain->is_capped, &expected_cap, true, memory_order_acq_rel, memory_order_relaxed)) {
 		// successfully capped. now assign the capper pointer and store the number of remaining elements in the fifo.
 		atomic_store_explicit(&chain->cap_ptr, ptr, memory_order_release);
@@ -141,22 +175,24 @@ bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, co
 		}
 
 		// unlock the internal sync mutex
-		if (chain->has_mutex) {
-			pthread_mutex_unlock(&chain->mutex_optional);
-		}
-		return true;
+		returnValue = true;
+		goto returnTime;
+
 	} else {
+
 		// nothing to do, free the sync lock if it exists and then return
+		returnValue = false;
+		goto returnTime;
+	}
+
+	returnTime:
 		if (chain->has_mutex) {
 			pthread_mutex_unlock(&chain->mutex_optional);
 		}
-		return false;
-	}
+		return returnValue;
 }
 
-// internal function that attempts to install a link in the chain. this function does not care about the cap state of the chain and does not increment the element count.
-// - returns: true if the install was successful. false if the install was not successful.
-bool _cswiftslash_fifo_pass_link(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_t link) {
+bool ____cswiftslash_fifo_pass_link(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_t link) {
 	// defines the value that we expect to find on the element we will append to. we must only append to the end of the chain, so we expect the next pointer to be NULL.
 	_cswiftslash_fifo_link_ptr_t expected = NULL;
 	
@@ -184,10 +220,6 @@ bool _cswiftslash_fifo_pass_link(const _cswiftslash_fifo_linkpair_ptr_t chain, c
 	}
 }
 
-/// user function that allows a user to pass a pointer to into the chain for processing.
-/// - parameters:
-///		- chain: the chain that this operation will act on.
-///		- ptr: the pointer that will be passed into the chain for storage.
 int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_ptr_t ptr) {
 	int8_t returnval = -1;
 	if (chain->has_mutex) {
@@ -217,7 +249,7 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 		const _cswiftslash_fifo_link_ptr_t link_on_heap = memcpy(malloc(sizeof(link_on_stack)), &link_on_stack, sizeof(link_on_stack));
 
 		// attempt to pass the link into the chain.
-		if (_cswiftslash_fifo_pass_link(chain, link_on_heap) == false) {
+		if (____cswiftslash_fifo_pass_link(chain, link_on_heap) == false) {
 			// failure condition.
 			free(link_on_heap);
 			returnval = 1; // retry
@@ -257,7 +289,7 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 ///		- chain: the chain that this operation will act on.
 ///		- consumed_ptr: the pointer that will be set to the consumed pointer.
 /// - returns: true if the operation was successful and the element count could be decremented. false if the operation was not successful.
-bool _cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_atomic_base, const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_ptr_t *_Nonnull consumed_ptr) {
+bool ____cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_atomic_base, const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_ptr_t *_Nonnull consumed_ptr) {
 	if (preloaded_atomic_base == NULL) {
 		// there are no entries to consume.
 		return false;
@@ -282,8 +314,7 @@ bool _cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_atomi
 	return false;
 }
 
-/// @return 0 if the operation was successful and a normal fifo element was consumed. 1 if the operation resulted in the cap element being returned. -1 if the operation would block. -2 if the operation occurred an internal error.
-_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
+_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t *_Nonnull consumed_ptr) {
 	// get exclusivity of the state.
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
@@ -292,15 +323,18 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _
 	_cswiftslash_fifo_consume_result_t returnval;
 	
 	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
+
 		// attempt to consume the next entry in the chain.
-		if (_cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
+		if (____cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
 			returnval = FIFO_CONSUME_RESULT;
 			goto returnTime;
 		} else {
 			returnval = FIFO_CONSUME_INTERNAL_ERROR;
 			goto returnTime;
 		}
+
 	} else {
+
 		// check if the chain is capped.
 		if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)){
 			// no items and chain is NOT capped.
@@ -312,67 +346,68 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _
 			returnval = FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
+
 	}
 
 	returnTime:
-
-	// no longer need exclusivity of the state.
-	if (chain->has_mutex) {
-		pthread_mutex_unlock(&chain->mutex_optional);
-	}
-	return returnval;
+		// no longer need exclusivity of the state.
+		if (chain->has_mutex) {
+			pthread_mutex_unlock(&chain->mutex_optional);
+		}
+		return returnval;
 }
 
 _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
 	bool wasLockClaimedByCallAlready = false;
 	
 	loadAgain:
-	// get exclusivity of the state.
-	if (chain->has_mutex) {
-		pthread_mutex_lock(&chain->mutex_optional);
-	}
-	// if this function was called before, we need to unlock the waiters mutex.
-	if (wasLockClaimedByCallAlready == true) {
-		wasLockClaimedByCallAlready = false;
-		atomic_store_explicit(&chain->is_waiters_mutex_locked, false, memory_order_release);
-		pthread_mutex_unlock(&chain->waiters_mutex);
-	}
+		// get exclusivity of the state.
+		if (chain->has_mutex) {
+			pthread_mutex_lock(&chain->mutex_optional);
+		}
 
-	// this is the code that will be returned when the function is done.
-	_cswiftslash_fifo_consume_result_t returnval;
-	
-	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
-		// attempt to consume the next entry in the chain.
-		if (_cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
-			returnval = FIFO_CONSUME_RESULT;
-			goto returnTime;
-		} else {
-			returnval = FIFO_CONSUME_INTERNAL_ERROR;
-			goto returnTime;
+		// if this function was called before, we need to unlock the waiters mutex.
+		if (wasLockClaimedByCallAlready == true) {
+			wasLockClaimedByCallAlready = false;
+			atomic_store_explicit(&chain->is_waiters_mutex_locked, false, memory_order_release);
+			pthread_mutex_unlock(&chain->waiters_mutex);
 		}
-	} else {
-		// check if the chain is capped.
-		if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)) {
-			// not capped, so we must wait for an element to be added.
-			bool expectedLock = false;
-			if (atomic_compare_exchange_weak_explicit(&chain->is_waiters_mutex_locked, &expectedLock, true, memory_order_acq_rel, memory_order_relaxed)) {
-				// acquire the waiters mutex. this should NOT block because there was no contention indicated in the atomic exchange.
-				pthread_mutex_lock(&chain->waiters_mutex);
+
+		// this is the code that will be returned when the function is done.
+		_cswiftslash_fifo_consume_result_t returnval;
+		
+		if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
+			// attempt to consume the next entry in the chain.
+			if (____cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
+				returnval = FIFO_CONSUME_RESULT;
+				goto returnTime;
 			} else {
-				abort();
+				returnval = FIFO_CONSUME_INTERNAL_ERROR;
+				goto returnTime;
 			}
-			// we can now free the internal sync mutex.
-			if (chain->has_mutex) {
-				pthread_mutex_unlock(&chain->mutex_optional);
-			}
-			goto blockForNext;
 		} else {
-			// the chain is capped. return the cap pointer.
-			*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
-			returnval = FIFO_CONSUME_CAP;
-			goto returnTime;
+			// check if the chain is capped.
+			if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)) {
+				// not capped, so we must wait for an element to be added.
+				bool expectedLock = false;
+				if (atomic_compare_exchange_weak_explicit(&chain->is_waiters_mutex_locked, &expectedLock, true, memory_order_acq_rel, memory_order_relaxed)) {
+					// acquire the waiters mutex. this should NOT block because there was no contention indicated in the atomic exchange.
+					pthread_mutex_lock(&chain->waiters_mutex);
+				} else {
+					abort();
+				}
+				// we can now free the internal sync mutex.
+				if (chain->has_mutex) {
+					pthread_mutex_unlock(&chain->mutex_optional);
+				}
+				goto blockForNext;
+			} else {
+				// the chain is capped. return the cap pointer.
+				*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
+				returnval = FIFO_CONSUME_CAP;
+				goto returnTime;
+			}
 		}
-	}
 
 	blockForNext:
 		pthread_mutex_lock(&chain->waiters_mutex);

@@ -3,10 +3,11 @@
 #ifndef CLIBSWIFTSLASH_PTRFUTURE_H
 #define CLIBSWIFTSLASH_PTRFUTURE_H
 
-#include "__cswiftslash_fifo.h"
 #include "__cswiftslash_types.h"
 
 #include <pthread.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 // handler types -----
 
@@ -52,8 +53,7 @@ typedef struct _cswiftslash_future {
 	_Atomic uint8_t fres_val_type;					// result value type (user field).
 	_Atomic _cswiftslash_optr_t fres_val;			// result value (user field).
 
-	// this is where waiters for the future are stored. items within this fifo are handled differently depending on their synchronous or asynchronous nature.
-	_cswiftslash_fifo_linkpair_t waiters;
+	_cswiftslash_ptr_t wheaps;						// the fifo chain of waiters.
 } _cswiftslash_future_t;
 
 /// @brief a pointer to a future.
