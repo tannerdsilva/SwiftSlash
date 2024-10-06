@@ -2,11 +2,13 @@
 import PackageDescription
 
 fileprivate let cswiftslashTargets:[Target] = [
+	// atomic uint8_t
 	.target(
 		name:"__cswiftslash_auint8",
 		dependencies:[],
 		publicHeadersPath:"."
 	),
+	// event trigger
 	.target(
 		name:"__cswiftslash_eventtrigger",
 		dependencies:[],
