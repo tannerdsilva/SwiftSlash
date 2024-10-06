@@ -1,4 +1,5 @@
-/* LICENSE MIT
+/*
+LICENSE MIT
 copyright (c) tanner silva 2024. all rights reserved.
 
    _____      ______________________   ___   ______ __
@@ -8,39 +9,39 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 */
 
-#ifndef _CSWIFTSLASH_ATOMICUINT8_H
-#define _CSWIFTSLASH_ATOMICUINT8_H
+#ifndef __CSWIFTSLASH_ATOMICUINT8_H
+#define __CSWIFTSLASH_ATOMICUINT8_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
 /// @brief a structure that encapsulates a single (aligned) atomic uint8_t memory space.
-typedef struct _cswiftslash_atomic_uint8 {
+typedef struct __cswiftslash_atomic_uint8 {
 
-	/// @brief the stored value.
+	/// @brief the stored value. NOTE: do not access or manipulate this field directly.
 	uint8_t _Atomic value;
 
-} _cswiftslash_atomic_uint8_t;
+} __cswiftslash_atomic_uint8_t;
 
 /// @brief initializes a new atomic uint8_t structure with a specified initial value.
-/// @param initval the initial value to store in the atomic uint8_t structure.
+/// @param initval the initial value to store in the atomic uint8_t structure before it is returned.
 /// @return the initialized atomic uint8_t structure.
-_cswiftslash_atomic_uint8_t _cswiftslash_auint8_init(
+__cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(
 	const uint8_t initval
 );
 
 /// @brief loads the stored value from a specified `_cswiftslash_atomic_uint8_t` pointer. this function acts as a functional wrapper around the `atomic_load` function.
 /// @param applyTo the atomic uint8_t structure to apply the operation to.
 /// @return the stored value that was atomically loaded from memory.
-uint8_t _cswiftslash_auint8_load(
-	_cswiftslash_atomic_uint8_t *_Nonnull applyTo
+uint8_t __cswiftslash_auint8_load(
+	__cswiftslash_atomic_uint8_t *_Nonnull applyTo
 );
 
 /// @brief stores a value to a specified atomic pointer. this function acts as a functional wrapper around the `atomic_store` function.
 /// @param applyTo the atomic uint8_t structure to apply the operation to.
 /// @param newval the new value to store.
-void _cswiftslash_auint8_store(
-	_cswiftslash_atomic_uint8_t *_Nonnull applyTo,
+void __cswiftslash_auint8_store(
+	__cswiftslash_atomic_uint8_t *_Nonnull applyTo,
 	const uint8_t newval
 );
 
@@ -49,10 +50,10 @@ void _cswiftslash_auint8_store(
 /// @param expected the expected value to compare against.
 /// @param newval the new value to store if the expected value is found.
 /// @return whether the value was successfully stored.
-bool _cswiftslash_auint8_compare_exchange_weak(
-	_cswiftslash_atomic_uint8_t *_Nonnull applyTo,
+bool __cswiftslash_auint8_compare_exchange_weak(
+	__cswiftslash_atomic_uint8_t *_Nonnull applyTo,
 	uint8_t *_Nonnull expected,
 	const uint8_t newval
 );
 
-#endif // _CSWIFTSLASH_ATOMICUINT8_H
+#endif // __CSWIFTSLASH_ATOMICUINT8_H

@@ -1,4 +1,5 @@
-/* LICENSE MIT
+/*
+LICENSE MIT
 copyright (c) tanner silva 2024. all rights reserved.
 
    _____      ______________________   ___   ______ __
@@ -9,23 +10,24 @@ copyright (c) tanner silva 2024. all rights reserved.
 */
 
 #include "__cswiftslash_auint8.h"
+
 #include <stdatomic.h>
 
-_cswiftslash_atomic_uint8_t _cswiftslash_auint8_init(const uint8_t initval) {
-	_cswiftslash_atomic_uint8_t newval = {
+__cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(const uint8_t initval) {
+	__cswiftslash_atomic_uint8_t newval = {
 		.value = initval
 	};
 	return newval;
 }
 
-uint8_t _cswiftslash_auint8_load(_cswiftslash_atomic_uint8_t *_Nonnull applyTo) {
+uint8_t __cswiftslash_auint8_load(__cswiftslash_atomic_uint8_t *_Nonnull applyTo) {
 	return atomic_load(&applyTo->value);
 }
 
-void _cswiftslash_auint8_store(_cswiftslash_atomic_uint8_t *_Nonnull applyTo, const uint8_t value) {
+void __cswiftslash_auint8_store(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, const uint8_t value) {
 	atomic_store(&applyTo->value, value);
 }
 
-bool _cswiftslash_auint8_compare_exchange_weak(_cswiftslash_atomic_uint8_t *_Nonnull applyTo, uint8_t *_Nonnull expected, const uint8_t desired) {
+bool __cswiftslash_auint8_compare_exchange_weak(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, uint8_t *_Nonnull expected, const uint8_t desired) {
 	return atomic_compare_exchange_weak(&applyTo->value, expected, desired);
 }

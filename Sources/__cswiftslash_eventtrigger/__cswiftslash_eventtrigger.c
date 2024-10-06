@@ -1,4 +1,5 @@
-/* LICENSE MIT
+/*
+LICENSE MIT
 copyright (c) tanner silva 2024. all rights reserved.
 
    _____      ______________________   ___   ______ __
@@ -10,6 +11,8 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 #include "__cswiftslash_eventtrigger.h"
 
-int _cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr) {
+#ifdef __linux__
+int __cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr) {
 	return ioctl(fd, FIONREAD, sizeptr);
 }
+#endif

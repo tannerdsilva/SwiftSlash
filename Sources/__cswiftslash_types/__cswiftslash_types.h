@@ -1,4 +1,5 @@
-/* LICENSE MIT
+/*
+LICENSE MIT
 copyright (c) tanner silva 2024. all rights reserved.
 
    _____      ______________________   ___   ______ __
@@ -8,19 +9,19 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 */
 
-#ifndef _CSWIFTSLASH_TYPES_H
-#define _CSWIFTSLASH_TYPES_H
+#ifndef __CSWIFTSLASH_TYPES_H
+#define __CSWIFTSLASH_TYPES_H
 
 /// @brief a non-optional pointer
-typedef void*_Nonnull _cswiftslash_ptr_t;
+typedef void*_Nonnull __cswiftslash_ptr_t;
 
 /// @brief a constant non-optional pointer
-typedef const void*_Nonnull _cswiftslash_cptr_t;
+typedef const void*_Nonnull __cswiftslash_cptr_t;
 
 /// @brief an optional pointer
-typedef void*_Nullable _cswiftslash_optr_t;
+typedef void*_Nullable __cswiftslash_optr_t;
 
 /// @brief a constant optional pointer
-typedef const void*_Nonnull _cswiftslash_coptr_t;
+typedef const void*_Nonnull __cswiftslash_coptr_t;
 
-#endif // _CSWIFTSLASH_TYPES_H
+#endif // __CSWIFTSLASH_TYPES_H

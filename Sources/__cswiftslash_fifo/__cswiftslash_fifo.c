@@ -17,17 +17,17 @@ copyright (c) tanner silva 2024. all rights reserved.
 #include <string.h>
 #include <stdio.h>
 
-pthread_mutex_t _cswiftslash_fifo_mutex_new() {
+pthread_mutex_t __cswiftslash_fifo_mutex_new() {
 	pthread_mutex_t mutex;
 	pthread_mutex_init(&mutex, NULL);
 	return mutex;
 }
 
-_cswiftslash_fifo_linkpair_ptr_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex) {
+__cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(pthread_mutex_t *_Nullable mutex) {
 	if (mutex != NULL) {
 
 		// initialize WITH a mutex
-		_cswiftslash_fifo_linkpair_t chain = {
+		__cswiftslash_fifo_linkpair_t chain = {
 			.base = NULL,
 			.tail = NULL,
 			.element_count = 0,
@@ -38,17 +38,19 @@ _cswiftslash_fifo_linkpair_ptr_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullab
 			.has_max_elements = false,
 			.max_elements = 0
 		};
+
+		// the waiters mutex is always initialized.
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
 
-		void *rptr = malloc(sizeof(_cswiftslash_fifo_linkpair_t));
-		memcpy(rptr, &chain, sizeof(_cswiftslash_fifo_linkpair_t));\
+		void *rptr = malloc(sizeof(__cswiftslash_fifo_linkpair_t));
+		memcpy(rptr, &chain, sizeof(__cswiftslash_fifo_linkpair_t));
 
 		return rptr;
-
+		
 	} else {
 
 		// initialize WITHOUT a mutex
-		_cswiftslash_fifo_linkpair_t chain = {
+		__cswiftslash_fifo_linkpair_t chain = {
 			.base = NULL,
 			.tail = NULL,
 			.element_count = 0,
@@ -58,17 +60,18 @@ _cswiftslash_fifo_linkpair_ptr_t _cswiftslash_fifo_init(pthread_mutex_t *_Nullab
 			.has_max_elements = false,
 			.max_elements = 0
 		};
+
+		// the waiters mutex is always initialized.
 		pthread_mutex_init(&chain.waiters_mutex, NULL);
 
-		void *rptr = malloc(sizeof(_cswiftslash_fifo_linkpair_t));
-		memcpy(rptr, &chain, sizeof(_cswiftslash_fifo_linkpair_t));
+		void *rptr = malloc(sizeof(__cswiftslash_fifo_linkpair_t));
+		memcpy(rptr, &chain, sizeof(__cswiftslash_fifo_linkpair_t));
 
 		return rptr;
-
 	}
 }
 
-bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t chain, const size_t max_elements) {
+bool __cswiftslash_fifo_set_max_elements(const __cswiftslash_fifo_linkpair_ptr_t chain, const size_t max_elements) {
 	// this is the value that the function will return.
 	bool returnValue = false;
 
@@ -100,9 +103,9 @@ bool _cswiftslash_fifo_set_max_elements(const _cswiftslash_fifo_linkpair_ptr_t c
 		return returnValue;
 }
 
-_cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f) {
+__cswiftslash_optr_t __cswiftslash_fifo_close(const __cswiftslash_fifo_linkpair_ptr_t chain, const __cswiftslash_fifo_link_ptr_consume_f _Nullable deallocator_f) {
 	// load the base entry.
-	_cswiftslash_fifo_link_ptr_t current = atomic_load_explicit(&chain->base, memory_order_acquire);
+	__cswiftslash_fifo_link_ptr_t current = atomic_load_explicit(&chain->base, memory_order_acquire);
 	
 	// place NULL at the base and tail so that others aren't able to manipulate the chain while we work to free it.
 	atomic_store_explicit(&chain->base, NULL, memory_order_release);
@@ -111,14 +114,14 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 	// iterate through the chain and free all entries. call the deallocator function if it is not NULL.
 	if (deallocator_f != NULL) {
 		while (current != NULL) {
-			_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
+			__cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
 			deallocator_f(current->ptr);
 			free(current);
 			current = next;
 		}
 	} else {
 		while (current != NULL) {
-			_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
+			__cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
 			free(current);
 			current = next;
 		}
@@ -138,7 +141,7 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 	pthread_mutex_destroy(&chain->waiters_mutex);
 
 	// this will store the return value of the function.
-	_cswiftslash_optr_t rptr = NULL;
+	__cswiftslash_optr_t rptr = NULL;
 
 	// return the cap pointer if the chain is capped.
 	if (atomic_load_explicit(&chain->is_capped, memory_order_acquire) == true) {
@@ -153,7 +156,7 @@ _cswiftslash_optr_t _cswiftslash_fifo_close(const _cswiftslash_fifo_linkpair_ptr
 	return rptr;
 }
 
-bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_optr_t ptr) {
+bool __cswiftslash_fifo_pass_cap(const __cswiftslash_fifo_linkpair_ptr_t chain, const __cswiftslash_optr_t ptr) {
 	// this is the value that the function will return.
 	bool returnValue = false;
 
@@ -192,16 +195,16 @@ bool _cswiftslash_fifo_pass_cap(const _cswiftslash_fifo_linkpair_ptr_t chain, co
 		return returnValue;
 }
 
-bool ____cswiftslash_fifo_pass_link(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_fifo_link_ptr_t link) {
+bool ____cswiftslash_fifo_pass_link(const __cswiftslash_fifo_linkpair_ptr_t chain, const __cswiftslash_fifo_link_ptr_t link) {
 	// defines the value that we expect to find on the element we will append to. we must only append to the end of the chain, so we expect the next pointer to be NULL.
-	_cswiftslash_fifo_link_ptr_t expected = NULL;
+	__cswiftslash_fifo_link_ptr_t expected = NULL;
 	
 	// load the current tail entry. it may exist, or it may not.
-	_cswiftslash_fifo_link_ptr_t gettail = atomic_load_explicit(&chain->tail, memory_order_acquire);
+	__cswiftslash_fifo_link_ptr_t gettail = atomic_load_explicit(&chain->tail, memory_order_acquire);
 
 	// determine where to try and write the new entry based on whether or not there is a tail entry.
-	_cswiftslash_fifo_link_aptr_t*_Nonnull writeptr;
-	_cswiftslash_fifo_link_aptr_t*_Nonnull secondptr;
+	__cswiftslash_fifo_link_aptr_t*_Nonnull writeptr;
+	__cswiftslash_fifo_link_aptr_t*_Nonnull secondptr;
 	if (gettail == NULL) {
 		writeptr = &chain->tail;
 		secondptr = &chain->base;
@@ -220,8 +223,11 @@ bool ____cswiftslash_fifo_pass_link(const _cswiftslash_fifo_linkpair_ptr_t chain
 	}
 }
 
-int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, const _cswiftslash_ptr_t ptr) {
+int8_t __cswiftslash_fifo_pass(const __cswiftslash_fifo_linkpair_ptr_t chain, const __cswiftslash_ptr_t ptr) {
+	// the result of the operation will be stored here.
 	int8_t returnval = -1;
+
+	// lock the internal sync mutex if this instance is configured to use one.
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
 	}
@@ -240,13 +246,13 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 		}
 		
 		// create a new link to be added to the chain. this will be defined on the stack.
-		const struct _cswiftslash_fifo_link link_on_stack = {
+		const struct __cswiftslash_fifo_link link_on_stack = {
 			.ptr = ptr,
 			.next = NULL
 		};
 
 		// copy the new link to the heap.
-		const _cswiftslash_fifo_link_ptr_t link_on_heap = memcpy(malloc(sizeof(link_on_stack)), &link_on_stack, sizeof(link_on_stack));
+		const __cswiftslash_fifo_link_ptr_t link_on_heap = memcpy(malloc(sizeof(link_on_stack)), &link_on_stack, sizeof(link_on_stack));
 
 		// attempt to pass the link into the chain.
 		if (____cswiftslash_fifo_pass_link(chain, link_on_heap) == false) {
@@ -277,9 +283,13 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 	}
 
 	returnTime:
+
+		// unlock the internal sync mutex if this instance is configured to use one.
 		if (chain->has_mutex) {
 			pthread_mutex_unlock(&chain->mutex_optional);
 		}
+
+		// return the result of the operation.
 		return returnval;
 }
 
@@ -289,14 +299,14 @@ int8_t _cswiftslash_fifo_pass(const _cswiftslash_fifo_linkpair_ptr_t chain, cons
 ///		- chain: the chain that this operation will act on.
 ///		- consumed_ptr: the pointer that will be set to the consumed pointer.
 /// - returns: true if the operation was successful and the element count could be decremented. false if the operation was not successful.
-bool ____cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_atomic_base, const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_ptr_t *_Nonnull consumed_ptr) {
+bool ____cswiftslash_fifo_consume_next(__cswiftslash_fifo_link_ptr_t preloaded_atomic_base, const __cswiftslash_fifo_linkpair_ptr_t chain, __cswiftslash_ptr_t *_Nonnull consumed_ptr) {
 	if (preloaded_atomic_base == NULL) {
 		// there are no entries to consume.
 		return false;
 	}
 
 	// load the next entry from the base.
-	_cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&preloaded_atomic_base->next, memory_order_acquire);
+	__cswiftslash_fifo_link_ptr_t next = atomic_load_explicit(&preloaded_atomic_base->next, memory_order_acquire);
 
 	// attempt to pop the next entry from the chain by replacing the current base with the next entry.
 	if (atomic_compare_exchange_weak_explicit(&chain->base, &preloaded_atomic_base, next, memory_order_acq_rel, memory_order_relaxed)) {
@@ -314,22 +324,22 @@ bool ____cswiftslash_fifo_consume_next(_cswiftslash_fifo_link_ptr_t preloaded_at
 	return false;
 }
 
-_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t *_Nonnull consumed_ptr) {
+__cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_nonblocking(const __cswiftslash_fifo_linkpair_ptr_t chain, __cswiftslash_optr_t *_Nonnull consumed_ptr) {
 	// get exclusivity of the state.
 	if (chain->has_mutex) {
 		pthread_mutex_lock(&chain->mutex_optional);
 	}
 
-	_cswiftslash_fifo_consume_result_t returnval;
+	__cswiftslash_fifo_consume_result_t returnval;
 	
 	if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
 
 		// attempt to consume the next entry in the chain.
 		if (____cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
-			returnval = FIFO_CONSUME_RESULT;
+			returnval = __CSWIFTSLASH_FIFO_CONSUME_RESULT;
 			goto returnTime;
 		} else {
-			returnval = FIFO_CONSUME_INTERNAL_ERROR;
+			returnval = __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR;
 			goto returnTime;
 		}
 
@@ -338,12 +348,12 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _
 		// check if the chain is capped.
 		if (__builtin_expect(atomic_load_explicit(&chain->is_capped, memory_order_acquire) == false, true)){
 			// no items and chain is NOT capped.
-			returnval = FIFO_CONSUME_WOULDBLOCK;
+			returnval = __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK;
 			goto returnTime;
 		} else {
 			// the chain is capped. return the cap pointer.
 			*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
-			returnval = FIFO_CONSUME_CAP;
+			returnval = __CSWIFTSLASH_FIFO_CONSUME_CAP;
 			goto returnTime;
 		}
 
@@ -357,7 +367,7 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_nonblocking(const _
 		return returnval;
 }
 
-_cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _cswiftslash_fifo_linkpair_ptr_t chain, _cswiftslash_optr_t*_Nonnull consumed_ptr) {
+__cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_blocking(const __cswiftslash_fifo_linkpair_ptr_t chain, __cswiftslash_optr_t*_Nonnull consumed_ptr) {
 	bool wasLockClaimedByCallAlready = false;
 	
 	loadAgain:
@@ -374,15 +384,15 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _csw
 		}
 
 		// this is the code that will be returned when the function is done.
-		_cswiftslash_fifo_consume_result_t returnval;
+		__cswiftslash_fifo_consume_result_t returnval;
 		
 		if (atomic_load_explicit(&chain->element_count, memory_order_acquire) > 0) {
 			// attempt to consume the next entry in the chain.
 			if (____cswiftslash_fifo_consume_next(atomic_load_explicit(&chain->base, memory_order_acquire), chain, consumed_ptr)) {
-				returnval = FIFO_CONSUME_RESULT;
+				returnval = __CSWIFTSLASH_FIFO_CONSUME_RESULT;
 				goto returnTime;
 			} else {
-				returnval = FIFO_CONSUME_INTERNAL_ERROR;
+				returnval = __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR;
 				goto returnTime;
 			}
 		} else {
@@ -404,7 +414,7 @@ _cswiftslash_fifo_consume_result_t _cswiftslash_fifo_consume_blocking(const _csw
 			} else {
 				// the chain is capped. return the cap pointer.
 				*consumed_ptr = atomic_load_explicit(&chain->cap_ptr, memory_order_acquire);
-				returnval = FIFO_CONSUME_CAP;
+				returnval = __CSWIFTSLASH_FIFO_CONSUME_CAP;
 				goto returnTime;
 			}
 		}

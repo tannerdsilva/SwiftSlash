@@ -1,7 +1,16 @@
-// LICENSE MIT
-// copyright (c) tanner silva 2024. all rights reserved.
-#ifndef CLIBSWIFTSLASH_PTRFUTURE_H
-#define CLIBSWIFTSLASH_PTRFUTURE_H
+/*
+LICENSE MIT
+copyright (c) tanner silva 2024. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
+#ifndef __CLIBSWIFTSLASH_FUTURE_H
+#define __CLIBSWIFTSLASH_FUTURE_H
 
 #include "__cswiftslash_types.h"
 
@@ -18,10 +27,10 @@
 /// @param res_typ the result type value.
 /// @param res_ptr the result pointer (optional).
 /// @param ctx_ptr the context pointer (optional).
-typedef void(* future_result_val_handler_f)(
+typedef void(* __cswiftslash_future_result_val_handler_f)(
 	const uint8_t res_typ,
-	const _cswiftslash_optr_t res_ptr,
-	const _cswiftslash_optr_t ctx_ptr
+	const __cswiftslash_optr_t res_ptr,
+	const __cswiftslash_optr_t ctx_ptr
 );
 
 // ERROR
@@ -30,40 +39,40 @@ typedef void(* future_result_val_handler_f)(
 /// @param err_typ the error type value.
 /// @param err_ptr the error pointer (optional).
 /// @param ctx_ptr the context pointer (optional).
-typedef void(* future_result_err_handler_f)(
+typedef void(* __cswiftslash_future_result_err_handler_f)(
 	const uint8_t err_type,
-	const _cswiftslash_optr_t err_ptr,
-	const _cswiftslash_optr_t ctx_ptr
+	const __cswiftslash_optr_t err_ptr,
+	const __cswiftslash_optr_t ctx_ptr
 );
 
 // - FUNCTION
 /// @brief a future cancel handler function.
 /// @param ctx_ptr the context pointer (optional).
-typedef void(* future_result_cancel_handler_f)(
-	const _cswiftslash_optr_t ctx_ptr
+typedef void(* __cswiftslash_future_result_cncl_handler_f)(
+	const __cswiftslash_optr_t ctx_ptr
 );
 
 /// @brief a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
-typedef struct _cswiftslash_future {
+typedef struct __cswiftslash_future {
 	// internal state mechanisms for the future itself.
 	_Atomic uint8_t statVal;						// internal status value.
 	pthread_mutex_t mutex;							// internal mutex for the condition.
 	
 	// user fields related to the result.
 	_Atomic uint8_t fres_val_type;					// result value type (user field).
-	_Atomic _cswiftslash_optr_t fres_val;			// result value (user field).
+	_Atomic __cswiftslash_optr_t fres_val;			// result value (user field).
 
-	_cswiftslash_ptr_t wheaps;						// the fifo chain of waiters.
-} _cswiftslash_future_t;
+	__cswiftslash_ptr_t wheaps;						// the fifo chain of waiters.
+} __cswiftslash_future_t;
 
 /// @brief a pointer to a future.
-typedef _cswiftslash_future_t*_Nonnull _cswiftslash_future_ptr_t;
+typedef __cswiftslash_future_t*_Nonnull _cswiftslash_future_ptr_t;
 
 // init and deinit -----
 
 /// @brief initialize a future.
 /// @return the initialized future pointer.
-_cswiftslash_future_ptr_t _cswiftslash_future_t_init(void);
+_cswiftslash_future_ptr_t __cswiftslash_future_t_init(void);
 
 /// @brief destroy a future. behavior is undefined if this is called while the future is still in use.
 /// @param future a pointer to the future to deallocate.
@@ -71,11 +80,11 @@ _cswiftslash_future_ptr_t _cswiftslash_future_t_init(void);
 /// @param res_handler the result handler to call when the future is complete.
 /// @param err_handler the error handler to call when the future is complete.
 /// @return void is returned after the future is safely deallocated.
-void _cswiftslash_future_t_destroy(
+void __cswiftslash_future_t_destroy(
 	_cswiftslash_future_ptr_t future,
-	const _cswiftslash_optr_t ctx_ptr,
-	const _Nonnull future_result_val_handler_f res_handler,
-	const _Nonnull future_result_err_handler_f err_handlerf
+	const __cswiftslash_optr_t ctx_ptr,
+	const _Nonnull __cswiftslash_future_result_val_handler_f res_handler,
+	const _Nonnull __cswiftslash_future_result_err_handler_f err_handlerf
 );
 
 // waiting for the result -----
@@ -87,12 +96,12 @@ void _cswiftslash_future_t_destroy(
 /// @param err_handler the error handler to call when the future is complete.
 /// @param cancel_handler the cancel handler to call when the future is cancelled.
 /// @return void is returned (calling thread is no longer blocked) when one of the result handlers is fired with the result.
-void _cswiftslash_future_t_wait_sync(
+void __cswiftslash_future_t_wait_sync(
 	const _cswiftslash_future_ptr_t future,
-	const _cswiftslash_optr_t ctx_ptr,
-	const _Nonnull future_result_val_handler_f res_handler,
-	const _Nonnull future_result_err_handler_f err_handler,
-	const _Nonnull future_result_cancel_handler_f cancel_handler
+	const __cswiftslash_optr_t ctx_ptr,
+	const _Nonnull __cswiftslash_future_result_val_handler_f res_handler,
+	const _Nonnull __cswiftslash_future_result_err_handler_f err_handler,
+	const _Nonnull __cswiftslash_future_result_cncl_handler_f cancel_handler
 );
 
 /// @brief register completion handlers for the future and return immediately. handler functions will be called from the thread that completes the future.
@@ -102,12 +111,12 @@ void _cswiftslash_future_t_wait_sync(
 /// @param err_handler the error handler to call (from another thread) when the future is complete.
 /// @param cancel_handler the cancel handler to call (from another thread) when the future is cancelled.
 /// @return void is returned after the handlers are registered.
-void _cswiftslash_future_t_wait_async(
+void __cswiftslash_future_t_wait_async(
 	const _cswiftslash_future_ptr_t future,
-	const _cswiftslash_optr_t ctx_ptr,
-	const _Nonnull future_result_val_handler_f res_handler,
-	const _Nonnull future_result_err_handler_f err_handler,
-	const _Nonnull future_result_cancel_handler_f cancel_handler
+	const __cswiftslash_optr_t ctx_ptr,
+	const _Nonnull __cswiftslash_future_result_val_handler_f res_handler,
+	const _Nonnull __cswiftslash_future_result_err_handler_f err_handler,
+	const _Nonnull __cswiftslash_future_result_cncl_handler_f cancel_handler
 );
 
 // delivering the result -----
@@ -117,10 +126,10 @@ void _cswiftslash_future_t_wait_async(
 /// @param res_type the result type - an 8 bit value.
 /// @param res_val the result value - an optional pointer.
 /// @return whether the broadcast was successful.
-bool _cswiftslash_future_t_broadcast_res_val(
+bool __cswiftslash_future_t_broadcast_res_val(
 	const _cswiftslash_future_ptr_t future,
 	const uint8_t res_type,
-	const _cswiftslash_optr_t res_val
+	const __cswiftslash_optr_t res_val
 );
 
 /// broadcast a completion result to all threads waiting on the future.
@@ -128,10 +137,10 @@ bool _cswiftslash_future_t_broadcast_res_val(
 /// @param res_type the result type - an 8 bit value.
 /// @param res_val the result value - an optional pointer.
 /// @return whether the broadcast was successful.
-bool _cswiftslash_future_t_broadcast_res_throw(
+bool __cswiftslash_future_t_broadcast_res_throw(
 	const _cswiftslash_future_ptr_t future,
 	const uint8_t res_type,
-	const _cswiftslash_optr_t res_val
+	const __cswiftslash_optr_t res_val
 );
 
-#endif // CLIBSWIFTSLASH_PTRFUTURE_H
+#endif // __CLIBSWIFTSLASH_FUTURE_H
