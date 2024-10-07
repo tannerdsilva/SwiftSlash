@@ -29,9 +29,14 @@ fileprivate let cswiftslashTargets:[Target] = [
 		dependencies:["__cswiftslash_fifo"],
 		publicHeadersPath:"."
 	),
+	.target(
+		name:"__cswiftslash_threads",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
 	.testTarget(
 		name:"__cswiftslash_tests",
-		dependencies:["__cswiftslash_auint8", "__cswiftslash_fifo", "__cswiftslash_future", "__cswiftslash_types"],
+		dependencies:["__cswiftslash_auint8", "__cswiftslash_fifo", "__cswiftslash_future", "__cswiftslash_types", "__cswiftslash_threads", "__cswiftslash_eventtrigger"],
 		path: "Tests/__cswiftslash"
 	)
 ]

@@ -18,8 +18,8 @@ copyright (c) tanner silva 2024. all rights reserved.
 /// @brief a structure that encapsulates a single (aligned) atomic uint8_t memory space.
 typedef struct __cswiftslash_atomic_uint8 {
 
-	/// @brief the stored value. NOTE: do not access or manipulate this field directly.
-	uint8_t _Atomic value;
+	// the stored value. NOTE: do not access or manipulate this field directly.
+	uint8_t _Atomic ____v;
 
 } __cswiftslash_atomic_uint8_t;
 

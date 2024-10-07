@@ -15,19 +15,19 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 __cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(const uint8_t initval) {
 	__cswiftslash_atomic_uint8_t newval = {
-		.value = initval
+		.____v = initval
 	};
 	return newval;
 }
 
 uint8_t __cswiftslash_auint8_load(__cswiftslash_atomic_uint8_t *_Nonnull applyTo) {
-	return atomic_load(&applyTo->value);
+	return atomic_load(&applyTo->____v);
 }
 
 void __cswiftslash_auint8_store(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, const uint8_t value) {
-	atomic_store(&applyTo->value, value);
+	atomic_store(&applyTo->____v, value);
 }
 
 bool __cswiftslash_auint8_compare_exchange_weak(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, uint8_t *_Nonnull expected, const uint8_t desired) {
-	return atomic_compare_exchange_weak(&applyTo->value, expected, desired);
+	return atomic_compare_exchange_weak(&applyTo->____v, expected, desired);
 }
