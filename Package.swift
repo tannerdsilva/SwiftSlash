@@ -34,9 +34,27 @@ fileprivate let cswiftslashTargets:[Target] = [
 		dependencies:["__cswiftslash_types"],
 		publicHeadersPath:"."
 	),
+	.target(
+		name:"__cswiftslash_posix_helpers",
+		dependencies:[],
+		publicHeadersPath:"."
+	),
+	.target(
+		name:"__cswiftslash_identified_list",
+		dependencies:["__cswiftslash_types"],
+		publicHeadersPath:"."
+	),
 	.testTarget(
 		name:"__cswiftslash_tests",
-		dependencies:["__cswiftslash_auint8", "__cswiftslash_fifo", "__cswiftslash_future", "__cswiftslash_types", "__cswiftslash_threads", "__cswiftslash_eventtrigger"],
+		dependencies:[
+			"__cswiftslash_auint8",
+			"__cswiftslash_fifo",
+			"__cswiftslash_future",
+			"__cswiftslash_types",
+			"__cswiftslash_threads",
+			"__cswiftslash_eventtrigger",
+			"__cswiftslash_identified_list"
+		],
 		path: "Tests/__cswiftslash"
 	)
 ]

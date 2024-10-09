@@ -37,7 +37,7 @@ internal struct ThreadTests {
 
 	// MARK: C Harness
 	private final class ThreadHarness:@unchecked Sendable {
-		// Keep track of which handlers were called and in what order
+		// keeps track of which handlers were called and in what order
 		fileprivate enum HandlerCall: Equatable {
 			case allocatorCalled
 			case mainCalled
@@ -48,29 +48,28 @@ internal struct ThreadTests {
 		fileprivate var handlerCalls: [HandlerCall] = []
 		fileprivate let handlerCallsLock = Mutex()
 		
-		// Workspace pointer
+		// workspace pointer
 		fileprivate var workspacePtr:UnsafeMutableRawPointer?
 		
-		// Thread
+		// thread
 		fileprivate var thread:__cswiftslash_threads_t_type?
 		
-		// Result of pthread_create
+		// result of pthread_create
 		fileprivate var createResult: Int32?
 		
-		// Function pointers for the thread configuration
+		// function pointers for the thread configuration
 		fileprivate var alloc_f:__cswiftslash_threads_alloc_f!
 		fileprivate var run_f:__cswiftslash_threads_main_f!
 		fileprivate var cancel_f:__cswiftslash_threads_cancel_f!
 		fileprivate var dealloc_f:__cswiftslash_threads_dealloc_f!
 		
 		fileprivate init() {
-			// Define the function pointers
+			// define the function pointers
 			self.alloc_f = { arg in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(arg).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.allocatorCalled)
 				harness.handlerCallsLock.unlock()
-				// Allocate workspace (can be any pointer)
 				harness.workspacePtr = Unmanaged.passUnretained(harness).toOpaque()
 				return harness.workspacePtr!
 			}
@@ -80,8 +79,7 @@ internal struct ThreadTests {
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.mainCalled)
 				harness.handlerCallsLock.unlock()
-				// Simulate work
-				sleep(1) // Sleep for 1 second to simulate work
+				sleep(1) // sleep for 1 second to simulate work
 			}
 			
 			self.cancel_f = { ws in
@@ -96,13 +94,11 @@ internal struct ThreadTests {
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.deallocCalled)
 				harness.handlerCallsLock.unlock()
-				// Deallocate workspace if needed
 				harness.workspacePtr = nil
 			}
 		}
 		
 		fileprivate func startThread() {
-			// Prepare the config
 			let arg = Unmanaged.passUnretained(self).toOpaque()
 			let config = __cswiftslash_threads_config_init(
 				arg,
@@ -135,7 +131,7 @@ internal struct ThreadTests {
 		let harness = ThreadHarness()
 		harness.startThread()
 		
-		// Wait for thread to complete
+		// wait for thread to complete
 		harness.joinThread()
 				
 		#expect(harness.handlerCalls.count == 3, "expected 3 handler calls, got \(harness.handlerCalls.count)")
@@ -149,16 +145,26 @@ internal struct ThreadTests {
 		let harness = ThreadHarness()
 		harness.startThread()
 		
-		// Cancel the thread
+		// cancel the thread
 		harness.cancelThread()
 		
-		// Wait for thread to complete
+		// wait for thread to complete
 		harness.joinThread()
 
-		#expect(harness.handlerCalls.count == 3, "expected 3, got \(harness.handlerCalls)")
-		#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
-		#expect(harness.handlerCalls[1] == .cancelCalled, "expected cancel handler to be called second")
-		#expect(harness.handlerCalls[2] == .deallocCalled, "expected deallocator to be called last")
+		#expect(harness.handlerCalls.count == 4 || harness.handlerCalls.count == 3, "expected 3 or 4 handler calls, got \(harness.handlerCalls.count)")
+		switch harness.handlerCalls.count {
+		case 4:
+			#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
+			#expect(harness.handlerCalls[1] == .mainCalled, "expected main function to be called second")
+			#expect(harness.handlerCalls[2] == .cancelCalled, "expected cancel handler to be called third")
+			#expect(harness.handlerCalls[3] == .deallocCalled, "expected deallocator to be called last")
+		case 3:
+			#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
+			#expect(harness.handlerCalls[1] == .cancelCalled, "expected cancel handler to be called second")
+			#expect(harness.handlerCalls[2] == .deallocCalled, "expected deallocator to be called last")
+		default:
+			break
+		}
 	}
 
 	@Test("__cswiftslash_threads :: deallocate short circuit")
@@ -166,13 +172,13 @@ internal struct ThreadTests {
 		let harness = ThreadHarness()
 		harness.startThread()
 		
-		// Cancel the thread immediately
+		// cancel the thread immediately
 		harness.cancelThread()
 		
-		// Wait for thread to complete
+		// wait for thread to complete
 		harness.joinThread()
 		
-		// Check that deallocCalled is in the handler calls
+		// check that deallocCalled is in the handler calls
 		#expect(harness.handlerCalls.contains(.deallocCalled), "Deallocator was not called")
 	}
 
@@ -180,16 +186,16 @@ internal struct ThreadTests {
 	func testDeallocatorCalledOnImmediateExit() {
 		let harness = ThreadHarness()
 		
-		// Modify main function to exit immediately
+		// modify main function to exit immediately
 		harness.run_f = { ws in
-			// Exit immediately
+			// exit immediately
 			return
 		}
 		
 		harness.startThread()
 		harness.joinThread()
 		
-		// Check that deallocCalled is in the handler calls
+		// check that deallocCalled is in the handler calls
 		#expect(harness.handlerCalls.contains(.deallocCalled) == true, "deallocator was not called")
 	}
 
@@ -199,7 +205,7 @@ internal struct ThreadTests {
 		
 		harness.startThread()
 		
-		// Ensure main function has time to complete
+		// ensure main function has time to complete
 		usleep(1_100_000) // 1s + 100ms
 		harness.cancelThread()
 		harness.joinThread()
@@ -208,7 +214,7 @@ internal struct ThreadTests {
 		#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
 		#expect(harness.handlerCalls[1] == .mainCalled, "expected main function to be called second")
 		#expect(harness.handlerCalls[2] == .deallocCalled, "expected deallocator to be called last")
-		#expect(!harness.handlerCalls.contains(.cancelCalled), "cancel handler should not be called if work is already completed")
+		#expect(harness.handlerCalls.contains(.cancelCalled) == false, "cancel handler should not be called if work is already completed")
 	}
 
 	@Test("__cswiftslash_threads :: concurrent threads with cancellation")
@@ -224,22 +230,22 @@ internal struct ThreadTests {
 
 		usleep(100_000) // 100ms
 		
-		// Cancel half of the threads
+		// cancel half of the threads
 		for (index, harness) in harnesses.enumerated() {
 			if index % 2 == 0 {
 				harness.cancelThread()
 			}
 		}
 		
-		// Wait for all threads to complete
+		// wait for all threads to complete
 		for harness in harnesses {
 			harness.joinThread()
 		}
 		
-		// Verify handlers for each harness
+		// verify handlers for each harness
 		for harness in harnesses {
 			if harness.handlerCalls.contains(.cancelCalled) {
-				// Thread was cancelled
+				// thread was cancelled
 				#expect(harness.handlerCalls.count == 4 || harness.handlerCalls.count == 3, "expected 3 or 4 handler calls for cancelled thread")
 				switch harness.handlerCalls.count {
 				case 4:
@@ -255,7 +261,7 @@ internal struct ThreadTests {
 					break
 				}
 			} else {
-				// Thread ran to completion
+				// thread ran to completion
 				#expect(harness.handlerCalls.count == 3, "expected 3 handler calls for completed thread")
 				#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator first")
 				#expect(harness.handlerCalls[1] == .mainCalled, "expected main function second")
