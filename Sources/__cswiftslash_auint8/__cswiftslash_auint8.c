@@ -13,21 +13,25 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 #include <stdatomic.h>
 
-__cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(const uint8_t initval) {
-	__cswiftslash_atomic_uint8_t newval = {
-		.____v = initval
+__cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(const uint8_t _) {
+	__cswiftslash_atomic_uint8_t r = {
+		.____v = _
 	};
-	return newval;
+	return r;
 }
 
-uint8_t __cswiftslash_auint8_load(__cswiftslash_atomic_uint8_t *_Nonnull applyTo) {
-	return atomic_load(&applyTo->____v);
+uint8_t __cswiftslash_auint8_load(__cswiftslash_atomic_uint8_t *_Nonnull _) {
+	return atomic_load(&_->____v);
 }
 
-void __cswiftslash_auint8_store(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, const uint8_t value) {
-	atomic_store(&applyTo->____v, value);
+void __cswiftslash_auint8_store(__cswiftslash_atomic_uint8_t *_Nonnull _, const uint8_t ____s) {
+	atomic_store(&_->____v, ____s);
 }
 
-bool __cswiftslash_auint8_compare_exchange_weak(__cswiftslash_atomic_uint8_t *_Nonnull applyTo, uint8_t *_Nonnull expected, const uint8_t desired) {
-	return atomic_compare_exchange_weak(&applyTo->____v, expected, desired);
+bool __cswiftslash_auint8_compare_exchange_weak(__cswiftslash_atomic_uint8_t *_Nonnull _, uint8_t *_Nonnull ____e, const uint8_t ____s) {
+	return atomic_compare_exchange_weak(&_->____v, ____e, ____s);
+}
+
+uint8_t __cswiftslash_auint8_increment(__cswiftslash_atomic_uint8_t *_Nonnull _, const uint8_t __) {
+	return atomic_fetch_add(&_->____v, __);
 }

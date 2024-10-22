@@ -15,12 +15,14 @@ import Testing
 
 import __cswiftslash_auint8
 
-@Suite("__cswiftslash_future")
+@Suite("__cswiftslash_future",
+	.serialized
+)
 internal struct FutureTests {
 	// MARK: C Harness
 	fileprivate final class Harness:@unchecked Sendable {
 
-		fileprivate enum Result {
+		fileprivate enum Result:@unchecked Sendable, Equatable {
 			case success(UInt8, UnsafeMutableRawPointer?)
 			case failure(UInt8, UnsafeMutableRawPointer?)
 		}
@@ -527,5 +529,191 @@ internal struct FutureTests {
 		}
 
 		#expect(ticks == 1000)
+	}
+
+	// MARK: - Additional Test Cases for Multiple Waiters
+	@Test("__cswiftslash_future :: multiple waiters :: async result")
+	func testMultipleWaitersAsyncResult() async throws {
+		let future = Harness()
+		let waiterCount = 5
+		var results = [Harness.Result?](repeating: nil, count: waiterCount)
+		
+		// Start multiple async waiters
+		try await withThrowingTaskGroup(of: (Int, Harness.Result?).self) { group in
+			for i in 0..<waiterCount {
+				group.addTask {
+					do {
+						let result = try await future.waitAsync()
+						return (i, result)
+					} catch {
+						return (i, nil)
+					}
+				}
+			}
+			
+			// Broadcast a result after some delay
+			try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+			let data = UnsafeMutableRawPointer(bitPattern: 0x9999)!
+			#expect(future.broadcastResultValue(resType: 42, resVal: data) == true)
+			
+			// Collect results from waiters
+			for _ in 0..<waiterCount {
+				let (index, result) = try await group.next()!
+				results[index] = result
+			}
+		}
+		
+		// Verify that all waiters received the result
+		for result in results {
+			#expect(result == .success(42, UnsafeMutableRawPointer(bitPattern: 0x9999)))
+		}
+	}
+
+	@Test("__cswiftslash_future :: multiple waiters :: async error")
+	func testMultipleWaitersAsyncError() async throws {
+		let future = Harness()
+		let waiterCount = 5
+		var results = [Harness.Result?](repeating: nil, count: waiterCount)
+		
+		// Start multiple async waiters
+		try await withThrowingTaskGroup(of: (Int, Harness.Result?).self) { group in
+			for i in 0..<waiterCount {
+				group.addTask {
+					do {
+						let result = try await future.waitAsync()
+						return (i, result)
+					} catch {
+						return (i, nil)
+					}
+				}
+			}
+			
+			// Broadcast an error after some delay
+			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+			let errorData = UnsafeMutableRawPointer(bitPattern: 0xAAAA)!
+			#expect(future.broadcastErrorValue(errType: 24, errVal: errorData) == true)
+			
+			// Collect results from waiters
+			for _ in 0..<waiterCount {
+				let (index, result) = try await group.next()!
+				results[index] = result
+			}
+		}
+		
+		// Verify that all waiters received the error
+		for result in results {
+			var foundType: UInt8? = nil
+			var foundValue: UnsafeMutableRawPointer? = nil
+			switch result {
+			case .failure(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break;
+			}
+			#expect(foundType == 24)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xAAAA))
+		}
+	}
+
+	@Test("__cswiftslash_future :: multiple waiters :: broadcast before wait")
+	func testBroadcastBeforeWaiters() async throws {
+		let future = Harness()
+		
+		// Broadcast a result immediately
+		let data = UnsafeMutableRawPointer(bitPattern: 0xCCCC)!
+		#expect(future.broadcastResultValue(resType: 99, resVal: data) == true)
+		
+		let waiterCount = 4
+		var results = [Harness.Result?](repeating: nil, count: waiterCount)
+		
+		// Start multiple waiters after the result has been broadcasted
+		await withTaskGroup(of: (Int, Harness.Result?).self) { group in
+			for i in 0..<waiterCount {
+				group.addTask {
+					do {
+						let result = try await future.waitAsync()
+						return (i, result)
+					} catch {
+						return (i, nil)
+					}
+				}
+			}
+			
+			// Collect results from waiters
+			for _ in 0..<waiterCount {
+				let (index, result) = await group.next()!
+				results[index] = result
+			}
+		}
+		
+		// Verify that all waiters immediately received the result
+		for result in results {
+			var foundType: UInt8? = nil
+			var foundValue: UnsafeMutableRawPointer? = nil
+			switch result {
+			case .success(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break;
+			}
+			#expect(foundType == 99)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xCCCC))
+		}
+	}
+
+	@Test("__cswiftslash_future :: multiple waiters :: error and result race")
+	func testMultipleWaitersErrorAndResultRace() async throws {
+		let future = Harness()
+		let waiterCount = 6
+		var results = [Harness.Result?](repeating: nil, count: waiterCount)
+		
+		// Start multiple waiters
+		await withTaskGroup(of: (Int, Harness.Result?).self) { group in
+			for i in 0..<waiterCount {
+				group.addTask {
+					do {
+						let result = try await future.waitAsync()
+						return (i, result)
+					} catch {
+						return (i, nil)
+					}
+				}
+			}
+			
+			// Simultaneously attempt to broadcast result and error
+			await withTaskGroup(of: Void.self) { broadcastGroup in
+				broadcastGroup.addTask {
+					let data = UnsafeMutableRawPointer(bitPattern: 0xDDDD)!
+					_ = future.broadcastResultValue(resType: 77, resVal: data)
+				}
+				broadcastGroup.addTask {
+					let errorData = UnsafeMutableRawPointer(bitPattern: 0xEEEE)!
+					_ = future.broadcastErrorValue(errType: 88, errVal: errorData)
+				}
+			}
+			
+			// Collect results from waiters
+			for _ in 0..<waiterCount {
+				let (index, result) = await group.next()!
+				results[index] = result
+			}
+		}
+		
+		// Verify that all waiters received either the result or the error
+		var resultCount = 0
+		var errorCount = 0
+		for result in results {
+			#expect(result == .success(77, UnsafeMutableRawPointer(bitPattern: 0xDDDD)) || result == .failure(88, UnsafeMutableRawPointer(bitPattern: 0xEEEE)))
+			if case .success = result {
+				resultCount += 1
+			} else {
+				errorCount += 1
+			}
+		}
+		
+		// Ensure that either the result or the error was broadcasted
+		#expect((resultCount == waiterCount && errorCount == 0) || (resultCount == 0 && errorCount == waiterCount))
 	}
 }

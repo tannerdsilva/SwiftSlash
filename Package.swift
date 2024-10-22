@@ -5,18 +5,15 @@ fileprivate let cswiftslashTargets:[Target] = [
 	// atomic uint8_t
 	.target(
 		name:"__cswiftslash_auint8",
-		dependencies:[],
 		publicHeadersPath:"."
 	),
 	// event trigger
 	.target(
 		name:"__cswiftslash_eventtrigger",
-		dependencies:[],
 		publicHeadersPath:"."
 	),
 	.target(
 		name:"__cswiftslash_types",
-		sources:[],
 		publicHeadersPath:"."
 	),
 	.target(
@@ -26,7 +23,10 @@ fileprivate let cswiftslashTargets:[Target] = [
 	),
 	.target(
 		name:"__cswiftslash_future",
-		dependencies:["__cswiftslash_fifo"],
+		dependencies:[
+			"__cswiftslash_fifo",
+			"__cswiftslash_types"
+		],
 		publicHeadersPath:"."
 	),
 	.target(
@@ -36,7 +36,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 	),
 	.target(
 		name:"__cswiftslash_posix_helpers",
-		dependencies:[],
 		publicHeadersPath:"."
 	),
 	.target(
@@ -62,7 +61,28 @@ fileprivate let cswiftslashTargets:[Target] = [
 fileprivate let swiftTargets:[Target] = [
 	.target(
 		name:"SwiftSlashContained"
-	)
+	),
+	.target(
+		name:"SwiftSlashFuture",
+		dependencies:[
+			"__cswiftslash_future",
+			"SwiftSlashContained"
+		]
+	),
+	/*.testTarget(
+		name:"SwiftSlashFutureTests",
+		dependencies:[
+			"SwiftSlashFuture",
+			"__cswiftslash_auint8",
+		],
+		path:"Tests/SwiftSlashFutureTests"
+	)*/
+	//.target(
+//		name:"SwiftSlashPThread",
+//		dependencies:[
+//			"__cswiftslash_threads"
+//		]
+//	)
 ]
 
 fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets /* + [

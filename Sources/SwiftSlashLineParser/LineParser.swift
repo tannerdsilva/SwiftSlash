@@ -1,4 +1,3 @@
-// import __cswiftslash
 import SwiftSlashNAsyncStream
 
 /// the part of the line parser that handles the byte buffer logistics. helps reduce data copying and excessive memory allocation.

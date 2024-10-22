@@ -31,6 +31,9 @@ internal struct AUInt8Tests {
 		fileprivate func compareExchangeWeak(expected:inout UInt8, desired:UInt8) -> Bool {
 			return __cswiftslash_auint8_compare_exchange_weak(self.auint8Ptr, &expected, desired)
 		}
+		fileprivate func add(_ value:UInt8) -> UInt8 {
+			return __cswiftslash_auint8_increment(self.auint8Ptr, value)
+		}
 		deinit {
 			self.auint8Ptr.deinitialize(count:1)
 			self.auint8Ptr.deallocate()
@@ -63,95 +66,110 @@ internal struct AUInt8Tests {
 		}
 	}
 
-	// Test for compare_exchange_weak success scenario
+	// test addition of atomic uint8_t values
+	@Test("__cswiftslash_auint8 :: addition tests (0...255)")
+	func testAtomicUInt8Addition() {
+		for initialValue:UInt8 in 0...255 {
+			// initialize the atomic uint8_t test harness
+			let atomicValue = Harness(initialValue)
+			
+			// add a random value
+			let addValue: UInt8 = UInt8.random(in: 0...255)
+			let result = atomicValue.add(addValue)
+			
+			// verify that the result is the sum of the initial value and the added value
+			#expect(result == initialValue && atomicValue.load() == initialValue &+ addValue)
+		}
+	}
+
+	// test for compare_exchange_weak success scenario
 	@Test("__cswiftslash_auint8 :: compare exchange weak tests :: success return :: (0...255)")
 	func testAtomicUInt8CompareExchangeWeakSuccess() {
 		for initialValue:UInt8 in 0...255 {
-			// Initialize the atomic uint8_t test harness with the initial value
+			// initialize the atomic uint8_t test harness with the initial value
 			let atomicValue = Harness(initialValue)
 			
-			// Expected value is the same as the initial value
+			// expected value is the same as the initial value
 			var expected = initialValue
 			
-			// New value to store
+			// new value to store
 			let newValue: UInt8 = UInt8.random(in: 0...255)
 			
-			// Perform compare_exchange_weak
+			// perform compare_exchange_weak
 			let result = atomicValue.compareExchangeWeak(expected:&expected, desired: newValue)
 			
-			// Expect the operation to succeed
+			// expect the operation to succeed
 			#expect(result == true)
 			
-			// Verify that the new value was stored
+			// verify that the new value was stored
 			let loadedValue = atomicValue.load()
 			#expect(loadedValue == newValue)
 		}
 	}
 
-	// Test for compare_exchange_weak failure scenario
+	// test for compare_exchange_weak failure scenario
 	@Test("__cswiftslash_auint8 :: compare exchange weak tests :: failure return :: (0...255)")
 	func testAtomicUInt8CompareExchangeWeakFailure() {
 		for initialValue:UInt8 in 0...255 {
-			// Initialize the atomic uint8_t test harness with a value different from expected
+			// initialize the atomic uint8_t test harness with a value different from expected
 			let atomicValue = Harness(initialValue)
 			
-			// Expected value is different from the initial value
+			// expected value is different from the initial value
 			var expected: UInt8
 			repeat {
 				expected = UInt8.random(in: 0...255)
 			} while expected == initialValue
 			
-			// New value to store
+			// new value to store
 			let newValue: UInt8 = UInt8.random(in: 0...255)
 			
-			// Perform compare_exchange_weak
+			// perform compare_exchange_weak
 			let result = atomicValue.compareExchangeWeak(expected: &expected, desired: newValue)
 			
-			// Expect the operation to fail
+			// expect the operation to fail
 			#expect(result == false)
 			
-			// Verify that the value was not changed
+			// verify that the value was not changed
 			let loadedValue = atomicValue.load()
 			#expect(loadedValue == initialValue)
 		}
 	}
 
-	// Fuzz testing for random atomic operations
+	// fuzz testing for random atomic operations
 	@Test("__cswiftslash_auint8 :: fuzz testing atomic operations")
 	func fuzzTestAtomicUInt8Operations() {
-		// Perform the fuzz test 1000 times
+		// perform the fuzz test 1000 times
 		for _ in 0..<1000 {
-			// Initialize the atomic uint8_t test harness with a random value
+			// initialize the atomic uint8_t test harness with a random value
 			let atomicValue = Harness(UInt8.random(in: 0...255))
 			
-			// Perform random operations
+			// perform random operations
 			for _ in 0..<100 {
 				let operation = Int.random(in: 0...2)
 				switch operation {
 				case 0:
-					// Store operation
+					// store operation
 					let value = UInt8.random(in: 0...255)
 					atomicValue.store(value)
 					let loadedValue = atomicValue.load()
 					#expect(loadedValue == value)
 				case 1:
-					// Load operation
+					// load operation
 					let _ = atomicValue.load()
 				case 2:
-					// Compare Exchange Weak operation
+					// compare Exchange Weak operation
 					var expected = UInt8.random(in: 0...255)
 					let newValue = UInt8.random(in: 0...255)
-					// let originalExpected = expected  // Keep a copy of the original expected value
 					
 					let result = atomicValue.compareExchangeWeak(expected: &expected, desired: newValue)
 					let loadedValue = atomicValue.load()
 					
 					if result {
-						// The exchange was successful; the atomic value should now be newValue
+						// the exchange was successful; the atomic value should now be newValue
 						#expect(loadedValue == newValue)
 					} else {
-						// The exchange failed; expected now contains the current value
-						// Due to spurious failures, the current value might still be equal to originalExpected
+						// the exchange failed; expected now contains the current value
+						// due to spurious failures, the current value might still be equal to originalExpected
 						#expect(loadedValue == expected)
 					}
 				default:
@@ -161,27 +179,27 @@ internal struct AUInt8Tests {
 		}
 	}
 
-	// Concurrent testing of atomic operations using Swift's native concurrency and the test harness
+	// concurrent testing of atomic operations using Swift's native concurrency and the test harness
 	@Test("__cswiftslash_auint8 :: concurrent atomic operations tests")
 	func concurrentTestAtomicUInt8Operations() async throws {
-		// Initialize the atomic uint8_t test harness
+		// initialize the atomic uint8_t test harness
 		let atomicValue = Harness(0)
 		
-		// Create a TaskGroup to perform concurrent operations
+		// create a TaskGroup to perform concurrent operations
 		await withTaskGroup(of: Void.self) { group in
 			for _ in 0..<1000 {
 				group.addTask {
 					let operation = Int.random(in: 0...2)
 					switch operation {
 					case 0:
-						// Store operation
+						// store operation
 						let value = UInt8.random(in: 0...255)
 						atomicValue.store(value)
 					case 1:
-						// Load operation
+						// load operation
 						let _ = atomicValue.load()
 					case 2:
-						// Compare Exchange Weak operation
+						// compare Exchange Weak operation
 						var expected = UInt8.random(in: 0...255)
 						let newValue = UInt8.random(in: 0...255)
 						_ = atomicValue.compareExchangeWeak(expected: &expected, desired: newValue)
@@ -192,20 +210,20 @@ internal struct AUInt8Tests {
 			}
 		}
 		
-		// Verify that the final value is within the valid range
+		// verify that the final value is within the valid range
 		let finalValue = atomicValue.load()
 		#expect(finalValue <= 255)
 	}
 
-	// Edge case testing for maximum and minimum values
+	// edge case testing for maximum and minimum values
 	@Test("__cswiftslash_auint8 :: edge case testing")
 	func edgeCaseTesting() {
-		// Test with maximum value
+		// test with maximum value
 		let atomicValueMax = Harness(UInt8.max)
 		let loadedMax = atomicValueMax.load()
 		#expect(loadedMax == UInt8.max)
 		
-		// Test with minimum value
+		// test with minimum value
 		let atomicValueMin = Harness(UInt8.min)
 		let loadedMin = atomicValueMin.load()
 		#expect(loadedMin == UInt8.min)

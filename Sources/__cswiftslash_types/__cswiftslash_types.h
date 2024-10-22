@@ -12,16 +12,16 @@ copyright (c) tanner silva 2024. all rights reserved.
 #ifndef __CSWIFTSLASH_TYPES_H
 #define __CSWIFTSLASH_TYPES_H
 
-/// @brief a non-optional pointer
+/// a non-optional pointer
 typedef void*_Nonnull __cswiftslash_ptr_t;
 
-/// @brief a constant non-optional pointer
+/// a constant non-optional pointer
 typedef const void*_Nonnull __cswiftslash_cptr_t;
 
-/// @brief an optional pointer
+/// an optional pointer
 typedef void*_Nullable __cswiftslash_optr_t;
 
-/// @brief a constant optional pointer
+/// a constant optional pointer
 typedef const void*_Nonnull __cswiftslash_coptr_t;
 
 #endif // __CSWIFTSLASH_TYPES_H

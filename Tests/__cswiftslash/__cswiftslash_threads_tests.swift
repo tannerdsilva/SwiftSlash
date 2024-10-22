@@ -126,6 +126,7 @@ internal struct ThreadTests {
 		}
 	}
 
+	// MARK: Test Cases
 	@Test("__cswiftslash_threads :: sequence (no cancellation)")
 	func testThreadCompletionHandlers() {
 		let harness = ThreadHarness()
@@ -179,7 +180,7 @@ internal struct ThreadTests {
 		harness.joinThread()
 		
 		// check that deallocCalled is in the handler calls
-		#expect(harness.handlerCalls.contains(.deallocCalled), "Deallocator was not called")
+		#expect(harness.handlerCalls.contains(.deallocCalled), "deallocator was not called")
 	}
 
 	@Test("__cswiftslash_threads :: deallocate on immediate exit")
@@ -246,7 +247,6 @@ internal struct ThreadTests {
 		for harness in harnesses {
 			if harness.handlerCalls.contains(.cancelCalled) {
 				// thread was cancelled
-				#expect(harness.handlerCalls.count == 4 || harness.handlerCalls.count == 3, "expected 3 or 4 handler calls for cancelled thread")
 				switch harness.handlerCalls.count {
 				case 4:
 					#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator first")
@@ -258,7 +258,7 @@ internal struct ThreadTests {
 					#expect(harness.handlerCalls[1] == .cancelCalled, "expected cancel handler second")
 					#expect(harness.handlerCalls[2] == .deallocCalled, "expected deallocator last")
 				default:
-					break
+					#expect(harness.handlerCalls.count == 4 || harness.handlerCalls.count == 3, "expected 3 or 4 handler calls for cancelled thread")
 				}
 			} else {
 				// thread ran to completion

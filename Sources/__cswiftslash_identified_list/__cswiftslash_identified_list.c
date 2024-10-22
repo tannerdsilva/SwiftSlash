@@ -13,163 +13,152 @@ copyright (c) tanner silva 2024. all rights reserved.
 #include "__cswiftslash_types.h"
 
 #include <pthread.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 #include <sys/types.h>
 
+/// initial size of the hash table.
+#define INITIAL_HASH_TABLE_SIZE 16
+/// maximum size of the hash table.
+#define MAX_HASH_TABLE_SIZE 1024
+/// load factor threshold for resizing up (e.g., 0.75 means resize when 75% full).
+#define RESIZE_UP_FACTOR 0.75
+/// load factor threshold for resizing down (e.g., 0.25 means resize when 25% full).
+#define RESIZE_DOWN_FACTOR 0.25
+/// factor by which the hash table size increases upon resizing.
+#define RESIZE_MULTIPLIER 2
+/// simple hash function to compute the index from the key.
+static size_t HF_(size_t key, size_t table_size) {
+	return key % table_size;
+}
+
+/// function to resize the hash table.
+/// must be called with mutex locked.
+static void resize_hashtable(__cswiftslash_identified_list_pair_ptr_t list, size_t _) {
+	// allocate new hash table.
+	__cswiftslash_identified_list_ptr_t* __0 = calloc(_, sizeof(__cswiftslash_identified_list_ptr_t));
+
+	// rehash all elements into the new table.
+	for (size_t __1 = 0; __1 < list->____hn; ++__1) {
+		__cswiftslash_identified_list_ptr_t __2 = list->____ht[__1];
+		while (__2 != NULL) {
+			__cswiftslash_identified_list_ptr_t __3 = __2->____n;
+			size_t __4 = HF_((size_t)__2->____k, _);
+			// insert into new table.
+			__2->____n = __0[__4];
+			__0[__4] = __2;
+			__2 = __3;
+		}
+	}
+
+	// free old table and update list with new table.
+	free(list->____ht);
+	list->____ht = __0;
+	list->____hn = _;
+}
+
 __cswiftslash_identified_list_pair_t __cswiftslash_identified_list_init() {
-	__cswiftslash_identified_list_pair_t newVar = {
-		.base = NULL,
-		.element_count = 0,
-		._id_increment_internal = 1,
+	__cswiftslash_identified_list_pair_t __0;
+	__0.____hn = INITIAL_HASH_TABLE_SIZE;
+	__0.____ht = calloc(__0.____hn, sizeof(__cswiftslash_identified_list_ptr_t));
+	__0.____n = 0;
+	__0.____idi = 1;
+	pthread_mutex_init(&__0.____m, NULL);
+	return __0;
+}
+
+void __cswiftslash_identified_list_close(const __cswiftslash_identified_list_pair_ptr_t _, const __cswiftslash_identified_list_ptr_f __, const __cswiftslash_optr_t ___) {
+	pthread_mutex_lock(&_->____m);
+	// iterate through the hash table and free all entries.
+	for (size_t __0 = 0; __0 < _->____hn; ++__0) {
+		__cswiftslash_identified_list_ptr_t __1 = _->____ht[__0];
+		while (__1 != NULL) {
+			const __cswiftslash_identified_list_ptr_t __2 = __1->____n;
+			__(__1->____k, __1->____p, ___);
+			free(__1);
+			__1 = __2;
+		}
+	}
+	free(_->____ht);
+	pthread_mutex_unlock(&_->____m);
+	pthread_mutex_destroy(&_->____m);
+}
+
+uint64_t __cswiftslash_identified_list_insert(const __cswiftslash_identified_list_pair_ptr_t _, const __cswiftslash_ptr_t __) {
+	pthread_mutex_lock(&_->____m);
+	uint64_t __0 = _->____idi++;
+
+	// check if resizing up is needed.
+	double __1 = (double)(_->____n + 1) / _->____hn;
+	if (__1 > RESIZE_UP_FACTOR && _->____hn < MAX_HASH_TABLE_SIZE) {
+		size_t new_size = _->____hn * RESIZE_MULTIPLIER;
+		if (new_size > MAX_HASH_TABLE_SIZE) {
+			new_size = MAX_HASH_TABLE_SIZE;
+		}
+		resize_hashtable(_, new_size);
+	}
+
+	// compute the hash index.
+	size_t __2 = HF_((size_t)__0, _->____hn);
+
+	// create a new list node.
+	const __cswiftslash_identified_list_t __3 = {
+		.____k = __0,
+		.____p = __,
+		.____n = _->____ht[__2]
 	};
-	pthread_mutex_init(&newVar.mutex, NULL);
-	return newVar;
+
+	// create a new list node.
+	__cswiftslash_identified_list_ptr_t __4 = malloc(sizeof(__cswiftslash_identified_list_t));
+	memcpy(__4, &__3, sizeof(__cswiftslash_identified_list_t));
+	_->____ht[__2] = __4;
+	_->____n++;
+
+	pthread_mutex_unlock(&_->____m);
+	return __0;
 }
 
-void __cswiftslash_identified_list_close(const __cswiftslash_identified_list_pair_ptr_t list, const __cswiftslash_identified_list_ptr_f consumer_f, const __cswiftslash_optr_t ctx) {
-	// iterate through the list and free all entries
-	__cswiftslash_identified_list_ptr_t current = atomic_load_explicit(&list->base, memory_order_acquire);
-	while (current != NULL) {
-		__cswiftslash_identified_list_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
-		consumer_f(current->key, current->ptr, ctx);
-		free(current);
-		current = next;
-	}
-	pthread_mutex_destroy(&list->mutex);
-}
+__cswiftslash_optr_t __cswiftslash_identified_list_remove(const __cswiftslash_identified_list_pair_ptr_t _, const uint64_t __) {
+	pthread_mutex_lock(&_->____m);
+	size_t __0 = HF_((size_t)__, _->____hn);
+	__cswiftslash_identified_list_ptr_t* __1 = &_->____ht[__0];
+	while (*__1 != NULL) {
+		if ((*__1)->____k == __) {
+			__cswiftslash_identified_list_ptr_t __2 = *__1;
+			__cswiftslash_optr_t __3 = __2->____p;
+			*__1 = __2->____n;
+			free(__2);
+			_->____n--;
 
-/// internal function. returns the next key that should be used for a new element in the atomic list. assumes that the returned key will be used, as such, this function steps the internal key counter for the next call.
-/// @param list pointer to the atomic list pair instance.
-/// @param value_out pointer to a uint64_t that will be written to with the next key value.
-/// @return true if the key was successfully written to the pointer, false if the key could not be written.
-bool __cswiftslash_al_next_key(const __cswiftslash_identified_list_pair_ptr_t list, uint64_t *_Nonnull value_out) {
-	// load the existing value.
-	uint64_t acquireValue = atomic_load_explicit(&list->_id_increment_internal, memory_order_acquire);
-	
-	// check if the integer is about to overflow (irrationally padded by 64 because safety is my style)
-	if (acquireValue < (ULLONG_MAX - 64)) {
-		// no overflow anticipated. increment the existing value and attempt to write it to the atomic location where this value is stored.
-		if (atomic_compare_exchange_weak_explicit(&list->_id_increment_internal, &acquireValue, acquireValue + 1, memory_order_release, memory_order_acquire)) {
-			// successful case. write the new value to the passed uint64_t pointer
-			(*value_out) = acquireValue;
-			return true; // successful write.
-		} else {
-			// unsuccessful case. write couldn't be successfully completed.
-			return false; // unsuccessful write.
-		}
-	} else {
-		// overflow anticipated. zero value or bust.
-		if (atomic_compare_exchange_strong_explicit(&list->_id_increment_internal, &acquireValue, 0, memory_order_release, memory_order_acquire)) {
-			(*value_out) = acquireValue;
-			return true; // successful write.
-		} else {
-			return false; // unsuccessful write.
-		}
-	}
-}
-
-/// internal function that installs a packaged data element into the atomic list.
-/// @param list pointer to the atomic list pair instance.
-/// @param item pointer to the atomic list element to be installed.
-/// @return true if the element was successfully installed, false if the element could not be installed.
-bool __cswiftslash_al_insert_internal(const __cswiftslash_identified_list_pair_ptr_t list, const __cswiftslash_identified_list_ptr_t item) {
-	
-	// load the current base
-    __cswiftslash_identified_list_ptr_t expectedbase = atomic_load_explicit(&list->base, memory_order_acquire);
-	
-	// write the new item to the list
-	if (atomic_compare_exchange_strong_explicit(&list->base, &expectedbase, item, memory_order_release, memory_order_acquire)) {
-		
-		// make sure that the next item in this base correctly references the old base value
-		atomic_store_explicit(&item->next, expectedbase, memory_order_release);
-		
-		// increment the element count
-		atomic_fetch_add_explicit(&list->element_count, 1, memory_order_acq_rel);
-		
-		return true; // successful write
-	} else {
-		return false; // unsuccessful write
-	}
-}
-
-uint64_t __cswiftslash_identified_list_insert(const __cswiftslash_identified_list_pair_ptr_t list, const __cswiftslash_ptr_t ptr) {
-	pthread_mutex_lock(&list->mutex);
-	uint64_t new_id_internal;
-	// acquire an unused key for the new element. if this fails (not expected), retry until it succeeds.
-	while (__builtin_expect(__cswiftslash_al_next_key(list, &new_id_internal) == false, false)) {}
-	// package the new item on stack memory, with the new key and the pointer to the data.
-    const __cswiftslash_identified_list_t link_on_stack = {
-        .key = new_id_internal,
-        .ptr = ptr,
-        .next = NULL
-    };
-	// copy the stack memory to heap memory, and insert the heap memory into the atomic list.
-    const __cswiftslash_identified_list_ptr_t link_on_heap = memcpy(malloc(sizeof(link_on_stack)), &link_on_stack, sizeof(link_on_stack));
-   	while (__cswiftslash_al_insert_internal(list, link_on_heap) == false) {}
-	pthread_mutex_unlock(&list->mutex);
-	return new_id_internal;
-}
-
-/// internal function that removes an element from the atomic list.
-/// @return zero under normal conditions. 1 if the element was removed and the ptr_out was set to the removed pointer. -1 if the function should be called again.
-int8_t __cswiftslash_al_remove_try(__cswiftslash_identified_list_aptr_t*_Nonnull base, const uint64_t key, __cswiftslash_ptr_t *_Nonnull ptr_out) {
-	__cswiftslash_identified_list_ptr_t current = atomic_load_explicit(base, memory_order_acquire);
-	while (current != NULL) {
-		
-		// load the next item of current
-		__cswiftslash_identified_list_ptr_t next = atomic_load_explicit(&current->next, memory_order_acquire);
-		
-		// compare the key of current
-		if (current->key == key) {
-
-			// remove the current item from the list. if it fails, the whole operation should be retried.
-			if (__builtin_expect(atomic_compare_exchange_strong_explicit(base, &current, next, memory_order_release, memory_order_relaxed) == false, false)) {
-				return -1; // retry
+			// check if resizing down is needed.
+			double __4 = (double)_->____n / _->____hn;
+			if (__4 < RESIZE_DOWN_FACTOR && _->____hn > INITIAL_HASH_TABLE_SIZE) {
+				size_t __5 = _->____hn / RESIZE_MULTIPLIER;
+				if (__5 < INITIAL_HASH_TABLE_SIZE) {
+					__5 = INITIAL_HASH_TABLE_SIZE;
+				}
+				resize_hashtable(_, __5);
 			}
-			
-			// remove successful. fire the consumer and handle the removal here
-			*ptr_out = current->ptr;
-			free(current);
-			return 1; // successful removal
+
+			pthread_mutex_unlock(&_->____m);
+			return __3;
 		}
-
-		// increment for next iteration
-		base = &current->next;
-		current = next;
+		__1 = &(*__1)->____n;
 	}
-	// no element was found with the key.
-	return 0;
+	pthread_mutex_unlock(&_->____m);
+	return (__cswiftslash_optr_t)NULL;
 }
 
-__cswiftslash_optr_t __cswiftslash_identified_list_remove(const __cswiftslash_identified_list_pair_ptr_t list, const uint64_t key) {
-	__cswiftslash_ptr_t retval;
-	int8_t result;
-	pthread_mutex_lock(&list->mutex);
-	do {
-		result = __cswiftslash_al_remove_try(&list->base, key, &retval);
-	} while (__builtin_expect(result == -1, false));
-	if (result == 1) {
-		atomic_fetch_sub_explicit(&list->element_count, 1, memory_order_acq_rel);
-		pthread_mutex_unlock(&list->mutex);
-		return (__cswiftslash_optr_t)retval;
-	} else {
-		pthread_mutex_unlock(&list->mutex);
-		return (__cswiftslash_optr_t)NULL;
+void __cswiftslash_identified_list_iterate(const __cswiftslash_identified_list_pair_ptr_t _, const __cswiftslash_identified_list_ptr_f __, const __cswiftslash_optr_t ___) {
+	pthread_mutex_lock(&_->____m);
+	for (size_t __0 = 0; __0 < _->____hn; ++__0) {
+		__cswiftslash_identified_list_ptr_t __1 = _->____ht[__0];
+		while (__1 != NULL) {
+			__(__1->____k, __1->____p, ___);
+			__1 = __1->____n;
+		}
 	}
-}
-
-void __cswiftslash_identified_list_iterate(const __cswiftslash_identified_list_pair_ptr_t list, const __cswiftslash_identified_list_ptr_f consumer_f, const __cswiftslash_optr_t ctx) {
-	// the list is not being modified. iterate through the list.
-	pthread_mutex_lock(&list->mutex);
-	__cswiftslash_identified_list_ptr_t current = atomic_load_explicit(&list->base, memory_order_acquire);
-	while (current != NULL) {
-		consumer_f(current->key, current->ptr, ctx);
-		current = atomic_load_explicit(&current->next, memory_order_acquire);
-	}
-	pthread_mutex_unlock(&list->mutex);
+	pthread_mutex_unlock(&_->____m);
 }

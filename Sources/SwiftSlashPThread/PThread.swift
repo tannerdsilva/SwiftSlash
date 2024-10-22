@@ -1,7 +1,6 @@
-
 // this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone. the file consists of mostly private and fileprivate functions, with only a small handful of public/internal entrypoints being provided.
 
-import __cswiftslash
+import __cswiftslash_threads
 import SwiftSlashFuture
 import SwiftSlashContained
 
@@ -138,8 +137,8 @@ fileprivate func _launch<W, A>(_ workType:W.Type, argument:consuming A) async th
 
 	// launch the pthread, verify the results are successful.
 	var launchResult:Int32 = -1
-	let pthr = _cswiftslash_pthread_config_run(
-		_cswiftslash_pthread_config_init(
+	let pthr = __cswiftslash_threads_config_run(
+		__cswiftslash_threads_config_init(
 			launchStructure,
 			_run_alloc,
 			_run_main,
@@ -160,21 +159,21 @@ fileprivate func _launch<W, A>(_ workType:W.Type, argument:consuming A) async th
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
-fileprivate let _run_alloc:@convention(c) (_cswiftslash_ptr_t) -> _cswiftslash_ptr_t = { csPtr in
+fileprivate let _run_alloc:@convention(c) (__cswiftslash_ptr_t) -> __cswiftslash_ptr_t = { csPtr in
 	let setup = UnsafeMutablePointer<Workspace>.allocate(capacity:1)
 	setup.initialize(to:Workspace(csPtr.assumingMemoryBound(to:Setup.self).pointee))
 	return UnsafeMutableRawPointer(setup)
 }
 // deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
-fileprivate let _run_dealloc:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+fileprivate let _run_dealloc:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	wsPtr.assumingMemoryBound(to:Workspace.self).deinitialize(count:1).deallocate()
 }
 // cancel function. responsible for setting the cancellation flag on the contained workspace.
-fileprivate let _run_cancel:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+fileprivate let _run_cancel:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	wsPtr.assumingMemoryBound(to:Workspace.self).pointee.setCancellation()
 }
 // main function. responsible for running the work function and setting the result into the return future.
-fileprivate let _run_main:@convention(c) (_cswiftslash_ptr_t) -> Void = { wsPtr in
+fileprivate let _run_main:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
 	wsPtr.assumingMemoryBound(to:Workspace.self).pointee.work()
 }

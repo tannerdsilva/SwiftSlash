@@ -13,13 +13,22 @@ import Testing
 
 @testable import __cswiftslash_fifo
 
-@Suite("__cswiftslash_fifo")
+@Suite("__cswiftslash_fifo",
+	.serialized
+)
 internal struct FIFOTests {
 	// MARK: C Harness
 	private final class Harness:@unchecked Sendable {
 		private let fifoPtr: UnsafeMutablePointer<__cswiftslash_fifo_linkpair_t>
-		fileprivate init() {
-			fifoPtr = __cswiftslash_fifo_init(nil)
+		fileprivate init(hasMutex:Bool = false) {
+
+			if hasMutex {
+				var newMutex = pthread_mutex_t()
+				_ = pthread_mutex_init(&newMutex, nil)
+				fifoPtr = __cswiftslash_fifo_init(&newMutex)
+			} else {
+				fifoPtr = __cswiftslash_fifo_init(nil)
+			}
 		}
 		
 		fileprivate func pass(_ data: UnsafeMutableRawPointer) -> Int8 {
@@ -28,24 +37,24 @@ internal struct FIFOTests {
 		
 		/// Consumes data from the FIFO in a non-blocking manner.
 		fileprivate func consumeNonBlocking() -> (__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?) {
-			var consumedData: UnsafeMutableRawPointer?
+			var consumedData:UnsafeMutableRawPointer?
 			let result = __cswiftslash_fifo_consume_nonblocking(fifoPtr, &consumedData)
 			return (result, consumedData)
 		}
 		
-		/// Consumes data from the FIFO in a blocking manner.
+		/// consumes data from the FIFO in a blocking manner
 		fileprivate func consumeBlocking() -> (__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?) {
-			var consumedData: UnsafeMutableRawPointer?
+			var consumedData:UnsafeMutableRawPointer?
 			let result = __cswiftslash_fifo_consume_blocking(fifoPtr, &consumedData)
 			return (result, consumedData)
 		}
 		
-		/// Caps the FIFO with a final element.
+		/// caps the FIFO with a final element.
 		fileprivate func passCap(_ capData: UnsafeMutableRawPointer?) -> Bool {
 			return __cswiftslash_fifo_pass_cap(fifoPtr, capData)
 		}
 		
-		/// Sets the maximum number of elements in the FIFO.
+		/// sets the maximum number of elements in the FIFO.
 		fileprivate func setMaxElements(_ maxElements: size_t) -> Bool {
 			return __cswiftslash_fifo_set_max_elements(fifoPtr, maxElements)
 		}
@@ -65,19 +74,19 @@ internal struct FIFOTests {
 	func testFIFOInitialization() {
 		let fifo = Harness()
 		
-		// Since we cannot access internal variables, we'll check expected behavior
+		// since we cannot access internal variables, we'll check expected behavior
 		
-		// Attempt to consume from the empty FIFO
+		// attempt to consume from the empty FIFO
 		let (consumeResult, consumedData) = fifo.consumeNonBlocking()
 		#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK)
 		#expect(consumedData == nil)
 		
-		// Pass data and ensure it succeeds
+		// pass data and ensure it succeeds
 		let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
 		let passResult = fifo.pass(data)
 		#expect(passResult == 0)
 		
-		// Consume the data back
+		// consume the data back
 		let (consumeResult2, consumedData2) = fifo.consumeNonBlocking()
 		#expect(consumeResult2 == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 		#expect(consumedData2 == data)
@@ -113,17 +122,17 @@ internal struct FIFOTests {
 		let capResult = fifo.passCap(capData)
 		#expect(capResult == true)
 		
-		// Attempt to pass data after cap
+		// attempt to pass data after cap
 		let data = UnsafeMutableRawPointer(bitPattern: 0xcafebabe)!
 		let passResult = fifo.pass(data)
 		#expect(passResult == -1)
 		
-		// Consume cap data
+		// consume cap data
 		let (consumeResult, consumedData) = fifo.consumeNonBlocking()
 		#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
 		#expect(consumedData == capData)
 		
-		// Attempt to consume again
+		// attempt to consume again
 		let (consumeResult2, consumedData2) = fifo.consumeNonBlocking()
 		#expect(consumeResult2 == __CSWIFTSLASH_FIFO_CONSUME_CAP)
 		#expect(consumedData2 == capData)
@@ -159,21 +168,21 @@ internal struct FIFOTests {
 	func testNonBlockingVsBlockingConsume() async throws {
 		let fifo = Harness()
 		
-		// Start a consumer task
+		// start a consumer task
 		let consumer = Task {
 			let (consumeResult, consumedData) = fifo.consumeBlocking()
 			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 			#expect(consumedData == UnsafeMutableRawPointer(bitPattern: 0xabc)!)
 		}
 		
-		// Simulate delay
+		// simulate delay
 		try await Task.sleep(nanoseconds: 100_000_000) // 100ms
 		
-		// Pass data
+		// pass data
 		let data = UnsafeMutableRawPointer(bitPattern: 0xabc)!
 		#expect(fifo.pass(data) == 0)
 		
-		// Wait for consumer to finish
+		// wait for consumer to finish
 		await consumer.value
 	}
 
@@ -188,12 +197,12 @@ internal struct FIFOTests {
 				group.addTask {
 					let action = Int.random(in: 0...1)
 					if action == 0 {
-						// Producer
+						// producer
 						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 						data.storeBytes(of: UInt8.random(in: 0...255), as: UInt8.self)
 						_ = fifo.pass(data)
 					} else {
-						// Consumer
+						// consumer
 						let (consumeResult, consumedData) = fifo.consumeNonBlocking()
 						if consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT, let data = consumedData {
 							data.deallocate()
