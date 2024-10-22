@@ -107,8 +107,6 @@ public final class Future<R>:@unchecked Sendable {
 				_ = Unmanaged<Contained<Swift.Error>>.fromOpaque(ptr!).takeRetainedValue()
 	
 		}
-	
-		prim.deinitialize(count:1).deallocate()
 	}
 }
 
@@ -159,7 +157,7 @@ fileprivate final class AsyncResult {
 	}
 }
 
-fileprivate struct SyncResult {
+fileprivate struct SyncResult:~Copyable {
 	private var result:SuccessFailureCancel<(UInt8, UnsafeMutableRawPointer?), (UInt8, UnsafeMutableRawPointer?)>? = nil
 	fileprivate init() {}
 	fileprivate mutating func setResult(type:UInt8, pointer:UnsafeMutableRawPointer?) {

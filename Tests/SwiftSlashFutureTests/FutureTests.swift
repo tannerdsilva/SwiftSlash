@@ -2,9 +2,7 @@ import Testing
 
 @testable import SwiftSlashFuture
 
-@Suite("SwiftSlashFutureTests",
-	.serialized
-)
+@Suite("SwiftSlashFutureTests")
 internal struct FutureTests {
 
 	@Test func testSetSuccess() async throws {

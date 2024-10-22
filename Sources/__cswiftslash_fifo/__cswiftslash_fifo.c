@@ -238,7 +238,7 @@ int8_t __cswiftslash_fifo_pass(const __cswiftslash_fifo_linkpair_ptr_t _, const 
 
 		// verify that the maximum number of elements has not been reached.
 		if (atomic_load_explicit(&_->____hme, memory_order_acquire) == true) {
-			// max elements is set. check if the _ is full.
+			// max elements is set. check if the chain is full.
 			if (atomic_load_explicit(&_->____ec, memory_order_acquire) >= atomic_load_explicit(&_->____me, memory_order_acquire)) {
 				__0 = -2;
 				goto returnTime;

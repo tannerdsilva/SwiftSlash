@@ -237,20 +237,20 @@ internal struct FutureTests {
 	func testWaitSyncForResult() throws {
 		let future = Harness()
 		
-		// Start a background task to broadcast a result after some delay
+		// start a background task to broadcast a result after some delay
 		Task {
 			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
 			let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
 			#expect(future.broadcastResultValue(resType: 1, resVal: data) == true)
 		}
 		
-		// Wait synchronously for the future to complete
+		// wait synchronously for the future to complete
 		let result = try future.waitSync()
 		
 		var foundType:UInt8? = nil
 		var foundValue:UnsafeMutableRawPointer? = nil
 
-		// Check that the result was received
+		// check that the result was received
 		switch result {
 		case .success(let type, let value):
 			foundType = type
@@ -267,20 +267,20 @@ internal struct FutureTests {
 	func testWaitSyncForError() throws {
 		let future = Harness()
 		
-		// Start a background task to broadcast an error after some delay
+		// start a background task to broadcast an error after some delay
 		Task {
 			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
 			let errorData = UnsafeMutableRawPointer(bitPattern: 0xdead)!
 			#expect(future.broadcastErrorValue(errType: 2, errVal: errorData) == true)
 		}
 		
-		// Wait synchronously for the future to complete
+		// wait synchronously for the future to complete
 		let result = try future.waitSync()
 
 		var foundType:UInt8? = nil
 		var foundValue:UnsafeMutableRawPointer? = nil
 		
-		// Check that the error was received
+		// check that the error was received
 		switch result {
 		case .failure(let type, let value):
 			foundType = type
@@ -297,20 +297,20 @@ internal struct FutureTests {
 	func testWaitAsyncForResult() async throws {
 		let future = Harness()
 		
-		// Start a background task to broadcast a result after some delay
+		// start a background task to broadcast a result after some delay
 		Task {
 			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
 			let data = UnsafeMutableRawPointer(bitPattern: 0x5678)!
 			#expect(future.broadcastResultValue(resType: 3, resVal: data) == true)
 		}
 		
-		// Wait asynchronously for the future to complete
+		// wait asynchronously for the future to complete
 		let result = try await future.waitAsync()
 
 		var foundType:UInt8? = nil
 		var foundValue:UnsafeMutableRawPointer? = nil
 		
-		// Check that the result was received
+		// check that the result was received
 		switch result {
 		case .success(let type, let value):
 			foundType = type
