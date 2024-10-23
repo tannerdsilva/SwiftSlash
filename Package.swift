@@ -76,13 +76,26 @@ fileprivate let swiftTargets:[Target] = [
 			"__cswiftslash_auint8",
 		],
 		path:"Tests/SwiftSlashFutureTests"
+	),
+	.testTarget(
+		name:"SwiftSlashPThreadTests",
+		dependencies:[
+			"SwiftSlashFuture",
+			"SwiftSlashContained",
+			"__cswiftslash_threads",
+			"SwiftSlashPThread"
+		],
+		path:"Tests/SwiftSlashPThreadTests"
+	),
+	.target(
+		name:"SwiftSlashPThread",
+		dependencies:[
+			"__cswiftslash_threads",
+			"__cswiftslash_auint8",
+			"SwiftSlashContained",
+			"SwiftSlashFuture"
+		]
 	)
-	//.target(
-//		name:"SwiftSlashPThread",
-//		dependencies:[
-//			"__cswiftslash_threads"
-//		]
-//	)
 ]
 
 fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets /* + [

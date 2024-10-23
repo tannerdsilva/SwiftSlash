@@ -1,7 +1,7 @@
-import XCTest
-@testable import SwiftSlash
-import __cswiftslash
-import SwiftSlashPThread
+import Testing
+
+@testable import SwiftSlashPThread
+import __cswiftslash_threads
 
 fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 	typealias Argument = A
@@ -15,31 +15,31 @@ fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
 	}
 }
 
-class PThreadTests: XCTestCase {
+@Suite("SwiftSlashPThreadTests",
+	.serialized
+)
+struct PThreadTests {
+
+	@Test
 	func testPthreadReturn() async throws {
 		// try await withThrowingTaskGroup(of:(String, String).self, returning:Void.self, body: { group in
 			for _ in 0..<50 {
 				for i in 0..<10 {
-					// group.addTask {
-						let randomString = String.random(length:56)
-						let myString:String
-						switch try await PThreadWorkerTesterThing<String>.run(randomString) {
-						case .success(let s):
-							myString = s
-						case .failure(let e):
-							throw e
-						}
-						XCTAssertEqual(myString, randomString)
-						// return (randomString, myString)
-					// }
+					let randomString = String.random(length:56)
+					let myString:String
+					switch try await PThreadWorkerTesterThing<String>.run(randomString) {
+					case .success(let s):
+						myString = s
+					case .failure(let e):
+						throw e
+					}
+					#expect(randomString == myString)
 				}
-				// try await group.waitForAll()
 			}
-		// })
 		return
 	}
 	
-	#if os(macOS)
+	/*#if os(macOS)
 	func testPthreadCancellation() async throws {
 		let cancelExpect = XCTestExpectation(description:"PThread delay")
 		let returnExpect = XCTestExpectation(description:"PThread delay")
@@ -76,5 +76,14 @@ class PThreadTests: XCTestCase {
 		await fulfillment(of:[cancelExpect, returnExpect, freeExpect], timeout: 2)
 		await ltask.result
 	}
-	#endif
+	#endif*/
+}
+
+
+extension String {
+	// Utility function to generate a random string of given length
+	internal static func random(length: Int) -> String {
+		let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+=-`~/?.>,<;:'\""
+		return String((0..<length).map { _ in characters.randomElement()! })
+	}
 }

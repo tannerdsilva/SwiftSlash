@@ -91,10 +91,15 @@ public final class Future<R>:@unchecked Sendable {
 	}
 
 	deinit {
+		// initialize the tool that will help extract the result from the future
 		var deallocResult = DeallocateTool()
+
+		// destroy the future
 		withUnsafeMutablePointer(to:&deallocResult) { rptr in
 			__cswiftslash_future_t_destroy(prim, rptr, futureResultDeallocator, futureErrorDeallocator)
 		}
+
+		// extract the result and deallocate the result
 		let extractedResult = deallocResult.extractState()
 		switch extractedResult {
 			case .success(_, let ptr):
@@ -137,23 +142,28 @@ fileprivate struct DeallocateTool:~Copyable {
 }
 
 /// a reference type that is used to bridge the c future result handlers to strict swift types. c functions cannot be declared or utilized within the context of generic types, so types like this are used to help bridge the C functions into strict Swift typing.
-fileprivate final class AsyncResult {
+fileprivate final class AsyncResult:@unchecked Sendable {
 	fileprivate typealias ResultHandler = (SuccessFailureCancel<(UInt8, UnsafeMutableRawPointer?), (UInt8, UnsafeMutableRawPointer?)>) -> Void
-	private var handler:ResultHandler?
+	private let handler:UnsafeMutablePointer<ResultHandler?>
 	fileprivate init(handler h:@escaping (SuccessFailureCancel<(UInt8, UnsafeMutableRawPointer?), (UInt8, UnsafeMutableRawPointer?)>) -> Void) {
-		handler = h
+		handler = UnsafeMutablePointer<ResultHandler?>.allocate(capacity:1)
+		handler.initialize(to:h)
 	}
 	fileprivate func setResult(type:UInt8, pointer:UnsafeMutableRawPointer?) {
-		handler!(.success((type, pointer)))
-		handler = nil
+		handler.pointee!(.success((type, pointer)))
+		handler.pointee = nil
 	}
 	fileprivate func setError(type:UInt8, pointer:UnsafeMutableRawPointer?) {
-		handler!(.failure((type, pointer)))
-		handler = nil
+		handler.pointee!(.failure((type, pointer)))
+		handler.pointee = nil
 	}
 	fileprivate func setCancel() {
-		handler!(.cancel)
-		handler = nil
+		handler.pointee!(.cancel)
+		handler.pointee = nil
+	}
+	deinit {
+		handler.deinitialize(count:1)
+		handler.deallocate()
 	}
 }
 

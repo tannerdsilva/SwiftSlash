@@ -1,4 +1,5 @@
-import __cswiftslash
+import __cswiftslash_threads
+import __cswiftslash_auint8
 import SwiftSlashFuture
 import SwiftSlashContained
 
@@ -24,22 +25,22 @@ public final class Running<R> {
 		}
 
 		/// the internal representation of the mode.
-		private var mode = _cswiftslash_atomic_uint8_t()
+		private var mode = __cswiftslash_atomic_uint8_t()
 		internal init(initialValue ival:Value = .running) {
-			_cswiftslash_auint8_store(&mode, ival.rawValue)
+			__cswiftslash_auint8_store(&mode, ival.rawValue)
 		}
 
 		internal func store(value:Value) {
-			_cswiftslash_auint8_store(&mode, value.rawValue)
+			__cswiftslash_auint8_store(&mode, value.rawValue)
 		}
 
 		internal func load() -> Value {
-			return Value(rawValue:_cswiftslash_auint8_load(&mode))!
+			return Value(rawValue:__cswiftslash_auint8_load(&mode))!
 		}
 
 		internal func compareExchange(expected:Value, desired:Value) -> Bool {
 			var expectedUInt8 = expected.rawValue
-			return _cswiftslash_auint8_compare_exchange_weak(&mode, &expectedUInt8, desired.rawValue)
+			return __cswiftslash_auint8_compare_exchange_weak(&mode, &expectedUInt8, desired.rawValue)
 		}
 	}
 
@@ -127,12 +128,12 @@ public final class Running<R> {
 internal struct Launched {
 
 	/// the pthread primitive that was launched.
-	private let pt:_cswiftslash_pthread_t_type
+	private let pt:__cswiftslash_threads_t_type
 
 	/// the future that will be set after the work is joined.
 	internal let rf:Future<UnsafeMutableRawPointer>
 
-	internal init(_ pthread:consuming _cswiftslash_pthread_t_type, future:consuming Future<UnsafeMutableRawPointer>) {
+	internal init(_ pthread:consuming __cswiftslash_threads_t_type, future:consuming Future<UnsafeMutableRawPointer>) {
 		pt = pthread
 		rf = future
 	}
