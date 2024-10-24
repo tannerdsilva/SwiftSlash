@@ -3,6 +3,7 @@ import SwiftSlashContained
 
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
 public final class FIFO<Element, Failure>:@unchecked Sendable {
+	
 	public enum YieldResult {
 		/// the yield value was successfully passed into the FIFO
 		case success
@@ -15,9 +16,9 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 	// underlying c implementation
 	private let datachain_primitive_ptr:UnsafeMutablePointer<_cswiftslash_fifo_linkpair_t>
 	
-	/// initialize a new FIFO. an optional maximumElementCount may be passed to limit the number of elements that may be held in the FIFO at any given time.
+	/// initialize a new FIFO. an optional maximumElementCount may be passed to limit the number of elements that may be held in the FIFO at any given time
 	/// - parameters:
-	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time. if this value is nil, the FIFO will hold uint64.max elements.
+	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time. if this value is nil, the FIFO will hold uint64.max elements
 	public init(maximumElementCount:size_t? = nil) {
 		// memory setup
 		var newMutex = _cswiftslash_fifo_mutex_new()
@@ -37,9 +38,11 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
 	@discardableResult public borrowing func yield(_ element:consuming Element) -> YieldResult {
 		let um = Unmanaged.passRetained(Contained(element))
+		
 		#if DEBUG
 		var i:UInt8 = 0
 		#endif
+		
 		repeat {
 			#if DEBUG
 			defer {

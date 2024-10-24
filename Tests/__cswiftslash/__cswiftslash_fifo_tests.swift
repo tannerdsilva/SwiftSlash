@@ -17,6 +17,7 @@ import Testing
 	.serialized
 )
 internal struct FIFOTests {
+	
 	// MARK: C Harness
 	private final class Harness:@unchecked Sendable {
 		private let fifoPtr: UnsafeMutablePointer<__cswiftslash_fifo_linkpair_t>
@@ -35,7 +36,7 @@ internal struct FIFOTests {
 			return __cswiftslash_fifo_pass(fifoPtr, data)
 		}
 		
-		/// Consumes data from the FIFO in a non-blocking manner.
+		/// consumes data from the FIFO in a non-blocking manner
 		fileprivate func consumeNonBlocking() -> (__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?) {
 			var consumedData:UnsafeMutableRawPointer?
 			let result = __cswiftslash_fifo_consume_nonblocking(fifoPtr, &consumedData)
@@ -49,12 +50,12 @@ internal struct FIFOTests {
 			return (result, consumedData)
 		}
 		
-		/// caps the FIFO with a final element.
+		/// caps the FIFO with a final element
 		fileprivate func passCap(_ capData: UnsafeMutableRawPointer?) -> Bool {
 			return __cswiftslash_fifo_pass_cap(fifoPtr, capData)
 		}
 		
-		/// sets the maximum number of elements in the FIFO.
+		/// sets the maximum number of elements in the FIFO
 		fileprivate func setMaxElements(_ maxElements: size_t) -> Bool {
 			return __cswiftslash_fifo_set_max_elements(fifoPtr, maxElements)
 		}
@@ -145,22 +146,22 @@ internal struct FIFOTests {
 		let setResult = fifo.setMaxElements(2)
 		#expect(setResult == true)
 		
-		// Pass two elements
+		// pass two elements
 		let data1 = UnsafeMutableRawPointer(bitPattern: 0x1)!
 		let data2 = UnsafeMutableRawPointer(bitPattern: 0x2)!
 		#expect(fifo.pass(data1) == 0)
 		#expect(fifo.pass(data2) == 0)
 		
-		// Attempt to pass a third element
+		// attempt to pass a third element
 		let data3 = UnsafeMutableRawPointer(bitPattern: 0x3)!
 		#expect(fifo.pass(data3) == -2)
 		
-		// Consume one element
+		// consume one element
 		let (consumeResult, consumedData) = fifo.consumeNonBlocking()
 		#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 		#expect(consumedData == data1)
 		
-		// Now passing should succeed
+		// now passing should succeed
 		#expect(fifo.pass(data3) == 0)
 	}
 
@@ -227,18 +228,18 @@ internal struct FIFOTests {
 	func testBlockingConsumeWithCap() async {
 		let fifo = Harness()
 		
-		// Cap the FIFO
+		// cap the FIFO
 		let capData = UnsafeMutableRawPointer(bitPattern: 0xfeed)!
 		#expect(fifo.passCap(capData) == true)
 		
-		// Start a consumer task
+		// start a consumer task
 		let consumer = Task {
 			let (consumeResult, consumedData) = fifo.consumeBlocking()
 			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
 			#expect(consumedData == capData)
 		}
 		
-		// Wait for consumer to finish
+		// wait for consumer to finish
 		await consumer.value
 	}
 
@@ -251,6 +252,6 @@ internal struct FIFOTests {
 		// attempt to pass data
 		let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
 		let passResult = fifo.pass(data)
-		#expect(passResult == -2) // Max elements reached
+		#expect(passResult == -2) // max elements reached
 	}
 }

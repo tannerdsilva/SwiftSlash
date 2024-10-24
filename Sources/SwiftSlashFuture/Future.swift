@@ -1,4 +1,16 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2024. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import __cswiftslash_future
+
 import SwiftSlashContained
 
 /// a reference type that represents a result that will be available in the future.
@@ -49,6 +61,8 @@ public final class Future<R>:@unchecked Sendable {
 	}
 
 	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 
+	/// - parameters:
+	/// 	- callback: the function to call when the result is known.
 	public borrowing func whenResult(_ callback:@escaping (Result<R, Swift.Error>) -> Void) {
 		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
 		arPtr.initialize(to:AsyncResult(handler: { [cb = callback] res in
@@ -65,14 +79,14 @@ public final class Future<R>:@unchecked Sendable {
 	}
 	
 	/// asyncronously wait for the result of the future.
-	/// - returns: the return value of the future.
+	/// - returns: a successfull type instance of the future in the case of a successful result.
 	/// - throws: any error that was assigned to the future in place of a valid return instance.
 	public borrowing func get() async throws -> R {
 		return try await result().get()
 	}
 
 	/// asyncronously wait for the result of the future.
-	/// - returns: the result of the future.
+	/// - returns: a result structure representing the result of the future.
 	public borrowing func result() async -> Result<R, Swift.Error> {
 		return await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<R, Swift.Error>, Never>) in
 			var getResult = SyncResult()
@@ -110,7 +124,6 @@ public final class Future<R>:@unchecked Sendable {
 				}
 			case .failure(_, let ptr):
 				_ = Unmanaged<Contained<Swift.Error>>.fromOpaque(ptr!).takeRetainedValue()
-	
 		}
 	}
 }
@@ -123,19 +136,29 @@ fileprivate enum SuccessFailureCancel<S, F> {
 
 /// a tool to help claim the result (or error) pointers that are stored in the future at deallocation time.
 fileprivate struct DeallocateTool:~Copyable {
+
 	/// used to convey the state that was returned from the deallocation function. there may be 
 	fileprivate enum State {
+		/// indicates that the future was set with a successful result.
 		case success(UInt8, UnsafeMutableRawPointer?)
+		/// indicates that the future was set with an error.
 		case failure(UInt8, UnsafeMutableRawPointer?)
 	}
-	var extractedState:State? = nil
+
+	/// the state that was extracted from the future.
+	private var extractedState:State? = nil
+
 	fileprivate init() {}
+
+	/// set to result state.
 	fileprivate mutating func setResult(type:UInt8, pointer:UnsafeMutableRawPointer?) {
 		extractedState = .success(type, pointer)
 	}
+	/// set to error state.
 	fileprivate mutating func setError(type:UInt8, pointer:UnsafeMutableRawPointer?) {
 		extractedState = .failure(type, pointer)
 	}
+	/// set to cancel state.
 	fileprivate consuming func extractState() -> State {
 		return extractedState!
 	}
@@ -167,6 +190,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 	}
 }
 
+// internal tool to help extract the result from the future in a synchronous manner.
 fileprivate struct SyncResult:~Copyable {
 	private var result:SuccessFailureCancel<(UInt8, UnsafeMutableRawPointer?), (UInt8, UnsafeMutableRawPointer?)>? = nil
 	fileprivate init() {}
@@ -184,36 +208,43 @@ fileprivate struct SyncResult:~Copyable {
 	}
 }
 
+// the result deallocator for futures
 fileprivate let futureResultDeallocator:__cswiftslash_future_result_val_handler_f = { resType, resPtr, ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:DeallocateTool.self).pointee.setResult(type:resType, pointer:resPtr)
 }
-
+// the error deallocator for futures
 fileprivate let futureErrorDeallocator:__cswiftslash_future_result_err_handler_f = { errType, errPtr, ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:DeallocateTool.self).pointee.setError(type:errType, pointer:errPtr)
 }
 
+// the sync handler for results
 fileprivate let futureSyncResultHandler:__cswiftslash_future_result_val_handler_f = { resType, resPtr, ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:SyncResult.self).pointee.setResult(type:resType, pointer:resPtr)
 }
+// the sync handler for errors
 fileprivate let futureSyncErrorHandler:__cswiftslash_future_result_err_handler_f = { errType, errPtr, ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:SyncResult.self).pointee.setError(type:errType, pointer:errPtr)
 }
+// the sync handler for cancellations
 fileprivate let futureSyncCancelHandler:__cswiftslash_future_result_cncl_handler_f = { ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:SyncResult.self).pointee.setCancel()
 }
 
+// the async handler for results
 fileprivate let futureAsyncResultHandler:__cswiftslash_future_result_val_handler_f = { resType, resPtr, ctxPtr in
 	let boundPtr = ctxPtr!.assumingMemoryBound(to:AsyncResult.self)
 	boundPtr.pointee.setResult(type:resType, pointer:resPtr)
 	boundPtr.deinitialize(count:1)
 	boundPtr.deallocate()
 }
+// the async handler for errors
 fileprivate let futureAsyncErrorHandler:__cswiftslash_future_result_err_handler_f = { errType, errPtr, ctxPtr in
 	let boundPtr = ctxPtr!.assumingMemoryBound(to:AsyncResult.self)
 	boundPtr.pointee.setError(type:errType, pointer:errPtr)
 	boundPtr.deinitialize(count:1)
 	boundPtr.deallocate()
 }
+// the async handler for cancellations
 fileprivate let futureAsyncCancelHandler:__cswiftslash_future_result_cncl_handler_f = { ctxPtr in
 	let boundPtr = ctxPtr!.assumingMemoryBound(to:AsyncResult.self)
 	boundPtr.pointee.setCancel()

@@ -15,28 +15,36 @@ import Testing
 
 @Suite("__cswiftslash_auint8")
 internal struct AUInt8Tests {
+
 	// MARK: C Harness
 	private final class Harness:@unchecked Sendable {
+
 		private let auint8Ptr:UnsafeMutablePointer<__cswiftslash_atomic_uint8_t>
+
 		fileprivate init(_ value:UInt8) {
-			self.auint8Ptr = UnsafeMutablePointer<__cswiftslash_atomic_uint8_t>.allocate(capacity: 1)
-			self.auint8Ptr.initialize(to: __cswiftslash_auint8_init(value))
+			auint8Ptr = UnsafeMutablePointer<__cswiftslash_atomic_uint8_t>.allocate(capacity: 1)
+			auint8Ptr.initialize(to: __cswiftslash_auint8_init(value))
 		}
+
 		fileprivate func load() -> UInt8 {
-			return __cswiftslash_auint8_load(self.auint8Ptr)
+			return __cswiftslash_auint8_load(auint8Ptr)
 		}
+
 		fileprivate func store(_ value:UInt8) {
-			__cswiftslash_auint8_store(self.auint8Ptr, value)
+			__cswiftslash_auint8_store(auint8Ptr, value)
 		}
+
 		fileprivate func compareExchangeWeak(expected:inout UInt8, desired:UInt8) -> Bool {
-			return __cswiftslash_auint8_compare_exchange_weak(self.auint8Ptr, &expected, desired)
+			return __cswiftslash_auint8_compare_exchange_weak(auint8Ptr, &expected, desired)
 		}
+
 		fileprivate func add(_ value:UInt8) -> UInt8 {
-			return __cswiftslash_auint8_increment(self.auint8Ptr, value)
+			return __cswiftslash_auint8_increment(auint8Ptr, value)
 		}
+
 		deinit {
-			self.auint8Ptr.deinitialize(count:1)
-			self.auint8Ptr.deallocate()
+			auint8Ptr.deinitialize(count:1)
+			auint8Ptr.deallocate()
 		}
 	}
 
@@ -157,7 +165,7 @@ internal struct AUInt8Tests {
 					// load operation
 					let _ = atomicValue.load()
 				case 2:
-					// compare Exchange Weak operation
+					// compare exchange weak operation
 					var expected = UInt8.random(in: 0...255)
 					let newValue = UInt8.random(in: 0...255)
 					
@@ -169,7 +177,6 @@ internal struct AUInt8Tests {
 						#expect(loadedValue == newValue)
 					} else {
 						// the exchange failed; expected now contains the current value
-						// due to spurious failures, the current value might still be equal to originalExpected
 						#expect(loadedValue == expected)
 					}
 				default:

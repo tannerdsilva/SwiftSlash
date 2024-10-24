@@ -1,10 +1,10 @@
 /// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
-internal struct GenericPThread<R>:PThreadWork {
+internal struct GenericPThread<R:Sendable>:PThreadWork {
 	/// function to run.
 	private let funcToRun:Argument
 
 	/// the argument type for the function to run.
-	internal typealias Argument = () throws -> R
+	internal typealias Argument = @Sendable () throws -> R
 	/// the return type for the function to run.
 	internal typealias ReturnType = R
 

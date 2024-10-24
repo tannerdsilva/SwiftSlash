@@ -5,20 +5,21 @@ import Testing
 internal struct FutureTests {
 
     // Helper function to generate random integers
-    func randomInt() -> Int {
+    static func randomInt() -> Int {
         return Int.random(in: Int.min...Int.max)
     }
 
     // Helper function to generate random strings
-    func randomString(length: Int) -> String {
+    static func randomString(length: Int) -> String {
         let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         return String((0..<length).map{ _ in letters.randomElement()! })
     }
 
-    @Test func testSetSuccessWithRandomIntegers() async throws {
+    @Test("SwiftSlashFuture :: test successful assignment with random integers")
+	func setSuccessWithRandomIntegers() async throws {
         for _ in 0..<100 {
             var future: Future<Int>? = Future<Int>()
-            let randomValue = randomInt()
+            let randomValue = Self.randomInt()
             try future!.setSuccess(randomValue)
             let result = await future!.result()
             var foundResult: Int? = nil
@@ -63,7 +64,7 @@ internal struct FutureTests {
 
         for _ in 0..<100 {
             let future = Future<Int>()
-            let error = RandomTestError(code: randomInt(), message: randomString(length: 20))
+            let error = RandomTestError(code: Self.randomInt(), message: Self.randomString(length: 20))
             try future.setFailure(error)
             let result = await future.result()
             var foundError: RandomTestError? = nil
@@ -82,7 +83,7 @@ internal struct FutureTests {
     @Test func testAwaitResultWithRandomStrings() async {
         for _ in 0..<100 {
             var future: Future<String>? = Future<String>()
-            let randomValue = randomString(length: Int.random(in: 0...100))
+            let randomValue = Self.randomString(length: Int.random(in: 0...100))
             Task {
                 try future!.setSuccess(randomValue)
             }

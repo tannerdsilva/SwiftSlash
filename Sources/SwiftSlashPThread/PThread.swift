@@ -5,13 +5,13 @@ import SwiftSlashFuture
 import SwiftSlashContained
 
 /// launches a pthread that will run the given work function and return the running pthread.
-public func launch<R>(_ work:consuming @escaping () throws -> R) async throws -> Running<R> {
+public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws -> Running<R> where R:Sendable {
 	let launchedPThread = try await _launch(GenericPThread<R>.self, argument:work)
 	return Running(alreadyLaunched:launchedPThread)
 }
 
 /// runs any given arbitrary function on a pthread.
-public func run<R>(_ work:consuming @escaping () throws -> R) async throws -> Result<R, Swift.Error> {
+public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws -> Result<R, Swift.Error> where R:Sendable {
 	let launchedThread = try await GenericPThread.launch(work)
 	return await launchedThread.result()
 }

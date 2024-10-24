@@ -3,43 +3,61 @@ import Testing
 @testable import SwiftSlashPThread
 import __cswiftslash_threads
 
-fileprivate struct PThreadWorkerTesterThing<A>:PThreadWork {
+// a declaration of the pthread worker that will be used to test the pthreads.
+fileprivate struct PThreadWorkerTesterThing<A:Sendable>:PThreadWork {
+	// the argument type of the pthread worker
 	typealias Argument = A
+	// the return type of the pthread worker
 	typealias ReturnType = A
 	private let inputArgument:Argument
 	internal init(_ a:Argument) {
 		self.inputArgument = a
 	}
-	mutating func pthreadWork() throws -> A {
+	fileprivate mutating func pthreadWork() throws -> A {
 		return inputArgument
 	}
 }
 
-@Suite("SwiftSlashPThreadTests",
-	.serialized
-)
+@Suite("SwiftSlashPThreadTests")
 struct PThreadTests {
 
-	@Test
+	@Test("SwiftSlashPThread :: return values from pthreads")
 	func testPthreadReturn() async throws {
-		// try await withThrowingTaskGroup(of:(String, String).self, returning:Void.self, body: { group in
-			for _ in 0..<50 {
-				for i in 0..<10 {
-					let randomString = String.random(length:56)
-					let myString:String
-					switch try await PThreadWorkerTesterThing<String>.run(randomString) {
-					case .success(let s):
-						myString = s
-					case .failure(let e):
-						throw e
-					}
-					#expect(randomString == myString)
-				}
+		for _ in 0..<512 {
+			let randomString = String.random(length:56)
+			let myString:String
+			switch try await PThreadWorkerTesterThing<String>.run(randomString) {
+			case .success(let s):
+				myString = s
+			case .failure(let e):
+				throw e
 			}
-		return
+			#expect(randomString == myString)
+		}
+	}
+
+	fileprivate actor Expectation {
+		private let isInverted:Bool
+		private var didFulfill = false
+		private init(isInverted invert:Bool = false) {
+			isInverted = invert
+		}
+
+		fileprivate func fulfill() {
+			didFulfill = true
+		}
+
+		fileprivate func didFulfill(waitForSeconds secs:Double) async throws -> Bool {
+			if didFulfill {
+				return true
+			}
+			try await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
+			return didFulfill
+		}
 	}
 	
-	/*#if os(macOS)
+	/*
+	@Test("SwiftSlashPThread :: cancellation of pthreads that are already in flight")
 	func testPthreadCancellation() async throws {
 		let cancelExpect = XCTestExpectation(description:"PThread delay")
 		let returnExpect = XCTestExpectation(description:"PThread delay")
@@ -76,7 +94,7 @@ struct PThreadTests {
 		await fulfillment(of:[cancelExpect, returnExpect, freeExpect], timeout: 2)
 		await ltask.result
 	}
-	#endif*/
+	*/
 }
 
 
