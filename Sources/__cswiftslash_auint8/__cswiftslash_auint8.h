@@ -19,7 +19,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 typedef struct __cswiftslash_atomic_uint8 {
 
 	// the stored value. NOTE: do not access or manipulate this field directly.
-	uint8_t _Atomic ____v;
+	uint8_t _Atomic _;
 
 } __cswiftslash_atomic_uint8_t;
 

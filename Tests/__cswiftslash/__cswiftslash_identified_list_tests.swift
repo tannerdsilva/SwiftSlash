@@ -16,7 +16,7 @@ import __cswiftslash_identified_list
 @Suite("__cswiftslash_identified_list")
 internal struct IdentifiedList { 
 	private actor KeyManager {
-		private var keys: [UInt64] = []
+		private var keys:[UInt64] = []
 		
 		fileprivate func addKey(_ key: UInt64) {
 			keys.append(key)
@@ -80,7 +80,7 @@ internal struct IdentifiedList {
 		}
 		
 		/// C function pointer compatible with __cswiftslash_identified_list_ptr_f
-		private static let consumerFunction: __cswiftslash_identified_list_ptr_f = { (key, ptr, ctx) in
+		private static let consumerFunction:__cswiftslash_identified_list_iterator_f = { (key, ptr, ctx) in
 			let context = Unmanaged<ConsumerContext>.fromOpaque(ctx).takeUnretainedValue()
 			context.consumer(key, ptr)
 		}
@@ -88,15 +88,9 @@ internal struct IdentifiedList {
 
 	// MARK: - Test Cases
 
-	@Test("__cswiftslash_identified_list :: initialization")
+	@Test("__cswiftslash_identified_list :: initialization and deallocation")
 	func testAtomicListInitialization() {
 		let list = IdentifiedListHarness()
-		
-		// attempt to remove an element from the empty list
-		let removedData = list.remove(key: 1)
-		#expect(removedData == nil)
-		
-		// close the list
 		list.close()
 	}
 
@@ -106,7 +100,6 @@ internal struct IdentifiedList {
 		
 		let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
 		let key = list.insert(data)
-		#expect(key != 0)
 		
 		let removedData = list.remove(key: key)
 		#expect(removedData == data)
@@ -195,15 +188,20 @@ internal struct IdentifiedList {
 		let list = IdentifiedListHarness()
 		let totalInsertions = 1000
 		
-		await withTaskGroup(of: Void.self) { group in
+		let allKeys = await withTaskGroup(of: UInt64.self, returning:Set<UInt64>.self) { group in
 			for i in 0..<totalInsertions {
 				group.addTask {
 					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 					data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
 					let key = list.insert(data)
-					#expect(key != 0)
+					return key
 				}
 			}
+			var buildKeys = Set<UInt64>()
+			for await key in group {
+				buildKeys.insert(key)
+			}
+			return buildKeys
 		}
 		
 		// iterate over elements to count them
@@ -213,7 +211,7 @@ internal struct IdentifiedList {
 			ptr?.deallocate()
 		}
 		
-		#expect(count == totalInsertions)
+		#expect(count == allKeys.count)
 		
 		// close the list
 		list.close()

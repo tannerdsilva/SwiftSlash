@@ -24,7 +24,7 @@ fileprivate let cswiftslashTargets:[Target] = [
 	.target(
 		name:"__cswiftslash_future",
 		dependencies:[
-			"__cswiftslash_fifo",
+			"__cswiftslash_identified_list",
 			"__cswiftslash_types"
 		],
 		publicHeadersPath:"."
