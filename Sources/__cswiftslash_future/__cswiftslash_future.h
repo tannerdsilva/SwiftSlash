@@ -59,10 +59,10 @@ typedef struct __cswiftslash_future {
 	pthread_mutex_t ____m;							// internal mutex for the condition.
 	
 	// user fields related to the result.
-	_Atomic uint8_t ____rt;					// result value type (user field).
-	_Atomic __cswiftslash_optr_t ____rv;	// result value (user field).
+	_Atomic uint8_t ____rt;							// result value type (user field).
+	_Atomic __cswiftslash_optr_t ____rv;			// result value (user field).
 
-	__cswiftslash_ptr_t ____w;						// the fifo chain of waiters.
+	__cswiftslash_ptr_t ____wi;						// a pointer to a heap-stored __cswiftslash_identified_list containing the waiting threads.
 } __cswiftslash_future_t;
 
 /// a pointer to a future.
@@ -110,8 +110,8 @@ void __cswiftslash_future_t_wait_sync(
 /// @param ___ the result handler to call (from another thread) when the future is complete.
 /// @param ____ the error handler to call (from another thread) when the future is complete.
 /// @param _____ the cancel handler to call (from another thread) when the future is cancelled.
-/// @return void is returned after the handlers are registered.
-void __cswiftslash_future_t_wait_async(
+/// @return a unique identifier for the waiter. this unique identifier can be used to cancel the waiter later. if the future is already complete, the result handler will be called immediately, and zero is returned.
+uint64_t __cswiftslash_future_t_wait_async(
 	const _cswiftslash_future_ptr_t _,
 	const __cswiftslash_optr_t __,
 	const _Nonnull __cswiftslash_future_result_val_handler_f ___,
