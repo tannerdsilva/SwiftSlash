@@ -391,6 +391,64 @@ uint64_t __cswiftslash_future_t_wait_async(
 		return storekey;
 }
 
+bool __cswiftslash_future_t_wait_async_cancel(
+	const _cswiftslash_future_ptr_t _,
+	const uint64_t __
+) {
+	// acquire the global lock for this instance.
+	pthread_mutex_lock(&_->____m);
+
+	// load the state of the future.
+	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
+	__cswiftslash_optr_t __1;
+	switch (__0) {
+		case FUTURE_STATUS_PEND:
+			// the future is still pending. we can cancel the waiter.
+			goto cancelWaiter;
+
+		case FUTURE_STATUS_RESULT:
+			// the future is fufilled with a result. we cannot cancel the waiter.
+			goto returnFalse;
+
+		case FUTURE_STATUS_THROW:
+			// the future is fufilled with an error. we cannot cancel the waiter.
+			goto returnFalse;
+
+		case FUTURE_STATUS_CANCEL:
+			// the future was cancelled. we cannot cancel the waiter.
+			goto returnFalse;
+
+		default:
+			printf("swiftslash future internal error: invalid future status\n");
+			abort();
+	}
+
+	cancelWaiter:
+		// remove the waiter from the list.
+		__1 = __cswiftslash_identified_list_remove(_->____wi, __);
+
+		// unlock the global lock.
+		pthread_mutex_unlock(&_->____m);
+
+		// if the waiter was not found, return false.
+		if (__1 == NULL) {
+			return false;
+		}
+
+		// fire the cancel handler.
+		((__cswiftslash_future_wait_ptr_t)__1)->____v(((__cswiftslash_future_wait_ptr_t)(__1))->____c);
+
+		// free the memory.
+		____cswiftslash_future_wait_t_destroy_async(__1);
+
+		return true;
+
+	returnFalse:
+		// unlock the global lock.
+		pthread_mutex_unlock(&_->____m);
+		return false;
+}
+
 struct ____cswiftslash_future_identified_list_tool {
 	const uint8_t _;
 	const __cswiftslash_optr_t __;
@@ -407,7 +465,6 @@ void ____cswiftslash_future_identified_list_val_iterator(const uint64_t _, const
 		// free the heap pointer from memory
 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);
 	}
-	// free((void*)wptr);
 }
 
 void ____cswiftslash_future_identified_list_throw_iterator(const uint64_t _, const __cswiftslash_ptr_t wptr, const __cswiftslash_ptr_t ___) {
@@ -421,7 +478,6 @@ void ____cswiftslash_future_identified_list_throw_iterator(const uint64_t _, con
 		// free the heap pointer from memory
 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);
 	}
-	// free((void*)wptr);
 }
 
 bool __cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t _, const uint8_t __, const __cswiftslash_optr_t ___) {

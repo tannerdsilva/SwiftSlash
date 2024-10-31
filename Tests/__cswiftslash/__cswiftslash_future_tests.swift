@@ -36,29 +36,29 @@ internal struct FutureTests {
 		}
 
 		fileprivate func waitAsync() async throws -> Result? {
-			return try await withUnsafeThrowingContinuation { (continuation:UnsafeContinuation<Optional<Result>, Swift.Error>) in
-				var resultStore:(pthread_t, Result?)? = nil
-				var srInstance = AsyncResult(resultHandler: { resType, resPtr in
-					resultStore = (pthread_self(), .success(resType, resPtr))
-				}, errorHandler: { errType, errPtr in
-					resultStore = (pthread_self(), .failure(errType, errPtr))
-				}, cancelHandler: {
-					resultStore = (pthread_self(), nil)
-				})
-				do {
-					let rs:Result? = try withUnsafeMutablePointer(to:&srInstance) { srInstance in
-						__cswiftslash_future_t_wait_async(self.futurePtr, srInstance, Self.futureAsyncResultHandler, Self.futureAsyncErrorHandler, Self.futureAsyncCancelHandler)
-						let comparePID = srInstance.pointee.auditPID()
-						guard pthread_equal(comparePID, resultStore!.0) != 0 else {
-							throw UnexpectedAsyncronousThreading()
-						}
-						return resultStore!.1
+			var resultStore:(pthread_t, Result?)? = nil
+			let asyncResultMemory = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
+			asyncResultMemory.initialize(to:AsyncResult(resultHandler: { resType, resPtr in
+				resultStore = (pthread_self(), .success(resType, resPtr))
+			}, errorHandler: { errType, errPtr in
+				resultStore = (pthread_self(), .failure(errType, errPtr))
+			}, cancelHandler: {
+				resultStore = (pthread_self(), nil)
+			}))
+			let keyThing = __cswiftslash_future_t_wait_async(self.futurePtr, asyncResultMemory, Self.futureAsyncResultHandler, Self.futureAsyncErrorHandler, Self.futureAsyncCancelHandler)
+			try await withTaskCancellationHandler(operation: { 
+				try await withUnsafeThrowingContinuation({ [asm = asyncResultMemory.pointee] (cont:UnsafeContinuation<Void, Swift.Error>) in
+					let apid = asm.auditPID()
+					guard pthread_equal(apid, resultStore!.0) != 0 else {
+						cont.resume(throwing: UnexpectedAsyncronousThreading())
+						return
 					}
-					continuation.resume(returning:rs)
-				} catch {
-					continuation.resume(throwing:error)
-				}
-			}
+					cont.resume()
+				})
+			}, onCancel: {
+				__cswiftslash_future_t_wait_async_cancel(self.futurePtr, keyThing)
+			})
+			return resultStore!.1
 		}
 
 		/// Broadcasts a result value to the future.
@@ -321,6 +321,24 @@ internal struct FutureTests {
 
 		#expect(foundType == 3)
 		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5678))
+	}
+
+	@Test("__cswiftslash_future :: core :: async waiter cancellation")
+	func testAsyncWaiterCancellation() async throws {
+		let future = Harness()
+		try await withThrowingTaskGroup(of:FutureTests.Harness.Result?.self) { tg in
+			tg.addTask {
+				return try await future.waitAsync()
+			}
+			try await Task.sleep(nanoseconds: 1_000_000_000 * 1) // 1 second
+			tg.cancelAll()
+			var i = 0
+			for try await result in tg {
+				#expect(result == nil)
+				i += 1
+			}
+			#expect(i == 1)
+		}
 	}
 
 	@Test("__cswiftslash_future :: core :: async error")

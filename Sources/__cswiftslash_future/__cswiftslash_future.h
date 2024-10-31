@@ -119,6 +119,15 @@ uint64_t __cswiftslash_future_t_wait_async(
 	const _Nonnull __cswiftslash_future_result_cncl_handler_f _____
 );
 
+/// cancel an asynchronous waiter for a future. after calling this function, you can rest assured that the result handlers will not be fired for the specified waiter. however, it is possible that a result becomes available during the course of calling this function, and such conditions are reported by the return value.
+/// @param _ the future to cancel the waiter for.
+/// @param __ the unique waiter identifier to cancel.
+/// @return a boolean value indicating if the cancellation was successful. if the waiter was already complete and the handler functions were fired, this function will return false.
+bool __cswiftslash_future_t_wait_async_cancel(
+	const _cswiftslash_future_ptr_t _,
+	const uint64_t __
+);
+
 // delivering the result -----
 
 /// broadcast a completion result to all threads waiting on the future.
