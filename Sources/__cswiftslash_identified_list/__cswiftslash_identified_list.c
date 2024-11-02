@@ -201,22 +201,22 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(const __cswiftslash_id
 		_->____p = __node->____p;
 	}
 
-	__cswiftslash_optr_t __3 = __node->____d;
+	__cswiftslash_optr_t __4 = __node->____d;
 	free(__node);
 	_->____i--;
 
 	// check if we need to resize down
-	double __4 = (double)_->____i / _->____hn;
-	if (__4 < RESIZE_DOWN_FACTOR && _->____hn > INITIAL_HASH_TABLE_SIZE) {
-		size_t __5 = _->____hn / RESIZE_MULTIPLIER;
-		if (__5 < INITIAL_HASH_TABLE_SIZE) {
-			__5 = INITIAL_HASH_TABLE_SIZE;
+	double __5 = (double)_->____i / _->____hn;
+	if (__5 < RESIZE_DOWN_FACTOR && _->____hn > INITIAL_HASH_TABLE_SIZE) {
+		size_t __6 = _->____hn / RESIZE_MULTIPLIER;
+		if (__6 < INITIAL_HASH_TABLE_SIZE) {
+			__6 = INITIAL_HASH_TABLE_SIZE;
 		}
-		resize_hashtable(_, __5);
+		resize_hashtable(_, __6);
 	}
 	
 	pthread_mutex_unlock(&_->____m);
-	return __3;
+	return __4;
 }
 
 void __cswiftslash_identified_list_iterate(const __cswiftslash_identified_list_pair_ptr_t _, const __cswiftslash_identified_list_iterator_f __, const __cswiftslash_optr_t ___) {
