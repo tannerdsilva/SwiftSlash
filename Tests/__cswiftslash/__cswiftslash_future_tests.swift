@@ -25,6 +25,24 @@ internal struct FutureTests {
 		fileprivate enum Result:@unchecked Sendable, Equatable {
 			case success(UInt8, UnsafeMutableRawPointer?)
 			case failure(UInt8, UnsafeMutableRawPointer?)
+
+			func type() -> UInt8 {
+				switch self {
+					case .success(let type, _):
+						return type
+					case .failure(let type, _):
+						return type
+				}
+			}
+			
+			func pointer() -> UnsafeMutableRawPointer? {
+				switch self {
+					case .success(_, let pointer):
+						return pointer
+					case .failure(_, let pointer):
+						return pointer
+				}
+			}
 		}
 
 		// Pointer to the C future structure
@@ -33,6 +51,10 @@ internal struct FutureTests {
 		/// Initializes a new future instance.
 		fileprivate init() {
 			self.futurePtr = __cswiftslash_future_t_init()
+		}
+
+		fileprivate func cancel() -> Bool {
+			__cswiftslash_future_t_broadcast_cancel(self.futurePtr)
 		}
 
 		fileprivate func waitAsync() async throws -> Result? {
@@ -56,7 +78,7 @@ internal struct FutureTests {
 					cont.resume()
 				})
 			}, onCancel: {
-				__cswiftslash_future_t_wait_async_cancel(self.futurePtr, keyThing)
+				__cswiftslash_future_t_wait_async_invalidate(self.futurePtr, keyThing)
 			})
 			return resultStore!.1
 		}
@@ -123,7 +145,7 @@ internal struct FutureTests {
 				pthread_mutex_unlock(&istate)
 			}
 
-			fileprivate func setNil(contextPtr:UnsafeMutableRawPointer?) {
+			fileprivate func setCancel(contextPtr:UnsafeMutableRawPointer?) {
 				pthread_mutex_lock(&istate)
 				cancelHandler?()
 				var expectedLockVal:UInt8 = 1
@@ -168,7 +190,7 @@ internal struct FutureTests {
 			ctxPtr?.assumingMemoryBound(to:AsyncResult.self).pointee.setError(type:errType, pointer:errPtr)
 		}
 		private static let futureAsyncCancelHandler:__cswiftslash_future_result_cncl_handler_f = { ctxPtr in
-			ctxPtr?.assumingMemoryBound(to:AsyncResult.self).pointee.setNil(contextPtr:ctxPtr)
+			ctxPtr?.assumingMemoryBound(to:AsyncResult.self).pointee.setCancel(contextPtr:ctxPtr)
 		}
 
 		private struct SyncResult {
@@ -232,105 +254,118 @@ internal struct FutureTests {
 		}
 	}
 
-	// MARK: Test Cases
+	// MARK: - Core Sync Tests
 	@Test("__cswiftslash_future :: core :: sync result")
-	func testWaitSyncForResult() throws {
-		let future = Harness()
-		
-		// start a background task to broadcast a result after some delay
-		Task {
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-			let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
-			#expect(future.broadcastResultValue(resType: 1, resVal: data) == true)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try future.waitSync()
-		
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
+	func testWaitSyncForResult() async throws {
+		try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
+				#expect(future.broadcastResultValue(resType: 1, resVal: data) == true)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
+			
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		// check that the result was received
-		switch result {
-		case .success(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that the result was received
+			switch result {
+			case .success(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 1)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x1234))
+			#expect(foundType == 1)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x1234))
+		}
 	}
 
 	@Test("__cswiftslash_future :: core :: sync error")
-	func testWaitSyncForError() throws {
-		let future = Harness()
-		
-		// start a background task to broadcast an error after some delay
-		Task {
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-			let errorData = UnsafeMutableRawPointer(bitPattern: 0xdead)!
-			#expect(future.broadcastErrorValue(errType: 2, errVal: errorData) == true)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try future.waitSync()
+	func testWaitSyncForError() async throws {
+		try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let errorData = UnsafeMutableRawPointer(bitPattern: 0x4321)!
+				#expect(future.broadcastErrorValue(errType: 2, errVal: errorData) == true)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
+			
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that the error was received
-		switch result {
-		case .failure(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that the error was received
+			switch result {
+			case .failure(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 2)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xdead))
+			#expect(foundType == 2)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x4321))
+		}
 	}
 
+	@Test("__cswiftslash_future :: core :: sync cancel")
+	func testSyncWaiterCancellation() async throws {
+		let future = Harness()
+		try await withThrowingTaskGroup(of:FutureTests.Harness.Result?.self) { tg in
+			tg.addTask {
+				return try future.waitSync()
+			}
+			#expect(future.cancel() == true)
+			var i = 0
+			for try await result in tg {
+				#expect(result == nil)
+				i += 1
+			}
+			#expect(i == 1)
+		}
+	}
+
+	// MARK: - Core Async Tests
+	// test async waiters receiving results
 	@Test("__cswiftslash_future :: core :: async result")
 	func testWaitAsyncForResult() async throws {
-		let future = Harness()
-		
-		// start a background task to broadcast a result after some delay
-		Task {
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-			let data = UnsafeMutableRawPointer(bitPattern: 0x5678)!
-			#expect(future.broadcastResultValue(resType: 3, resVal: data) == true)
-		}
-		
-		// wait asynchronously for the future to complete
-		let result = try await future.waitAsync()
+		try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let data = UnsafeMutableRawPointer(bitPattern: 0x5678)!
+				#expect(future.broadcastResultValue(resType: 3, resVal: data) == true)
+			}
+			// wait asynchronously for the future to complete
+			let result = try await future.waitAsync()
+			
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that the result was received
-		switch result {
-		case .success(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that the result was received
+			switch result {
+			case .success(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 3)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5678))
+			#expect(foundType == 3)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5678))
+		}
 	}
 
-	@Test("__cswiftslash_future :: core :: async waiter cancellation")
-	func testAsyncWaiterCancellation() async throws {
+	// test async waiters cancelling their own tasks
+	@Test("__cswiftslash_future :: core :: async waiter invalidation")
+	func coreAsyncWaiterInvalidation() async throws {
 		let future = Harness()
 		try await withThrowingTaskGroup(of:FutureTests.Harness.Result?.self) { tg in
 			tg.addTask {
 				return try await future.waitAsync()
 			}
-			try await Task.sleep(nanoseconds: 1_000_000_000 * 1) // 1 second
 			tg.cancelAll()
 			var i = 0
 			for try await result in tg {
@@ -341,212 +376,232 @@ internal struct FutureTests {
 		}
 	}
 
+	// test async waiters receiving errors
 	@Test("__cswiftslash_future :: core :: async error")
-	func testWaitAsyncForError() async throws {
-		let future = Harness()
-		
-		// start a background task to broadcast an error after some delay
-		Task {
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-			let errorData = UnsafeMutableRawPointer(bitPattern: 0xbeef)!
-			#expect(future.broadcastErrorValue(errType: 4, errVal: errorData) == true)
-		}
-		
-		// wait asynchronously for the future to complete
-		let result = try await future.waitAsync()
+	func coreAsyncError() async throws {
+		try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let errorData = UnsafeMutableRawPointer(bitPattern: 0xbeef)!
+				#expect(future.broadcastErrorValue(errType: 4, errVal: errorData) == true)
+			}
+			// wait asynchronously for the future to complete
+			let result = try await future.waitAsync()
+			
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that the error was received
-		switch result {
-		case .failure(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that the error was received
+			switch result {
+			case .failure(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 4)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xbeef))
+			#expect(foundType == 4)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xbeef))
+		}
 	}
 
-	@Test("__cswiftslash_future :: broadcast result multiple times")
-	func testBroadcastResultMultipleTimes() throws {
+	@Test("__cswiftslash_future :: core :: async cancel")
+	func coreAsyncCancel() async throws {
 		let future = Harness()
-		
-		// start a background task to broadcast a result multiple times
-		Task {
-			let data1 = UnsafeMutableRawPointer(bitPattern: 0x1000)!
-			#expect(future.broadcastResultValue(resType: 1, resVal: data1) == true)
+		try await withThrowingTaskGroup(of:Void.self) { tg in
+			tg.addTask {
+				#expect(future.cancel() == true)
+			}
+			let waitResult = try await future.waitAsync()
+			#expect(waitResult == nil)
+		}
+	}
+
+	// MARK: - Additional Tests
+	@Test("__cswiftslash_future :: broadcast result multiple times")
+	func testBroadcastResultMultipleTimes() async throws {
+		try await withThrowingTaskGroup(of:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let data1 = UnsafeMutableRawPointer(bitPattern: 0x1000)!
+				#expect(future.broadcastResultValue(resType: 1, resVal: data1) == true)
+				
+				// attempt to broadcast again
+				let data2 = UnsafeMutableRawPointer(bitPattern: 0x2000)!
+				#expect(future.broadcastResultValue(resType: 2, resVal: data2) == false)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
 			
-			// attempt to broadcast again
-			let data2 = UnsafeMutableRawPointer(bitPattern: 0x2000)!
-			#expect(future.broadcastResultValue(resType: 2, resVal: data2) == false)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try future.waitSync()
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that only the first result was received
-		switch result {
-		case .success(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that only the first result was received
+			switch result {
+			case .success(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 1)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x1000))
+			#expect(foundType == 1)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x1000))
+		}
 	}
 
 	@Test("__cswiftslash_future :: broadcast error after result")
-	func testBroadcastErrorAfterResult() throws {
-		let future = Harness()
-		
-		// start a background task to broadcast a result and then an error
-		Task {
-			let data = UnsafeMutableRawPointer(bitPattern: 0x3000)!
-			let success1 = future.broadcastResultValue(resType: 5, resVal: data)
-			#expect(success1 == true)
+	func testBroadcastErrorAfterResult() async throws {
+		try await withThrowingTaskGroup(of:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let data = UnsafeMutableRawPointer(bitPattern: 0x3000)!
+				#expect(future.broadcastResultValue(resType: 5, resVal: data) == true)
+				
+				// attempt to broadcast an error after the result
+				let errorData = UnsafeMutableRawPointer(bitPattern: 0x4000)!
+				#expect(future.broadcastErrorValue(errType: 6, errVal: errorData) == false)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
 			
-			// attempt to broadcast an error after the result
-			let errorData = UnsafeMutableRawPointer(bitPattern: 0x4000)!
-			let success2 = future.broadcastErrorValue(errType: 6, errVal: errorData)
-			#expect(success2 == false)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try future.waitSync()
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that the result was received and error was not
-		switch result {
-		case .success(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that the result was received and error was not
+			switch result {
+			case .success(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 5)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x3000))
+			#expect(foundType == 5)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x3000))
+		}
 	}
 
 	@Test("__cswiftslash_future :: broadcast error multiple times")
-	func testBroadcastErrorAfterError() throws {
-		let future = Harness()
-		
-		// start a background task to broadcast an error and then another error
-		Task {
-			let errorData1 = UnsafeMutableRawPointer(bitPattern: 0x5000)!
-			let success1 = future.broadcastErrorValue(errType: 7, errVal: errorData1)
-			#expect(success1 == true)
+	func testBroadcastErrorAfterError() async throws {
+		try await withThrowingTaskGroup(of:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let errorData1 = UnsafeMutableRawPointer(bitPattern: 0x5000)!
+				#expect(future.broadcastErrorValue(errType: 7, errVal: errorData1) == true)
+				
+				// attempt to broadcast another error
+				let errorData2 = UnsafeMutableRawPointer(bitPattern: 0x6000)!
+				#expect(future.broadcastErrorValue(errType: 8, errVal: errorData2) == false)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
 			
-			// attempt to broadcast another error
-			let errorData2 = UnsafeMutableRawPointer(bitPattern: 0x6000)!
-			let success2 = future.broadcastErrorValue(errType: 8, errVal: errorData2)
-			#expect(success2 == false)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try future.waitSync()
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that only the first error was received
-		switch result {
-		case .failure(let type, let value):
-			foundType = type
-			foundValue = value
-		default:
-			break
-		}
+			// check that only the first error was received
+			switch result {
+			case .failure(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 7)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5000))
+			#expect(foundType == 7)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5000))
+		}
 	}
 
 	@Test("__cswiftslash_future :: broadcast result after error")
 	func testBroadcastResultAfterError() async throws {
-		let future = Harness()
-		
-		// start a background task to broadcast an error and then a result
-		Task {
-			#expect(future.broadcastErrorValue(errType: 9, errVal:UnsafeMutableRawPointer(bitPattern: 0x7000)!) == true)
+		try await withThrowingTaskGroup(of:Void.self) { tg in
+			let future = Harness()
+			tg.addTask {
+				let errorData = UnsafeMutableRawPointer(bitPattern: 0x7000)!
+				#expect(future.broadcastErrorValue(errType: 9, errVal: errorData) == true)
+				
+				// attempt to broadcast a result after the error
+				let data = UnsafeMutableRawPointer(bitPattern: 0x8000)!
+				#expect(future.broadcastResultValue(resType: 10, resVal: data) == false)
+			}
+			// wait synchronously for the future to complete
+			let result = try future.waitSync()
 			
-			// broadcast a result after the error
-			#expect(future.broadcastResultValue(resType: 10, resVal:UnsafeMutableRawPointer(bitPattern:0x8000)!) == false)
-		}
-		
-		// wait synchronously for the future to complete
-		let result = try await future.waitAsync()
+			var foundType:UInt8? = nil
+			var foundValue:UnsafeMutableRawPointer? = nil
 
-		var foundType:UInt8? = nil
-		var foundValue:UnsafeMutableRawPointer? = nil
-		
-		// check that the error was received and result was not
-		switch result! {
-		case .failure(let type, let value):
-			foundType = type
-			foundValue = value
-		case .success:
-			break
-		}
+			// check that the error was received and result was not
+			switch result {
+			case .failure(let type, let value):
+				foundType = type
+				foundValue = value
+			default:
+				break
+			}
 
-		#expect(foundType == 9)
-		#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x7000))
+			#expect(foundType == 9)
+			#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x7000))
+		}
 	}
 
 	@Test("__cswiftslash_future :: fuzz testing")
 	func testFuzzTestingFuture() async throws {
-		var ticks = 0
-		for _ in 0..<1000 {
-			let future = Harness()
-			let action = Int.random(in: 0...1)
-			
-			if action == 0 {
-				// broadcast result
-				Task {
-					let key = UInt8.random(in:UInt8.min...UInt8.max)
-					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-					data.storeBytes(of:UInt8.min + key, as:UInt8.self)
-					#expect(future.broadcastResultValue(resType:UInt8.max - key, resVal: data) == true)
+		for i in 0..<100000 {
+			await withTaskGroup(of:UInt8?.self) { tgg in
+				let future = Harness()
+				let action = Int.random(in: 0...22)
+				tgg.addTask {
+					if action <= 10 {
+						// broadcast result
+						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+						let randomByte = UInt8.random(in: 0...255)
+						data.storeBytes(of:randomByte, as: UInt8.self)
+						#expect(future.broadcastResultValue(resType: 11, resVal: data) == true)
+						return randomByte
+					} else if action <= 20 {
+						// broadcast error
+						let errorData = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+						let randomByte = UInt8.random(in: 0...255)
+						errorData.storeBytes(of:randomByte, as: UInt8.self)
+						#expect(future.broadcastErrorValue(errType: 12, errVal: errorData) == true)
+						return randomByte
+					} else {
+						// cancel the future
+						#expect(future.cancel() == true)
+						return nil
+					}
 				}
-			} else {
-				// broadcast error
-				Task {
-					let key = UInt8.random(in:UInt8.min...UInt8.max)
-					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-					data.storeBytes(of:UInt8.max - key, as: UInt8.self)
-					#expect(future.broadcastErrorValue(errType:UInt8.min + key, errVal: data) == true)
+				let result = await withUnsafeContinuation({ (cont:UnsafeContinuation<FutureTests.Harness.Result?, Never>) in 
+					do {
+						cont.resume(returning:try future.waitSync())
+					} catch let error {
+						fatalError("\(error)")
+					}
+				})
+				switch result {
+					case .success(let valType, let valPtr):
+						#expect(action <= 10)
+						#expect(valType == 11)
+						let foundByte = valPtr!.load(as: UInt8.self)
+						let expectedByte = await tgg.next()!
+						#expect(foundByte == expectedByte)
+						valPtr!.deallocate()
+					case .failure(let valType, let valPtr):
+						#expect(action > 10 && action <= 20)
+						#expect(valType == 12)
+						let foundByte = valPtr!.load(as: UInt8.self)
+						let expectedByte = await tgg.next()!
+						#expect(foundByte == expectedByte)
+						valPtr!.deallocate()
+					case .none:
+						#expect(action > 20)
+						let expectedByte = await tgg.next()!
+						#expect(expectedByte == nil)
 				}
 			}
-			
-			// wait asynchronously
-			switch try await future.waitAsync()! {
-				case .success(let type, let value):
-				let expectedKey = value!.load(as:UInt8.self)
-				#expect(type == UInt8.max - expectedKey)
-				value!.deallocate()
-
-				case .failure(let type, let value):
-				let expectedKey = type
-				#expect(value!.load(as:UInt8.self) == UInt8.max - expectedKey)
-				value!.deallocate()
-			}
-
-			ticks += 1
 		}
-
-		#expect(ticks == 1000)
 	}
 
 	// MARK: - Additional Test Cases for Multiple Waiters
@@ -570,7 +625,6 @@ internal struct FutureTests {
 			}
 			
 			// broadcast a result after some delay
-			try await Task.sleep(nanoseconds: 500_000_000) // 500ms
 			let data = UnsafeMutableRawPointer(bitPattern: 0x9999)!
 			#expect(future.broadcastResultValue(resType: 42, resVal: data) == true)
 			
@@ -607,7 +661,6 @@ internal struct FutureTests {
 			}
 			
 			// broadcast an error after some delay
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
 			let errorData = UnsafeMutableRawPointer(bitPattern: 0xAAAA)!
 			#expect(future.broadcastErrorValue(errType: 24, errVal: errorData) == true)
 			
@@ -701,20 +754,36 @@ internal struct FutureTests {
 			}
 			
 			// simultaneously attempt to broadcast result and error
-			await withTaskGroup(of: Void.self) { broadcastGroup in
+			await withTaskGroup(of:Bool.self) { broadcastGroup in
 				broadcastGroup.addTask {
 					let data = UnsafeMutableRawPointer(bitPattern: 0xDDDD)!
-					_ = future.broadcastResultValue(resType: 77, resVal: data)
+					return future.broadcastResultValue(resType: 77, resVal: data)
 				}
 				broadcastGroup.addTask {
 					let errorData = UnsafeMutableRawPointer(bitPattern: 0xEEEE)!
-					_ = future.broadcastErrorValue(errType: 88, errVal: errorData)
+					return future.broadcastErrorValue(errType: 88, errVal: errorData)
 				}
+
+				var foundTrue = false
+				var foundFalse = false
+				var i = 0
+				for await result in broadcastGroup {
+					if result == false {
+						#expect(foundFalse == false)
+						foundFalse = true
+					} else {
+						#expect(foundTrue == false)
+						foundTrue = true
+					}
+					i += 1
+				}
+				#expect(i == 2)
+				#expect(foundTrue == true)
+				#expect(foundFalse == true)
 			}
 			
 			// collect results from waiters
-			for _ in 0..<waiterCount {
-				let (index, result) = await group.next()!
+			for await (index, result) in group {
 				results[index] = result
 			}
 		}

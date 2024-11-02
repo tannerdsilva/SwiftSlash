@@ -123,7 +123,7 @@ uint64_t __cswiftslash_future_t_wait_async(
 /// @param _ the future to cancel the waiter for.
 /// @param __ the unique waiter identifier to cancel.
 /// @return a boolean value indicating if the cancellation was successful. if the waiter was already complete and the handler functions were fired, this function will return false.
-bool __cswiftslash_future_t_wait_async_cancel(
+bool __cswiftslash_future_t_wait_async_invalidate(
 	const _cswiftslash_future_ptr_t _,
 	const uint64_t __
 );
@@ -150,6 +150,13 @@ bool __cswiftslash_future_t_broadcast_res_throw(
 	const _cswiftslash_future_ptr_t _,
 	const uint8_t __,
 	const __cswiftslash_optr_t ___
+);
+
+/// broadcast a cancellation result to all threads waiting on the future.
+/// @param _ the future to broadcast to.
+/// @return whether the broadcast was successful.
+bool __cswiftslash_future_t_broadcast_cancel(
+	const _cswiftslash_future_ptr_t _
 );
 
 #endif // __CLIBSWIFTSLASH_FUTURE_H

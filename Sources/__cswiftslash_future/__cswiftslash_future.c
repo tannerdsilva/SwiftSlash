@@ -53,6 +53,11 @@ typedef struct __cswiftslash_future_wait_t {
 	
 } __cswiftslash_future_wait_t;
 
+struct ____cswiftslash_future_identified_list_tool {
+	const uint8_t _;
+	const __cswiftslash_optr_t __;
+};
+
 /// a pointer to a future waiter.
 typedef __cswiftslash_future_wait_t *_Nonnull __cswiftslash_future_wait_ptr_t;
 
@@ -112,6 +117,8 @@ __cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_async(__cswif
 	return __1;
 }
 
+// MARK: - destroy handlers
+// destroy sync
 void ____cswiftslash_future_wait_t_destroy_sync(__cswiftslash_future_wait_ptr_t _) {
 	// destroy the mutex for the sync_wait stack.
 	pthread_mutex_destroy(&_->____m);
@@ -119,32 +126,52 @@ void ____cswiftslash_future_wait_t_destroy_sync(__cswiftslash_future_wait_ptr_t 
 	// free the memory from the heap.
 	free((void*)_);
 }
-
+// destroy async
 void ____cswiftslash_future_wait_t_destroy_async(__cswiftslash_future_wait_ptr_t _) {
 	// free the heap pointer from memory
 	free((void*)_);
 }
 
+// MARK: - cancellation iterator
 void ____cswiftslash_future_identified_list_cancel_iterator(const uint64_t _, const __cswiftslash_ptr_t __, const __cswiftslash_optr_t ___) {
-	// fire the cancel handler.
-	((__cswiftslash_future_wait_ptr_t)___)->____v(__);
-	// destroy the waiter.
-	free((void*)__);
+	// fire the result handler function any and all waiters.
+	if (((__cswiftslash_future_wait_ptr_t)__)->____s == true) {
+		// this is a synchronous waiter. we can unlock their mutex and move on.
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)__)->____m);
+	} else {
+		// fire the async handler. there is no mutex to handle in this scenario.
+		((__cswiftslash_future_wait_ptr_t)__)->____v(((__cswiftslash_future_wait_ptr_t)__)->____c);
+		// free the heap pointer from memory
+		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)__);
+	}
 }
 
-bool ____cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t _) {	
-	// flip the status from pending to successfully fufilled.
-	uint8_t __0 = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &__0, FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_relaxed) == false) {
+bool __cswiftslash_future_t_broadcast_cancel(const _cswiftslash_future_ptr_t _) {	
+	// acquire the global lock for synchronization.
+	pthread_mutex_lock(&_->____m);
+
+	// flip the status from pending to cancelled.
+	uint8_t expected_complete = FUTURE_STATUS_PEND;
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_relaxed) == false) {
 		// the item was not the expected value and therefore NOT assigned.
 		// this means that someone else is working to close the structure, so we should return failure and do nothing (dont want to double close).
-		return false;
+		goto returnFailure;
 	}
 
-	// other threads may have been waiting on this result. notify the waiters.
-	__cswiftslash_identified_list_iterate(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, _);
+	// broadcast the result to all waiters.
+	__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL);
 
-	return true;
+	goto returnSuccess;
+
+	returnSuccess:
+		// return true, since we successfully broadcasted the result.
+		pthread_mutex_unlock(&_->____m);
+		return true;
+
+	returnFailure:
+		// return false, since we failed to broadcast the result.
+		pthread_mutex_unlock(&_->____m);
+		return false;
 }
 
 void ____cswiftslash_future_identified_list_close(const uint64_t _, const __cswiftslash_ptr_t __, const __cswiftslash_ptr_t ___) {
@@ -186,7 +213,7 @@ void __cswiftslash_future_t_destroy(
 	int8_t curstat = atomic_load_explicit(&_->____s, memory_order_acquire);
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
-			if (____cswiftslash_future_t_broadcast_cancel(_) == false) {
+			if (__cswiftslash_future_t_broadcast_cancel(_) == false) {
 				printf("swiftslash future internal error: couldn't cancel future\n");
 				abort();
 			}
@@ -391,7 +418,7 @@ uint64_t __cswiftslash_future_t_wait_async(
 		return storekey;
 }
 
-bool __cswiftslash_future_t_wait_async_cancel(
+bool __cswiftslash_future_t_wait_async_invalidate(
 	const _cswiftslash_future_ptr_t _,
 	const uint64_t __
 ) {
@@ -449,11 +476,6 @@ bool __cswiftslash_future_t_wait_async_cancel(
 		return false;
 }
 
-struct ____cswiftslash_future_identified_list_tool {
-	const uint8_t _;
-	const __cswiftslash_optr_t __;
-};
-
 void ____cswiftslash_future_identified_list_val_iterator(const uint64_t _, const __cswiftslash_ptr_t wptr, const __cswiftslash_ptr_t ___) {
 	// fire the result handler function any and all waiters.
 	if (((__cswiftslash_future_wait_ptr_t)wptr)->____s == true) {
@@ -486,7 +508,7 @@ bool __cswiftslash_future_t_broadcast_res_val(const _cswiftslash_future_ptr_t _,
 
 	// flip the status from pending to successfully fufilled.
     uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_RESULT, memory_order_acq_rel, memory_order_acquire) == false) {
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_RESULT, memory_order_acq_rel, memory_order_relaxed) == false) {
 		// the item was not the expected value and therefore NOT assigned.
 		// this means that someone else is working to close the structure, so we should return failure and do nothing (dont want to double close).
 		goto returnFailure;
@@ -522,7 +544,7 @@ bool __cswiftslash_future_t_broadcast_res_throw(const _cswiftslash_future_ptr_t 
 	
 	// flip the status from pending to successfully fufilled.
 	uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_THROW, memory_order_acq_rel, memory_order_acquire) == false) {
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_THROW, memory_order_acq_rel, memory_order_relaxed) == false) {
 		// the item was not the expected value and therefore NOT assigned.
 		// this means that someone else is working to close the structure, so we should return failure and do nothing (dont want to double close).
 		goto returnFailure;
