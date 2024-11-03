@@ -64,17 +64,25 @@ internal struct PThreadTests {
 			if didFulfill {
 				return true
 			}
-			let result = try await withThrowingTaskGroup(of:Bool.self, returning:Bool.self) { tg in
+			try await withThrowingTaskGroup(of:Bool.self, returning:Void.self) { tg in
 				tg.addTask {
 					try await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
 					return false
 				}
 				tg.addTask { [ff = fulfillFuture] in
-					try await ff.result()
+					_ = await ff.result()
 					return true
 				}
+				do {
+					consumeLoop: for try await _ in tg {
+						break consumeLoop
+					}
+					tg.cancelAll()
+				} catch {
+					tg.cancelAll()
+					throw error
+				}
 			}
-			try await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
 			if isInverted {
 				return !didFulfill
 			} else {
@@ -127,7 +135,7 @@ internal struct PThreadTests {
 			}
 
 			// wait for the thread to launch.
-			try await launchFuture.result().get()
+			try await launchFuture.result()!.get()
 
 			// cancel the thread
 			try runTask.cancel()
@@ -136,7 +144,7 @@ internal struct PThreadTests {
 			try cancelFuture.setSuccess(())
 
 			let gotReturn:Bool
-			switch await runTask.result() {
+			switch try await runTask.result() {
 			case .success:
 				gotReturn = true
 			case .failure(let error):

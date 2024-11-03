@@ -548,7 +548,7 @@ internal struct FutureTests {
 
 	@Test("__cswiftslash_future :: fuzz testing")
 	func testFuzzTestingFuture() async throws {
-		for i in 0..<100000 {
+		for _ in 0..<100000 {
 			await withTaskGroup(of:UInt8?.self) { tgg in
 				let future = Harness()
 				let action = Int.random(in: 0...22)

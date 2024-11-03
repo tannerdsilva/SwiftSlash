@@ -13,7 +13,9 @@ import Testing
 
 import __cswiftslash_identified_list
 
-@Suite("__cswiftslash_identified_list")
+@Suite("__cswiftslash_identified_list",
+	.serialized
+)
 internal struct IdentifiedList { 
 	private actor KeyManager {
 		private var keys:[UInt64] = []
@@ -220,39 +222,35 @@ internal struct IdentifiedList {
 	@Test("__cswiftslash_identified_list :: concurrent insertions and removals")
 	func testConcurrentInsertionsAndRemovals() async {
 		let list = IdentifiedListHarness()
-		let totalOperations = 1000
+		let totalOperations = 100000
 		let keyManager = KeyManager()
 		
-		await withTaskGroup(of: Void.self) { group in
-			// insertions
-			for i in 0..<totalOperations / 2 {
-				group.addTask {
-					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-					data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
-					let key = list.insert(data)
-					await keyManager.addKey(key)
-				}
-			}
-			
-			// removals
-			for _ in 0..<totalOperations / 2 {
-				group.addTask {
-					if let key = await keyManager.removeRandomKey() {
-						if let data = list.remove(key: key) {
-							data.deallocate()
+		for i in 0..<totalOperations {
+			await withTaskGroup(of: Void.self) { group in
+				if i < 100 || UInt8.random(in:0...10) < 6 {
+					group.addTask {
+						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+						data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
+						let key = list.insert(data)
+						await keyManager.addKey(key)
+					}
+				} else {
+					group.addTask {
+						if let key = await keyManager.removeRandomKey() {
+							if let data = list.remove(key: key) {
+								data.deallocate()
+							}
 						}
 					}
 				}
+				await group.waitForAll()
 			}
 		}
 		
-		// clean up remaining elements
-		list.iterate { (_, ptr) in
-			ptr?.deallocate()
-		}
-		
 		// close the list
-		list.close()
+		list.close(consumer:{ (_, ptr) in
+			ptr?.deallocate()
+		})
 	}
 
 	@Test("__cswiftslash_identified_list :: fuzz testing")

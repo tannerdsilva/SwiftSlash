@@ -213,10 +213,7 @@ void __cswiftslash_future_t_destroy(
 	int8_t curstat = atomic_load_explicit(&_->____s, memory_order_acquire);
 	switch (curstat) {
 		case FUTURE_STATUS_PEND:
-			if (__cswiftslash_future_t_broadcast_cancel(_) == false) {
-				printf("swiftslash future internal error: couldn't cancel future\n");
-				abort();
-			}
+			__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL);
 			break;
 
 		case FUTURE_STATUS_RESULT:

@@ -1,1 +1,0 @@
-i think there is a leak with pthread return values right now. probably need to call Unmanaged contained takeRetainedValue instead of takeUnretainedValue.

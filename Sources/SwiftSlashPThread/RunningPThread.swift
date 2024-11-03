@@ -100,7 +100,7 @@ public final class Running<R> {
 		try launched.cancel()
 	}
 
-	public func result() async -> Result<R, Swift.Error> {
+	public func result() async throws -> Result<R, Swift.Error> {
 		let result = await launched.result()
 		switch result {
 		case .success(let ptr):
@@ -158,7 +158,7 @@ internal struct Launched {
 
 	/// awaits the result of the pthread.
 	internal func result() async -> Result<UnsafeMutableRawPointer, Swift.Error> {
-		return await rf.result()
+		return await rf.result()!
 	}
 
 	internal consuming func join() {
