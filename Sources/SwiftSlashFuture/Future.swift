@@ -13,8 +13,41 @@ import __cswiftslash_future
 import SwiftSlashContained
 import __cswiftslash_auint8
 
-// MARK: - Future With Error
-extension Future where F:Swift.Error {
+/// thrown when a result is set on a future that is already set.
+public struct InvalidStateError:Swift.Error {}
+
+/// a reference type that represents a result that will be available in the future.
+public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
+
+	/// the type that is contained within the future.
+	public typealias SuccessfulResultDeallocator = (R) -> Void
+
+	/// the underlying c primitive that this future wraps.
+	private let prim:UnsafeMutablePointer<__cswiftslash_future_t>
+
+	/// the deallocator function that this instance will use when it is destroyed.
+	private let successDeallocator:SuccessfulResultDeallocator?
+
+	/// creates a new instance of Future.
+	/// - parameters:
+	/// 	- successfulResultDeallocator: a user defined deallocator function that is called when the future is destroyed and the result is successful. if nil, the result is not have any deallocation work done (assumed to be a swift native type).
+	public init(successfulResultDeallocator:consuming SuccessfulResultDeallocator? = nil) {
+		prim = __cswiftslash_future_t_init()
+		successDeallocator = successfulResultDeallocator
+	}
+
+	/// assign a successful result to the future.
+	/// - parameters:
+	/// 	- result: the result to assign to the future.
+	/// - throws: InvalidStateError if the future is already set with a result or error.
+	public func setSuccess(_ result:consuming R) throws(InvalidStateError) {
+		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
+		guard __cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
+			_ = Unmanaged<Contained<R>>.fromOpaque(op).takeRetainedValue()
+			throw InvalidStateError()
+		}
+	}
+
 	/// assign a failure to the future.
 	/// - parameters:
 	/// 	- error: the error to assign to the future.
@@ -27,6 +60,15 @@ extension Future where F:Swift.Error {
 		}
 	}
 
+	/// cancel an active future.
+	/// - throws: InvalidStateError if the future is already set with a result or error.
+	public func cancel() throws(InvalidStateError){
+		guard __cswiftslash_future_t_broadcast_cancel(prim) else {
+			throw InvalidStateError()
+		}
+	}
+
+
 	/// wait for the result of the future. specify an error to throw if the current task is canceled.
 	/// - parameters:
 	/// 	- taskCancellationError: an autoclosure that returns an error to throw when the current task is canceled. the closure is not called if the task is not canceled.
@@ -53,122 +95,6 @@ extension Future where F:Swift.Error {
 					resultPtr.pointee = nil
 			}
 		}))
-		
-		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
-		if (waiterID != 0) {
-			// wait for the result to be set. this is basically a synchronous wait but it happens within a continuation block.
-			await withTaskCancellationHandler { [arp = arPtr] in
-				await withUnsafeContinuation({ [arp = arp] (cont:UnsafeContinuation<Void, Never>) in
-					arp.pointee.wait()
-					cont.resume()
-				})
-			} onCancel: {
-				__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
-			}
-		}
-		return resultPtr.pointee!
-	}
-
-	/// wait for the result of the future. this function does not respond to task cancellation.
-	/// - parameters:
-	/// 	- taskCancellationError: the error to throw if the current task is canceled.
-	/// - returns: a result structure representing the result of the future.
-	public func result() async -> Result<R, F>? {
-		// allocate space for the result to be stored when it is ready.
-		let resultPtr = UnsafeMutablePointer<Result<R, F>?>.allocate(capacity:1)
-		resultPtr.initialize(to:nil)
-		defer {
-			resultPtr.deinitialize(count:1)
-			resultPtr.deallocate()
-		}
-
-		// initialize the async tool that will allow us to wait for the result and also cancel our waiting if necessary.
-		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
-		arPtr.initialize(to:AsyncResult(handler: { res in
-			switch res {
-				case .success(let res):
-					resultPtr.pointee = .success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value())
-				case .failure(let err):
-					resultPtr.pointee = .failure(Unmanaged<Contained<F>>.fromOpaque(err.1!).takeUnretainedValue().value())
-				case .cancel:
-					resultPtr.pointee = nil
-			}
-		}))
-		// no defer block needed here. the async tool will be deallocated when the result is set.
-		
-		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
-		if (waiterID != 0) {
-			await withUnsafeContinuation({ [arp = arPtr] (cont:UnsafeContinuation<Void, Never>) in
-				arp.pointee.wait()
-				cont.resume()
-			})
-		}
-		return resultPtr.pointee
-	}
-
-	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 
-	/// - parameters:
-	/// 	- callback: the function to call when the result is known. this function will be passed nil if the future was canceled.
-	public func whenResult(_ callback:@escaping (Result<R, F>?) -> Void) {
-		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
-		arPtr.initialize(to:AsyncResult(handler: { [cb = callback] res in
-			switch res {
-				case .success(let res):
-					cb(.success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value()))
-				case .failure(let err):
-					cb(.failure(Unmanaged<Contained<F>>.fromOpaque(err.1!).takeUnretainedValue().value()))
-				case .cancel:
-					cb(nil)
-			}
-		}))
-		__cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
-	}
-
-	/// blocking wait for the result of the future. this is used only for unit testing.
-	internal borrowing func blockingResult() -> Result<R, F>? {
-		var getResult = SyncResult()
-		withUnsafeMutablePointer(to:&getResult) { rptr in
-			__cswiftslash_future_t_wait_sync(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler)
-		}
-		switch getResult.getResult() {
-			case .success(let res):
-				return .success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value())
-			case .failure(let res):
-				return .failure(Unmanaged<Contained<F>>.fromOpaque(res.1!).takeUnretainedValue().value())
-			case .cancel:
-				return nil
-		}
-	}
-}
-
-extension Future where F == Never {
-	/// wait for the result of the future. specify an error to throw if the current task is canceled.
-	/// - parameters:
-	/// 	- taskCancellationError: an autoclosure that returns an error to throw when the current task is canceled. the closure is not called if the task is not canceled.
-	/// - returns: a result structure representing the result of the future.
-	/// - throws: this function will throw the passed argument from `taskCancellationError` if the current task was canceled while waiting for the result.
-	public func result<CE>(taskCancellationError throwOnTaskCancellation:@autoclosure () -> CE) async throws(CE) -> Result<R, F> where CE:Swift.Error {
-		// allocate space for the result to be stored when it is ready.
-		let resultPtr = UnsafeMutablePointer<Result<R, F>?>.allocate(capacity:1)
-		resultPtr.initialize(to:nil)
-		defer {
-			resultPtr.deinitialize(count:1)
-			resultPtr.deallocate()
-		}
-
-		// initialize the async tool that will allow us to wait for the result and also cancel our waiting if necessary.
-		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
-		arPtr.initialize(to:AsyncResult(handler: { res in
-			switch res {
-				case .success(let res):
-					resultPtr.pointee = .success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value())
-				case .failure(_):
-					fatalError("SwiftSlashFuture - future was set with an error but the error type is Never - \(#file):\(#line)")
-				case .cancel:
-					resultPtr.pointee = nil
-			}
-		}))
-		// no defer block needed here. the async tool will be deallocated when the result is set.
 		
 		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
 		if (waiterID != 0) {
@@ -208,8 +134,8 @@ extension Future where F == Never {
 			switch res {
 				case .success(let res):
 					resultPtr.pointee = .success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value())
-				case .failure(_):
-					fatalError("SwiftSlashFuture - future was set with an error but the error type is Never - \(#file):\(#line)")
+				case .failure(let err):
+					resultPtr.pointee = .failure(Unmanaged<Contained<F>>.fromOpaque(err.1!).takeUnretainedValue().value())
 				case .cancel:
 					resultPtr.pointee = nil
 			}
@@ -218,7 +144,6 @@ extension Future where F == Never {
 		
 		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
 		if (waiterID != 0) {
-			// wait for the result to be set. this is basically a synchronous wait but it happens within a continuation block.
 			await withUnsafeContinuation({ [arp = arPtr] (cont:UnsafeContinuation<Void, Never>) in
 				arp.pointee.wait()
 				cont.resume()
@@ -230,19 +155,31 @@ extension Future where F == Never {
 	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 
 	/// - parameters:
 	/// 	- callback: the function to call when the result is known. this function will be passed nil if the future was canceled.
-	public borrowing func whenResult(_ callback:@escaping (Result<R, F>?) -> Void) {
+	@discardableResult public func whenResult(_ callback:@escaping (Result<R, F>?) -> Void) -> UInt64? {
 		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
 		arPtr.initialize(to:AsyncResult(handler: { [cb = callback] res in
 			switch res {
 				case .success(let res):
 					cb(.success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value()))
-				case .failure(_):
-					fatalError("SwiftSlashFuture - future was set with an error but the error type is Never - \(#file):\(#line)")
+				case .failure(let err):
+					cb(.failure(Unmanaged<Contained<F>>.fromOpaque(err.1!).takeUnretainedValue().value()))
 				case .cancel:
 					cb(nil)
 			}
 		}))
-		__cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
+		let waitID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
+		if waitID == 0 {
+			return nil
+		} else {
+			return waitID
+		}
+	}
+
+	/// cancel a waiting future.
+	/// - parameters:
+	/// 	- waiterID: the id of the waiter to cancel.
+	public func cancel(waiterID:UInt64) {
+		__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
 	}
 
 	/// blocking wait for the result of the future. this is used only for unit testing.
@@ -254,54 +191,10 @@ extension Future where F == Never {
 		switch getResult.getResult() {
 			case .success(let res):
 				return .success(Unmanaged<Contained<R>>.fromOpaque(res.1!).takeUnretainedValue().value())
-			case .failure(_):
-				fatalError("SwiftSlashFuture - future was set with an error but the error type is Never - \(#file):\(#line)")
+			case .failure(let res):
+				return .failure(Unmanaged<Contained<F>>.fromOpaque(res.1!).takeUnretainedValue().value())
 			case .cancel:
 				return nil
-		}
-	}
-}
-
-/// thrown when a result is set on a future that is already set.
-public struct InvalidStateError:Swift.Error {}
-
-/// a reference type that represents a result that will be available in the future.
-public final class Future<R, F>:@unchecked Sendable {
-
-	/// the type that is contained within the future.
-	public typealias SuccessfulResultDeallocator = (R) -> Void
-
-	/// the underlying c primitive that this future wraps.
-	private let prim:UnsafeMutablePointer<__cswiftslash_future_t>
-
-	/// the deallocator function that this instance will use when it is destroyed.
-	private let successDeallocator:SuccessfulResultDeallocator?
-
-	/// creates a new instance of Future.
-	/// - parameters:
-	/// 	- successfulResultDeallocator: a user defined deallocator function that is called when the future is destroyed and the result is successful. if nil, the result is not have any deallocation work done (assumed to be a swift native type).
-	public init(successfulResultDeallocator:consuming SuccessfulResultDeallocator? = nil) {
-		prim = __cswiftslash_future_t_init()
-		successDeallocator = successfulResultDeallocator
-	}
-
-	/// assign a successful result to the future.
-	/// - parameters:
-	/// 	- result: the result to assign to the future.
-	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setSuccess(_ result:consuming R) throws(InvalidStateError) {
-		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
-		guard __cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
-			_ = Unmanaged<Contained<R>>.fromOpaque(op).takeRetainedValue()
-			throw InvalidStateError()
-		}
-	}
-
-	/// cancel an active future.
-	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func cancel() throws(InvalidStateError){
-		guard __cswiftslash_future_t_broadcast_cancel(prim) else {
-			throw InvalidStateError()
 		}
 	}
 	
@@ -324,7 +217,7 @@ public final class Future<R, F>:@unchecked Sendable {
 					_ = Unmanaged<Contained<R>>.fromOpaque(ptr!).takeRetainedValue()
 				}
 			case .failure(_, let ptr):
-				_ = Unmanaged<Contained<Swift.Error>>.fromOpaque(ptr!).takeRetainedValue()
+				_ = Unmanaged<Contained<F>>.fromOpaque(ptr!).takeRetainedValue()
 			case .none:
 				break
 		}
