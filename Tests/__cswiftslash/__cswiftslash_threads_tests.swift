@@ -55,7 +55,7 @@ internal struct ThreadTests {
 		fileprivate var thread:__cswiftslash_threads_t_type?
 		
 		// result of pthread_create
-		fileprivate var createResult: Int32?
+		// fileprivate var createResult: Int32?
 		
 		// function pointers for the thread configuration
 		fileprivate var alloc_f:__cswiftslash_threads_alloc_f!
@@ -107,10 +107,10 @@ internal struct ThreadTests {
 				cancel_f,
 				dealloc_f
 			)
-			var result: Int32 = 0
+			var result:Int32 = 0
 			let thread = __cswiftslash_threads_config_run(config, &result)
 			self.thread = thread
-			self.createResult = result
+			// self.createResult = result
 		}
 		
 		fileprivate func cancelThread() {

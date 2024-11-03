@@ -20,7 +20,7 @@ __cswiftslash_threads_config_t __cswiftslash_threads_config_garbage() {
 }
 
 void *_Nullable ____cswiftslash_threads_f(void *_Nonnull _) {
-	// disable cancellation so that the thread can be set up.
+	// disable cancellation so that the thread can be set up. THIS QUICK ENABLE/DISABLE MIGHT BE DUMB AND FRIVILOUS BUT HERE I AM DOING IT ANYWAY.
 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);	// cancel not allowed right now, we must first configure the thread.
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);	// deferred cancellation only.
 
