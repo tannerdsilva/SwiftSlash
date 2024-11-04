@@ -20,8 +20,7 @@ internal struct FutureTests {
 	@Test("SwiftSlashFuture :: initialize a future")
 	internal func testInitializeFuture() {
 		let future = Future<Int, Swift.Error>()
-		return
-		// #expect(future != nil)
+		#expect(future != nil)
 	}
 
 	@Test("SwiftSlashFuture :: test successful assignment with random integers")
@@ -30,7 +29,7 @@ internal struct FutureTests {
 			var future:Future<Int, Never>? = Future<Int, Never>()
 			let randomValue = Self.randomInt()
 			try future!.setSuccess(randomValue)
-			let result = await future!.result(throwing:Never.self, taskCancellationError:fatalError())
+			let result = await future!.result()
 			var foundResult: Int? = nil
 			switch result {
 			case .success(let i):

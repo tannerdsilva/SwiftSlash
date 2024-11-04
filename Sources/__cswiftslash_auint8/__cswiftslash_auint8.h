@@ -18,7 +18,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 /// a structure that encapsulates a single (aligned) atomic uint8_t memory space.
 typedef struct __cswiftslash_atomic_uint8 {
 
-	// the stored value. NOTE: do not access or manipulate this field directly.
+	// the stored value.
 	uint8_t _Atomic _;
 
 } __cswiftslash_atomic_uint8_t;
@@ -30,7 +30,7 @@ __cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(
 	const uint8_t _
 );
 
-/// loads the stored value, given a pointer to an atomic structure.
+/// loads the stored value, given a pointer to an atomic uint8 structure.
 /// @param _ a pointer to the atomic uint8_t structure to apply the operation to.
 /// @return the stored value that was atomically loaded from memory.
 uint8_t __cswiftslash_auint8_load(
@@ -39,10 +39,10 @@ uint8_t __cswiftslash_auint8_load(
 
 /// stores a value to a specified atomic pointer. this function acts as a functional wrapper around the `atomic_store` function.
 /// @param _ a pointer to the atomic uint8_t structure to apply the operation to.
-/// @param ____s the new value to store.
+/// @param __ the new value to store.
 void __cswiftslash_auint8_store(
 	__cswiftslash_atomic_uint8_t *_Nonnull _,
-	const uint8_t ____s
+	const uint8_t __
 );
 
 /// stores a value to a specified atomic pointer if the stored value is equal to the expected value. this function acts as a functional wrapper around the `atomic_compare_exchange_weak` function.
@@ -52,8 +52,8 @@ void __cswiftslash_auint8_store(
 /// @return whether the value was successfully stored.
 bool __cswiftslash_auint8_compare_exchange_weak(
 	__cswiftslash_atomic_uint8_t *_Nonnull _,
-	uint8_t *_Nonnull ____e,
-	const uint8_t ____s
+	uint8_t *_Nonnull __,
+	const uint8_t ___
 );
 
 /// atomically increments the stored value by one.

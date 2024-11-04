@@ -12,15 +12,18 @@ fileprivate let cswiftslashTargets:[Target] = [
 		name:"__cswiftslash_eventtrigger",
 		publicHeadersPath:"."
 	),
+	// basic c types
 	.target(
 		name:"__cswiftslash_types",
 		publicHeadersPath:"."
 	),
+	// fifo
 	.target(
 		name:"__cswiftslash_fifo",
 		dependencies:["__cswiftslash_types"],
 		publicHeadersPath:"."
 	),
+	// future
 	.target(
 		name:"__cswiftslash_future",
 		dependencies:[
@@ -29,20 +32,24 @@ fileprivate let cswiftslashTargets:[Target] = [
 		],
 		publicHeadersPath:"."
 	),
+	// threading
 	.target(
 		name:"__cswiftslash_threads",
 		dependencies:["__cswiftslash_types"],
 		publicHeadersPath:"."
 	),
+	// posix helpers
 	.target(
 		name:"__cswiftslash_posix_helpers",
 		publicHeadersPath:"."
 	),
+	// identified list
 	.target(
 		name:"__cswiftslash_identified_list",
 		dependencies:["__cswiftslash_types"],
 		publicHeadersPath:"."
 	),
+	// unit tests for all c targets
 	.testTarget(
 		name:"__cswiftslash_tests",
 		dependencies:[

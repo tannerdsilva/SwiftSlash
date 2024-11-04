@@ -45,36 +45,29 @@ internal struct ThreadTests {
 			case deallocCalled
 		}
 		
-		fileprivate var handlerCalls: [HandlerCall] = []
+		fileprivate var handlerCalls:[HandlerCall] = []
 		fileprivate let handlerCallsLock = Mutex()
 		
-		// workspace pointer
-		fileprivate var workspacePtr:UnsafeMutableRawPointer?
-		
 		// thread
-		fileprivate var thread:__cswiftslash_threads_t_type?
-		
-		// result of pthread_create
-		// fileprivate var createResult: Int32?
+		fileprivate var thread:__cswiftslash_threads_t_type? = nil
 		
 		// function pointers for the thread configuration
-		fileprivate var alloc_f:__cswiftslash_threads_alloc_f!
+		fileprivate let alloc_f:__cswiftslash_threads_alloc_f!
 		fileprivate var run_f:__cswiftslash_threads_main_f!
 		fileprivate var cancel_f:__cswiftslash_threads_cancel_f!
 		fileprivate var dealloc_f:__cswiftslash_threads_dealloc_f!
 		
 		fileprivate init() {
 			// define the function pointers
-			self.alloc_f = { arg in
+			alloc_f = { arg in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(arg).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.allocatorCalled)
 				harness.handlerCallsLock.unlock()
-				harness.workspacePtr = Unmanaged.passUnretained(harness).toOpaque()
-				return harness.workspacePtr!
+				return Unmanaged.passUnretained(harness).toOpaque()
 			}
 			
-			self.run_f = { ws in
+			run_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.mainCalled)
@@ -82,20 +75,20 @@ internal struct ThreadTests {
 				sleep(1) // sleep for 1 second to simulate work
 			}
 			
-			self.cancel_f = { ws in
+			cancel_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.cancelCalled)
 				harness.handlerCallsLock.unlock()
 			}
 			
-			self.dealloc_f = { ws in
+			dealloc_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.deallocCalled)
 				harness.handlerCallsLock.unlock()
-				harness.workspacePtr = nil
 			}
+
 		}
 		
 		fileprivate func startThread() {
@@ -110,19 +103,18 @@ internal struct ThreadTests {
 			var result:Int32 = 0
 			let thread = __cswiftslash_threads_config_run(config, &result)
 			self.thread = thread
-			// self.createResult = result
 		}
 		
 		fileprivate func cancelThread() {
-			if let thread = self.thread {
-				pthread_cancel(thread)
-			}
+			// if let thread = self.thread {
+				pthread_cancel(thread!)
+			// }
 		}
 		
 		fileprivate func joinThread() {
-			if let thread = self.thread {
-				pthread_join(thread, nil)
-			}
+			// if let thread = self.thread {
+				pthread_join(thread!, nil)
+			// }
 		}
 	}
 

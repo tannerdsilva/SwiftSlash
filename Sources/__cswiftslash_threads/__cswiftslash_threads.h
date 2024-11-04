@@ -40,11 +40,16 @@ typedef void(* __cswiftslash_threads_cancel_f)(__cswiftslash_ptr_t ws);
 
 /// a configuration for a pthread. this structure outlines the standardized way that work threads are created and managed.
 typedef struct __cswiftslash_threads_config_t {
-	__cswiftslash_ptr_t ____aa;		// argument to pass into the workspace allocator.
-	__cswiftslash_threads_alloc_f _Nonnull ____af;	// workspace allocator.
-	__cswiftslash_threads_main_f _Nonnull ____mf;	// main function to run.
-	__cswiftslash_threads_cancel_f _Nonnull ____cr;	// cancel handler.
-	__cswiftslash_threads_dealloc_f _Nonnull ____df;// workspace deallocator.
+	/// argument to pass into the workspace allocator.
+	__cswiftslash_ptr_t ____aa;
+	/// workspace allocator.
+	__cswiftslash_threads_alloc_f _Nonnull ____af;
+	// main function to run.
+	__cswiftslash_threads_main_f _Nonnull ____mf;
+	// cancel handler.
+	__cswiftslash_threads_cancel_f _Nonnull ____cr;
+	// workspace deallocator.
+	__cswiftslash_threads_dealloc_f _Nonnull ____df;
 } __cswiftslash_threads_config_t;
 
 /// create a pthread configuration.
