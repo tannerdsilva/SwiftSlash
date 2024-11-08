@@ -73,12 +73,13 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	///		- throwing: the type of error to throw if the current task is canceled.
 	/// 	- taskCancellationError: an autoclosure that returns an error to throw when the current task is canceled. the closure is not called if the task is not canceled.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
-	/// - throws: this function will throw the passed argument from `taskCancellationError` if the current task was canceled while waiting for the result.
+	/// - throws: this function will run the @autoclosure argument from `taskCancellationError` and throw the corresponding result if the current task was canceled while waiting for the result.
 	public func result<E>(throwingOnCurrentTaskCancellation taskThrowType:E.Type, taskCancellationError:@autoclosure () -> E) async throws(E) -> Result<R, F>? where E:Swift.Error {
 		return try await _result_main(throwing:taskThrowType, onCurrentTaskCancellation:taskCancellationError())
 	}
 
 	/// wait for the result of the future. this function will not throw if the current task is canceled.
+	/// - throws: this function does NOT throw.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
 	public func result(throwingOnCurrentTaskCancellation taskThrowType:Never.Type = Never.self) async -> Result<R, F>? {
 		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file) \(#line)"))
@@ -89,6 +90,7 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	/// 	- callback: the function to call when the result is known. this function will be passed nil if the future was canceled.
 	/// - returns: the id of the waiter that was created. this id can be used to cancel the waiter. nil is returned if the callback was fired immediately from the current thread.
 	@discardableResult public func whenResult(_ callback:consuming @escaping (Result<R, F>?) -> Void) -> UInt64? {
+		// define the async result here so that it will remain in memory for at least the duration of the function call.
 		let asr = AsyncResult(handle: { [cb = callback] res in
 			switch res {
 				case .success(_, let res):
@@ -99,10 +101,10 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 					cb(nil)
 			}
 		})
-
+		// copy a reference of the async result handler to new heap space so that the c code can interact with it and dereference it as needed.
 		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
 		arPtr.initialize(to:asr)
-
+		// register the async handlers for the waiter of this future.
 		let waitID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
 		if waitID == 0 {
 			return nil
@@ -116,22 +118,6 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	/// 	- waiterID: the id of the waiter to cancel.
 	@discardableResult public func cancel(waiterID:consuming UInt64) -> Bool {
 		return __cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
-	}
-
-	/// blocking wait for the result of the future. this is used only for unit testing.
-	internal borrowing func blockingResult() -> Result<R, F>? {
-		var getResult = SyncResult()
-		withUnsafeMutablePointer(to:&getResult) { rptr in
-			__cswiftslash_future_t_wait_sync(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler)
-		}
-		switch getResult.consumeResult()! {
-			case .success(_, let res):
-				return .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
-			case .failure(_, let res):
-				return .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
-			case .cancel:
-				return nil
-		}
 	}
 	
 	deinit {
@@ -215,6 +201,22 @@ extension Future {
 			return resultPtr.pointee
 		}
 	}
+	
+	/// blocking wait for the result of the future. this is used only for unit testing.
+	internal borrowing func blockingResult() -> Result<R, F>? {
+		var getResult = SyncResult()
+		withUnsafeMutablePointer(to:&getResult) { rptr in
+			__cswiftslash_future_t_wait_sync(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler)
+		}
+		switch getResult.consumeResult()! {
+			case .success(_, let res):
+				return .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
+			case .failure(_, let res):
+				return .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
+			case .cancel:
+				return nil
+		}
+	}
 }
 
 // MARK: - Bridging Symbols
@@ -227,6 +229,8 @@ fileprivate enum SuccessFailureCancel {
 /// a reference type that is used to bridge the c future result handlers to strict swift types. c functions cannot be declared or utilized within the context of generic types, so types like this are used to help bridge the C functions into strict Swift typing.
 fileprivate final class AsyncResult:@unchecked Sendable {
 	fileprivate typealias UniHandler = (SuccessFailureCancel) -> Void
+
+	private let memorySpace:UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>
 	
 	private let internalStateMutex:UnsafeMutablePointer<pthread_mutex_t>
 	
@@ -236,20 +240,16 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 	private let uniHandler:UnsafeMutablePointer<UniHandler?>
 
 	fileprivate init(handle:consuming @escaping UniHandler) {
-		internalStateMutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity:1) // this is expected to deallocate with the lifecycle of the containing class.
-		internalStateMutex.initialize(to:pthread_mutex_t())
-		pthread_mutex_init(internalStateMutex, nil)
+		memorySpace = UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>.allocate(capacity:1)
+		memorySpace.initialize(to:(pthread_mutex_t(), pthread_mutex_t(), __cswiftslash_auint8_init(1), handle))
+		pthread_mutex_init(&memorySpace.pointee.0, nil)
+		pthread_mutex_init(&memorySpace.pointee.1, nil)
+		pthread_mutex_lock(&memorySpace.pointee.1)
 
-		resultMutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity:1)
-		resultMutex.initialize(to:pthread_mutex_t())
-		pthread_mutex_init(resultMutex, nil)
-
-		isResultMutexLocked = UnsafeMutablePointer<__cswiftslash_atomic_uint8_t>.allocate(capacity:1)
-		isResultMutexLocked.initialize(to:__cswiftslash_auint8_init(1))
-		pthread_mutex_lock(resultMutex)
-
-		uniHandler = UnsafeMutablePointer<UniHandler?>.allocate(capacity:1)
-		uniHandler.initialize(to:handle)
+		internalStateMutex = memorySpace.pointer(to:\.0)!
+		resultMutex = memorySpace.pointer(to:\.1)!
+		isResultMutexLocked = memorySpace.pointer(to:\.2)!
+		uniHandler = memorySpace.pointer(to:\.3)!
 	}
 	fileprivate borrowing func setResult(type:consuming UInt8, pointer:consuming UnsafeMutableRawPointer?) {
 		pthread_mutex_lock(internalStateMutex)
@@ -299,24 +299,20 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 	}
 
 	deinit {
+		// destroy and deallocate internal state mutex
 		pthread_mutex_destroy(internalStateMutex)
 
-		internalStateMutex.deinitialize(count:1)
-		internalStateMutex.deallocate()
-
+		// unlock the result mutex if it is still locked
 		if __cswiftslash_auint8_load(isResultMutexLocked) == 1 {
 			pthread_mutex_unlock(resultMutex)
 		}
 
+		// destroy and deallocate the result mutex
 		pthread_mutex_destroy(resultMutex)
-		resultMutex.deinitialize(count:1)
-		resultMutex.deallocate()
 
-		isResultMutexLocked.deinitialize(count:1)
-		isResultMutexLocked.deallocate()
-
-		uniHandler.deinitialize(count:1)
-		uniHandler.deallocate()
+		// deallocate the unified memory space for the async result
+		memorySpace.deinitialize(count:1)
+		memorySpace.deallocate()
 	}
 }
 

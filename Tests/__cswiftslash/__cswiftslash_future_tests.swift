@@ -44,11 +44,7 @@ internal struct FutureTests {
 				}
 			}
 		}
-
-		// Pointer to the C future structure
 		private let futurePtr:UnsafeMutablePointer<__cswiftslash_future_t>
-
-		/// Initializes a new future instance.
 		fileprivate init() {
 			self.futurePtr = __cswiftslash_future_t_init()
 		}
@@ -82,13 +78,9 @@ internal struct FutureTests {
 			})
 			return resultStore!.1
 		}
-
-		/// Broadcasts a result value to the future.
 		internal func broadcastResultValue(resType: UInt8, resVal:UnsafeMutableRawPointer?) -> Bool {
 			return __cswiftslash_future_t_broadcast_res_val(self.futurePtr, resType, resVal)
 		}
-
-		/// Broadcasts an error value to the future.
 		internal func broadcastErrorValue(errType: UInt8, errVal:UnsafeMutableRawPointer?) -> Bool {
 			return __cswiftslash_future_t_broadcast_res_throw(self.futurePtr, errType, errVal)
 		}

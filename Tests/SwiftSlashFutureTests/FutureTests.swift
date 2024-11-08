@@ -5,13 +5,9 @@ import Testing
 	.serialized
 )
 internal struct FutureTests {
-
-	// helper function to generate random integers
 	internal static func randomInt() -> Int {
 		return Int.random(in:Int.min...Int.max)
 	}
-
-	// helper function to generate random strings
 	internal static func randomString(length: Int) -> String {
 		let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		return String((0..<length).map{ _ in letters.randomElement()! })
@@ -66,7 +62,6 @@ internal struct FutureTests {
 		struct RandomTestError:Swift.Error, Equatable {
 			let code:Int
 			let message:String
-
 			static func == (lhs: RandomTestError, rhs: RandomTestError) -> Bool {
 				return lhs.code == rhs.code && lhs.message == rhs.message
 			}
