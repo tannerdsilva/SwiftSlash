@@ -5,18 +5,22 @@ import SwiftSlashFuture
 import SwiftSlashContained
 
 /// runs any given arbitrary function on a pthread.
-public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(LaunchFailure) -> Result<R, Swift.Error> where R:Sendable {
+public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(LaunchFailure) -> Result<R, Swift.Error>? where R:Sendable {
 	let launchedThread = try await GenericPThread.launch(work)
 	return await launchedThread.workResult()
+}
+
+public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(LaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
+	return try await GenericPThread.launch(work)
 }
 
 extension PThreadWork {
 	public static func launch(_ arg:consuming Argument) async throws(LaunchFailure) -> Running<Self> {
 		return try await launchPThread(work:Self.self, argument:arg)
 	}
-	public static func run(_ arg:consuming Argument) async throws(LaunchFailure) -> Result<ReturnType, ThrowType> {
+	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, ThrowType>? {
 		let launched = try await Self.launch(arg)
-		return await launched.workResult()
+		return try await launched.workResult(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError:CancellationError())
 	}
 }
 
@@ -113,7 +117,8 @@ fileprivate struct Setup {
 	}
 }
 
-public struct Running<W>:~Copyable where W:PThreadWork {
+/// a noncopyable structure that safely handles a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
+public final class Running<W> where W:PThreadWork {
 	// the pthread primitive
 	fileprivate let ptp:__cswiftslash_threads_t_type
 	// the future that will be set to success when the pthread is launched.
@@ -127,22 +132,42 @@ public struct Running<W>:~Copyable where W:PThreadWork {
 		returnFuture = Unmanaged.passRetained(rf).toOpaque()
 	}
 
-	public consuming func workResult() async -> Result<W.ReturnType, W.ThrowType> {
-		join()
-		let result = await Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFuture).takeRetainedValue().result()!.get()
-		let returnResult = Unmanaged<Contained<Result<W.ReturnType, W.ThrowType>>>.fromOpaque(result).takeUnretainedValue().value()
-		discard self
+	/// async block for the work to be done on the pthread. throws a designated cancellation error if the task is canceled. the pthread is not cancelled when the task is canceled.
+	public consuming func workResult<E>(throwingOnCurrentTaskCancellation throwType:consuming E.Type, taskCancellationError makeError:@autoclosure () -> E) async throws(E) -> Result<W.ReturnType, W.ThrowType>? where E:Swift.Error {
+		let result = try await Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFuture).takeUnretainedValue().result(throwingOnCurrentTaskCancellation:E.self, taskCancellationError:makeError())
+		guard result != nil else {
+			return nil
+		}
+		let returnResult = Unmanaged<Contained<Result<W.ReturnType, W.ThrowType>>>.fromOpaque(result!.get()).takeUnretainedValue().value()
 		return returnResult
 	}
 
-	private func join() {
-		guard pthread_join(ptp, nil) == 0 else {
-			fatalError("SwiftSlashPThread: pthread_join failed. This is a critical error. \(#file):\(#line)")
+	/// async block for the work to be done on the pthread. does not throw any error when the current task is cancelled. the pthread is not cancelled when the task is canceled.
+	public consuming func workResult(throwingOnCurrentTaskCancellation:Never.Type = Never.self) async -> Result<W.ReturnType, W.ThrowType>? {
+		let result = await Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFuture).takeUnretainedValue().result(throwingOnCurrentTaskCancellation:Never.self)
+		guard result != nil else {
+			return nil
 		}
+		let returnResult = Unmanaged<Contained<Result<W.ReturnType, W.ThrowType>>>.fromOpaque(result!.get()).takeUnretainedValue().value()
+		return returnResult
+	}
+
+	/// cancels the running pthread. it will exit when it reaches the next pthread cancellation point.
+	/// - returns: true if the pthread was successfully set to cancelled, false if the pthread was not successfully canceled.
+	@discardableResult public borrowing func cancel() -> Bool {
+		guard pthread_cancel(ptp) == 0 else {
+			return false
+		}
+		return true
 	}
 
 	deinit {
-		join()
+		// cancel the pthread if it is still running.
+		_ = cancel()
+		// join the pthread
+		guard pthread_join(ptp, nil) == 0 else {
+			fatalError("SwiftSlashPThread: pthread_join failed. This is a critical error. \(#file):\(#line)")
+		}
 		_ = Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFuture).takeRetainedValue()
 	}
 }
@@ -153,12 +178,13 @@ public struct Running<W>:~Copyable where W:PThreadWork {
 /// - returns: the running pthread that is being launched.
 /// - throws: a LaunchFailure error if the pthread fails to launch.
 fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async throws(LaunchFailure) -> Running<W> where W:PThreadWork, W.Argument == A {
-	// the primary role of this function is to manage the intersection between the calling memoryspace and the launched memoryspace. this configuration future is the primary way these two memoryspaces coordinate the timing of their memory allocations and freeing.
+	// this is the future that represents a successful launch and configuration of a pthread. pthreads must be configured for proper handling of cancellation in order to not leak memory.
 	let configureFuture = Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
+		// free the retained future from memory.
 		_ = Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(ptr).takeRetainedValue()
 	})
 
-	// the configuring memory for the pthread is necessarily floated in the heap since addressing this memory directly from the "stack" creates issues when the await is called towards the end of the function.
+	// define the memoryspace where we will store the setup structure for the pthread.
 	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
 	launchStructure.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
 	defer {
@@ -188,7 +214,6 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async thr
 	// wait for the pthread to be configured and ready to be canceled.
 	let returnFutureOpaque = await configureFuture.result()!.get()
 	let returnFuture = Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFutureOpaque).takeUnretainedValue()
-	
 	return Running(alreadyLaunched:pthr, returnFuture:returnFuture)
 }
 

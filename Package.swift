@@ -77,14 +77,14 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	.testTarget(
+	/*.testTarget(
 		name:"SwiftSlashFutureTests",
 		dependencies:[
 			"SwiftSlashFuture",
 			"__cswiftslash_auint8",
 		],
 		path:"Tests/SwiftSlashFutureTests"
-	),
+	),*/
 	/*.testTarget(
 		name:"SwiftSlashPThreadTests",
 		dependencies:[

@@ -13,9 +13,10 @@ import Testing
 
 @testable import __cswiftslash_auint8
 
-@Suite("__cswiftslash_auint8")
+@Suite("__cswiftslash_auint8",
+	.serialized
+)
 internal struct AUInt8Tests {
-
 	// MARK: C Harness
 	private final class Harness:@unchecked Sendable {
 

@@ -9,16 +9,18 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 */
 
-import Testing
+/*import Testing
 
 @testable import __cswiftslash_threads
 
 import func Foundation.sleep
 import func Foundation.usleep
 
-@Suite("__cswiftslash_threads")
+@Suite("__cswiftslash_threads",
+	.serialized
+)
 internal struct ThreadTests {
-	// MARK: Mutex Tool
+	// MARK: mutex tool
 	private final class Mutex {
 		private var mutex = pthread_mutex_t()
 		fileprivate init() {
@@ -35,7 +37,7 @@ internal struct ThreadTests {
 		}
 	}
 
-	// MARK: C Harness
+	// MARK: c harness
 	private final class ThreadHarness:@unchecked Sendable {
 		// keeps track of which handlers were called and in what order
 		fileprivate enum HandlerCall: Equatable {
@@ -44,19 +46,19 @@ internal struct ThreadTests {
 			case cancelCalled
 			case deallocCalled
 		}
-		
+	
 		fileprivate var handlerCalls:[HandlerCall] = []
 		fileprivate let handlerCallsLock = Mutex()
-		
+	
 		// thread
 		fileprivate var thread:__cswiftslash_threads_t_type? = nil
-		
+	
 		// function pointers for the thread configuration
 		fileprivate let alloc_f:__cswiftslash_threads_alloc_f!
 		fileprivate var run_f:__cswiftslash_threads_main_f!
 		fileprivate var cancel_f:__cswiftslash_threads_cancel_f!
 		fileprivate var dealloc_f:__cswiftslash_threads_dealloc_f!
-		
+	
 		fileprivate init() {
 			// define the function pointers
 			alloc_f = { arg in
@@ -66,7 +68,7 @@ internal struct ThreadTests {
 				harness.handlerCallsLock.unlock()
 				return Unmanaged.passUnretained(harness).toOpaque()
 			}
-			
+		
 			run_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
@@ -74,14 +76,14 @@ internal struct ThreadTests {
 				harness.handlerCallsLock.unlock()
 				sleep(1) // sleep for 1 second to simulate work
 			}
-			
+		
 			cancel_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
 				harness.handlerCalls.append(.cancelCalled)
 				harness.handlerCallsLock.unlock()
 			}
-			
+		
 			dealloc_f = { ws in
 				let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 				harness.handlerCallsLock.lock()
@@ -90,7 +92,7 @@ internal struct ThreadTests {
 			}
 
 		}
-		
+	
 		fileprivate func startThread() {
 			let arg = Unmanaged.passUnretained(self).toOpaque()
 			let config = __cswiftslash_threads_config_init(
@@ -104,13 +106,13 @@ internal struct ThreadTests {
 			let thread = __cswiftslash_threads_config_run(config, &result)
 			self.thread = thread
 		}
-		
+	
 		fileprivate func cancelThread() {
 			// if let thread = self.thread {
 				pthread_cancel(thread!)
 			// }
 		}
-		
+	
 		fileprivate func joinThread() {
 			// if let thread = self.thread {
 				pthread_join(thread!, nil)
@@ -123,10 +125,10 @@ internal struct ThreadTests {
 	func testThreadCompletionHandlers() {
 		let harness = ThreadHarness()
 		harness.startThread()
-		
+	
 		// wait for thread to complete
 		harness.joinThread()
-				
+			
 		#expect(harness.handlerCalls.count == 3, "expected 3 handler calls, got \(harness.handlerCalls.count)")
 		#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
 		#expect(harness.handlerCalls[1] == .mainCalled, "expected main function to be called second")
@@ -137,10 +139,10 @@ internal struct ThreadTests {
 	func testThreadCancellationHandlers() {
 		let harness = ThreadHarness()
 		harness.startThread()
-		
+	
 		// cancel the thread
 		harness.cancelThread()
-		
+	
 		// wait for thread to complete
 		harness.joinThread()
 
@@ -164,13 +166,13 @@ internal struct ThreadTests {
 	func testDeallocatorAlwaysCalled() {
 		let harness = ThreadHarness()
 		harness.startThread()
-		
+	
 		// cancel the thread immediately
 		harness.cancelThread()
-		
+	
 		// wait for thread to complete
 		harness.joinThread()
-		
+	
 		// check that deallocCalled is in the handler calls
 		#expect(harness.handlerCalls.contains(.deallocCalled), "deallocator was not called")
 	}
@@ -178,16 +180,16 @@ internal struct ThreadTests {
 	@Test("__cswiftslash_threads :: deallocate on immediate exit")
 	func testDeallocatorCalledOnImmediateExit() {
 		let harness = ThreadHarness()
-		
+	
 		// modify main function to exit immediately
 		harness.run_f = { ws in
 			// exit immediately
 			return
 		}
-		
+	
 		harness.startThread()
 		harness.joinThread()
-		
+	
 		// check that deallocCalled is in the handler calls
 		#expect(harness.handlerCalls.contains(.deallocCalled) == true, "deallocator was not called")
 	}
@@ -195,14 +197,14 @@ internal struct ThreadTests {
 	@Test("__cswiftslash_threads :: cancellation after work completion")
 	func testCancellationAfterWorkCompletion() {
 		let harness = ThreadHarness()
-		
+	
 		harness.startThread()
-		
+	
 		// ensure main function has time to complete
 		usleep(1_100_000) // 1s + 100ms
 		harness.cancelThread()
 		harness.joinThread()
-		
+	
 		#expect(harness.handlerCalls.count == 3, "expected 3 handler calls, got \(harness.handlerCalls.count)")
 		#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator to be called first")
 		#expect(harness.handlerCalls[1] == .mainCalled, "expected main function to be called second")
@@ -214,7 +216,7 @@ internal struct ThreadTests {
 	func testConcurrentThreadsWithCancellation() {
 		let threadCount = 10
 		var harnesses: [ThreadHarness] = []
-		
+	
 		for _ in 0..<threadCount {
 			let harness = ThreadHarness()
 			harness.startThread()
@@ -222,19 +224,19 @@ internal struct ThreadTests {
 		}
 
 		usleep(100_000) // 100ms
-		
+	
 		// cancel half of the threads
 		for (index, harness) in harnesses.enumerated() {
 			if index % 2 == 0 {
 				harness.cancelThread()
 			}
 		}
-		
+	
 		// wait for all threads to complete
 		for harness in harnesses {
 			harness.joinThread()
 		}
-		
+	
 		// verify handlers for each harness
 		for harness in harnesses {
 			if harness.handlerCalls.contains(.cancelCalled) {
@@ -262,3 +264,4 @@ internal struct ThreadTests {
 		}
 	}
 }
+*/

@@ -31,7 +31,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 #define RESIZE_MULTIPLIER 2
 
 static size_t HF_(uint64_t key) {
-    return (size_t)(key * 2654435761u);
+	return key;
 }
 
 static void resize_hashtable(
@@ -168,11 +168,10 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 		__cswiftslash_identified_list_ptr_t __1 = _->____ht[__0];
 		_->____ht[__0] = NULL;
 		size_t __4 = HF_(__1->____k) % _->____hn;
-		size_t __5 = __4;
-		size_t __6 = 0;
+		size_t __5 = 0;
 		while (_->____ht[__4] != NULL) {
-			__6++;
-			__4 = (__5 + __6) % _->____hn;
+			__5++;
+			__4 = (__4 + 1) % _->____hn;
 		}
 		_->____ht[__4] = __1;
 		__0 = (__0 + 1) % _->____hn;

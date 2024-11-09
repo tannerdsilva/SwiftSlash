@@ -174,4 +174,14 @@ internal struct FutureTests {
 
 		#expect(future.cancel(waiterID:resultHandler!) == false)
 	}
+
+	@Test("SwiftSlashFuture :: test blocking waiter")
+	func testBlockingWaiter() throws {
+		let future = Future<Int, Never>()
+		Task {
+			try future.setSuccess(5)
+		}
+		let result = future.blockingResult()!.get()
+		#expect(result == 5)
+	}
 }

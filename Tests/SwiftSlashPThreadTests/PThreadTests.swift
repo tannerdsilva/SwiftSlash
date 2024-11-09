@@ -28,12 +28,14 @@ internal struct PThreadTests {
 	func testPthreadReturn() async throws {
 		for _ in 0..<512 {
 			let randomString = String.random(length:56)
-			let myString:String
+			let myString:String?
 			switch try await PThreadWorkerTesterThing<String>.run(randomString) {
 			case .success(let s):
 				myString = s
 			case .failure(let e):
 				throw e
+			case .none:
+				myString = nil
 			}
 			#expect(randomString == myString)
 		}
@@ -42,7 +44,7 @@ internal struct PThreadTests {
 	fileprivate actor Expectation {
 		private let isInverted:Bool
 		private var didFulfill = false
-		private let fulfillFuture = Future<Void>()
+		private let fulfillFuture = Future<Void, Never>()
 		private let description:String
 		fileprivate init(isInverted invert:Bool = false, description desc:String) {
 			isInverted = invert
@@ -70,7 +72,7 @@ internal struct PThreadTests {
 					return false
 				}
 				tg.addTask { [ff = fulfillFuture] in
-					_ = await ff.result()
+					_ = try await ff.result(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError: CancellationError())
 					return true
 				}
 				do {
@@ -113,8 +115,8 @@ internal struct PThreadTests {
 		// contains the asynchronous task that runs as a part of the test.
 		let ltask = Task {
 
-			let launchFuture = Future<Void>()
-			let cancelFuture = Future<Void>()
+			let launchFuture = Future<Void, Never>()
+			let cancelFuture = Future<Void, Never>()
 
 			// launch the pthread that will be subject to cancellation testing.
 			let runTask = try await SwiftSlashPThread.launch { [lf = launchFuture, cf = cancelFuture] in
@@ -125,7 +127,7 @@ internal struct PThreadTests {
 				try lf.setSuccess(())
 
 				// wait for the cancelation to be set.
-				try cf.blockingResult().get()
+				try cf.blockingResult()!.get()
 
 				// test for cancellation. this would usually be the end of the pthread.
 				pthread_testcancel()
@@ -144,11 +146,13 @@ internal struct PThreadTests {
 			try cancelFuture.setSuccess(())
 
 			let gotReturn:Bool
-			switch try await runTask.result() {
+			switch await runTask.workResult() {
 			case .success:
 				gotReturn = true
 			case .failure(let error):
 				#expect(error is CancellationError)
+				gotReturn = false
+			case .none:
 				gotReturn = false
 			}
 			#expect(gotReturn == false)

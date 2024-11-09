@@ -16,20 +16,22 @@ import __cswiftslash_identified_list
 @Suite("__cswiftslash_identified_list",
 	.serialized
 )
-internal struct IdentifiedList { 
+internal struct IdentifiedList {
 	private actor KeyManager {
 		private var keys:[UInt64] = []
-		
 		fileprivate func addKey(_ key: UInt64) {
 			keys.append(key)
 		}
-		
 		fileprivate func removeRandomKey() -> UInt64? {
 			guard !keys.isEmpty else {
 				return nil
 			}
 			let index = Int.random(in: 0..<keys.count)
 			return keys.remove(at: index)
+		}
+
+		fileprivate func auditKeys() -> [UInt64] {
+			return keys
 		}
 	}
 
@@ -89,7 +91,6 @@ internal struct IdentifiedList {
 	}
 
 	// MARK: - Test Cases
-
 	@Test("__cswiftslash_identified_list :: initialization and deallocation")
 	func testAtomicListInitialization() {
 		let list = IdentifiedListHarness()
@@ -120,23 +121,48 @@ internal struct IdentifiedList {
 		
 		var keys: [UInt64] = []
 		let dataPointers = (1...100).map { UnsafeMutableRawPointer(bitPattern: $0)! }
-		
+		var keysAndData:[(UInt64, UnsafeMutableRawPointer)] = []
+
 		// insert elements
 		for data in dataPointers {
 			let key = list.insert(data)
 			keys.append(key)
 			#expect(key != 0)
+			keysAndData.append((key, data))
 		}
 		
 		// verify that all keys are unique
 		#expect(Set(keys).count == keys.count)
 		
 		// close the list and deallocate any remaining elements
-		list.close { (_, ptr) in
-			// no deallocation needed for this test
+		list.close { (k, ptr) in
+			#expect(keys.contains(k))
+			#expect(dataPointers.contains(where: { $0 == ptr }))
+			#expect(keysAndData.contains(where: { $0.0 == k && $0.1 == ptr }))
 		}
 	}
-
+	
+	@Test("__cswiftslash_identified_list :: close list with consumer function")
+	func testCloseListWithConsumer() {
+		let list = IdentifiedListHarness()
+		
+		let dataPointers = (1...5).map { UnsafeMutableRawPointer(bitPattern: $0)! }
+		for data in dataPointers {
+			_ = list.insert(data)
+		}
+		
+		var collectedKeys:[UInt64] = []
+		var collectedData:[UnsafeMutableRawPointer?] = []
+		list.close { (key, ptr) in
+			collectedKeys.append(key)
+			collectedData.append(ptr)
+		}
+		
+		// verify that all elements were processed during close
+		#expect(collectedData.count == 5)
+		#expect(Set(dataPointers) == Set(collectedData))
+	}
+	
 	@Test("__cswiftslash_identified_list :: remove non-existent key")
 	func testRemoveNonExistentKey() {
 		let list = IdentifiedListHarness()
@@ -154,71 +180,6 @@ internal struct IdentifiedList {
 		list.close()
 	}
 
-	@Test("__cswiftslash_identified_list :: iterate over elements")
-	func testIterateOverElements() {
-		let list = IdentifiedListHarness()
-		
-		var keys: [UInt64] = []
-		let dataPointers = (1...10).map { UnsafeMutableRawPointer(bitPattern: $0)! }
-		
-		// insert elements
-		for data in dataPointers {
-			let key = list.insert(data)
-			keys.append(key)
-			#expect(key != 0)
-		}
-		
-		// collect elements during iteration
-		var iteratedKeys: [UInt64] = []
-		var iteratedData: [UnsafeMutableRawPointer?] = []
-		
-		list.iterate { (key, ptr) in
-			iteratedKeys.append(key)
-			iteratedData.append(ptr)
-		}
-		
-		// verify all elements were iterated over
-		#expect(Set(keys) == Set(iteratedKeys))
-		#expect(Set(dataPointers) == Set(iteratedData.compactMap { $0 }))
-		
-		// clean up
-		list.close()
-	}
-
-	@Test("__cswiftslash_identified_list :: concurrent insertions")
-	func testConcurrentInsertions() async {
-		let list = IdentifiedListHarness()
-		let totalInsertions = 1000
-		
-		let allKeys = await withTaskGroup(of: UInt64.self, returning:Set<UInt64>.self) { group in
-			for i in 0..<totalInsertions {
-				group.addTask {
-					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-					data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
-					let key = list.insert(data)
-					return key
-				}
-			}
-			var buildKeys = Set<UInt64>()
-			for await key in group {
-				buildKeys.insert(key)
-			}
-			return buildKeys
-		}
-		
-		// iterate over elements to count them
-		var count = 0
-		list.iterate { (_, ptr) in
-			count += 1
-			ptr?.deallocate()
-		}
-		
-		#expect(count == allKeys.count)
-		
-		// close the list
-		list.close()
-	}
-
 	@Test("__cswiftslash_identified_list :: concurrent insertions and removals")
 	func testConcurrentInsertionsAndRemovals() async {
 		let list = IdentifiedListHarness()
@@ -227,14 +188,13 @@ internal struct IdentifiedList {
 		
 		for i in 0..<totalOperations {
 			await withTaskGroup(of: Void.self) { group in
-				if i < 100 || UInt8.random(in:0...10) < 6 {
-					group.addTask {
-						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-						data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
-						let key = list.insert(data)
-						await keyManager.addKey(key)
-					}
-				} else {
+				group.addTask {
+					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+					data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
+					let key = list.insert(data)
+					await keyManager.addKey(key)
+				}
+				if i > 100 {
 					group.addTask {
 						if let key = await keyManager.removeRandomKey() {
 							if let data = list.remove(key: key) {
@@ -248,9 +208,16 @@ internal struct IdentifiedList {
 		}
 		
 		// close the list
-		list.close(consumer:{ (_, ptr) in
+		var foundKeys = Set<UInt64>()
+		list.close(consumer:{ (k, ptr) in
+			foundKeys.insert(k)
 			ptr?.deallocate()
 		})
+
+		// verify that all keys were processed
+		let keys = await keyManager.auditKeys()
+		#expect(Set(keys) == foundKeys)
+		#expect(foundKeys.count == 101)
 	}
 
 	@Test("__cswiftslash_identified_list :: fuzz testing")
@@ -258,34 +225,29 @@ internal struct IdentifiedList {
 		let list = IdentifiedListHarness()
 		let iterations = 10000
 		let keyManager = KeyManager()
-		
-		await withTaskGroup(of: Void.self) { group in
-			for _ in 0..<iterations {
-				group.addTask {
-					let action = Int.random(in: 0...2)
-					switch action {
-					case 0:
-						// insert
-						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-						data.storeBytes(of: UInt8.random(in: 0...255), as: UInt8.self)
-						let key = list.insert(data)
-						await keyManager.addKey(key)
-					case 1:
-						// remove
-						if let key = await keyManager.removeRandomKey() {
-							if let data = list.remove(key: key) {
-								data.deallocate()
-							}
+		for _ in 0..<iterations {
+			let action = Int.random(in: 0...2)
+			switch action {
+				case 0:
+					let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+					data.storeBytes(of: UInt8.random(in: 0...255), as: UInt8.self)
+					let key = list.insert(data)
+					await keyManager.addKey(key)
+				case 1:
+					if let key = await keyManager.removeRandomKey() {
+						if let data = list.remove(key: key) {
+							data.deallocate()
 						}
-					case 2:
-						// iterate
-						list.iterate { (_, _) in
-							// no operation; just accessing elements
-						}
-					default:
-						break
 					}
-				}
+				case 2:
+					var foundKeys = Set<UInt64>()
+					list.iterate { (k, d) in
+						foundKeys.insert(k)
+					}
+					let keys = await keyManager.auditKeys()
+					#expect(Set(keys) == foundKeys)
+				default:
+					break
 			}
 		}
 		
@@ -298,34 +260,11 @@ internal struct IdentifiedList {
 		list.close()
 	}
 
-	@Test("__cswiftslash_identified_list :: close list with consumer")
-	func testCloseListWithConsumer() {
-		let list = IdentifiedListHarness()
-		
-		let dataPointers = (1...5).map { UnsafeMutableRawPointer(bitPattern: $0)! }
-		for data in dataPointers {
-			_ = list.insert(data)
-		}
-		
-		var collectedKeys: [UInt64] = []
-		var collectedData: [UnsafeMutableRawPointer?] = []
-		
-		list.close { (key, ptr) in
-			collectedKeys.append(key)
-			collectedData.append(ptr)
-		}
-		
-		// verify that all elements were processed during close
-		#expect(collectedData.count == 5)
-		#expect(Set(dataPointers) == Set(collectedData.compactMap { $0 }))
-	}
-
 	@Test("__cswiftslash_identified_list :: stress test with large number of elements")
 	func testStressTestLargeNumberOfElements() {
 		let list = IdentifiedListHarness()
 		let numberOfElements = 100_000
 		var keys: [UInt64] = []
-		
 		// insert a large number of elements
 		for i in 0..<numberOfElements {
 			let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
@@ -334,20 +273,49 @@ internal struct IdentifiedList {
 			keys.append(key)
 			#expect(key != 0)
 		}
+
+		// verify that all the keys have been inserted
+		var foundKeys:Set<UInt64> = []
+		list.iterate { (k, _) in
+			foundKeys.insert(k)
+		}
+		#expect(Set(keys) == foundKeys)
 		
-		// remove all elements
-		for key in keys {
+		// remove 10% of the elements
+		let keysToRemove = keys[0..<numberOfElements/10]
+		var removedKeys:Set<UInt64> = []
+		for key in keysToRemove {
 			if let data = list.remove(key: key) {
 				data.deallocate()
+				removedKeys.insert(key)
 			}
 		}
+		#expect(removedKeys.count == keysToRemove.count)
 		
-		// verify that the list is empty
-		var iterationOccurred = false
-		list.iterate { (_, _) in
-			iterationOccurred = true
+		// verify that all the keys have been removed
+		var remainingKeys:Set<UInt64> = []
+		list.iterate { (k, _) in
+			remainingKeys.insert(k)
 		}
-		#expect(iterationOccurred == false)
+		#expect(remainingKeys.isDisjoint(with: removedKeys))
+		#expect(remainingKeys.count == numberOfElements - keysToRemove.count)
+
+		// remove the remaining elements
+		var removedKeys2:Set<UInt64> = []
+		for key in remainingKeys {
+			if let data = list.remove(key: key) {
+				data.deallocate()
+				removedKeys2.insert(key)
+			}
+		}
+		#expect(removedKeys2 == remainingKeys)
+
+		// verify that all the keys have been removed
+		var finalKeys:Set<UInt64> = []
+		list.iterate { (k, _) in
+			finalKeys.insert(k)
+		}
+		#expect(finalKeys.isEmpty)
 		
 		// close the list
 		list.close()

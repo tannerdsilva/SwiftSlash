@@ -26,7 +26,7 @@ internal struct FutureTests {
 			case success(UInt8, UnsafeMutableRawPointer?)
 			case failure(UInt8, UnsafeMutableRawPointer?)
 
-			func type() -> UInt8 {
+			fileprivate func type() -> UInt8 {
 				switch self {
 					case .success(let type, _):
 						return type
@@ -35,7 +35,7 @@ internal struct FutureTests {
 				}
 			}
 			
-			func pointer() -> UnsafeMutableRawPointer? {
+			fileprivate func pointer() -> UnsafeMutableRawPointer? {
 				switch self {
 					case .success(_, let pointer):
 						return pointer
