@@ -205,8 +205,9 @@ internal struct IdentifiedList {
 					await keyManager.addKey(key)
 				}
 				if i > 100 {
-					group.addTask {
-						if let key = await keyManager.removeRandomKey() {
+					let removedKey = await keyManager.removeRandomKey()
+					group.addTask { [rk = removedKey] in
+						if let key = rk {
 							if let data = await list.remove(key: key) {
 								data.deallocate()
 							}
