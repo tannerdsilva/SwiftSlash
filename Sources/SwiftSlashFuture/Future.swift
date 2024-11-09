@@ -169,6 +169,8 @@ extension Future {
 					rp.pointee = nil
 			}
 		})
+
+		// copy a reference of the asyncresult to heap so that the c primitive can interact it and free its reference when it is done.
 		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
 		arPtr.initialize(to:asr)
 		
@@ -256,6 +258,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		defer {
 			pthread_mutex_unlock(internalStateMutex)
 		}
+
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
@@ -268,6 +271,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		defer {
 			pthread_mutex_unlock(internalStateMutex)
 		}
+
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
@@ -280,6 +284,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		defer {
 			pthread_mutex_unlock(internalStateMutex)
 		}
+
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
@@ -289,16 +294,20 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 	}
 	fileprivate borrowing func wait() {
 		pthread_mutex_lock(internalStateMutex)
+		defer {
+			pthread_mutex_unlock(internalStateMutex)
+		}
+
 		if __cswiftslash_auint8_load(isResultMutexLocked) == 1 {
 			pthread_mutex_unlock(internalStateMutex)
 			pthread_mutex_lock(resultMutex)
 			pthread_mutex_lock(internalStateMutex)
 			pthread_mutex_unlock(resultMutex)
 		}
-		pthread_mutex_unlock(internalStateMutex)
 	}
 
 	deinit {
+		
 		// destroy and deallocate internal state mutex
 		pthread_mutex_destroy(internalStateMutex)
 
