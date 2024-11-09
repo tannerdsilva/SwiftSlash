@@ -38,15 +38,23 @@ static void resize_hashtable(
 	__cswiftslash_identified_list_pair_ptr_t _,
 	const size_t __
 ) {
+	// new_ht
 	__cswiftslash_identified_list_ptr_t* __0 = calloc(__, sizeof(__cswiftslash_identified_list_ptr_t));
 	memset(__0, 0, __ * sizeof(__cswiftslash_identified_list_ptr_t));
+	// current_element
 	__cswiftslash_identified_list_ptr_t __1 = _->____o;
 	while (__1 != NULL) {
+	
+		// index
 		size_t __2 = HF_(__1->____k) % __;
-		size_t __3 = 0;
+		// start index
+		size_t __3 = __2;
+		// steps
+		size_t __4 = 0;
+		
 		while (__0[__2] != NULL) {
-			__3++;
-			__2 = (__3 + 1) % __;
+			__4++;
+			__2 = (__3 + __4) % __;
 		}
 		__0[__2] = __1;
 		__1 = __1->____n;
