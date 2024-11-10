@@ -40,7 +40,7 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	/// - parameters:
 	/// 	- result: the result to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setSuccess(_ result:consuming R) throws(InvalidStateError) {
+	public borrowing func setSuccess(_ result:consuming R) throws(InvalidStateError) {
 		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
 			_ = Unmanaged<Contained<R>>.fromOpaque(op).takeRetainedValue()
@@ -52,7 +52,7 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	/// - parameters:
 	/// 	- error: the error to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setFailure(_ error:consuming F) throws(InvalidStateError) {
+	public borrowing func setFailure(_ error:consuming F) throws(InvalidStateError) {
 		let op = Unmanaged.passRetained(Contained(error)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
 			_ = Unmanaged<Contained<F>>.fromOpaque(op).takeRetainedValue()
@@ -62,7 +62,7 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 
 	/// cancel an active future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func cancel() throws(InvalidStateError) {
+	public borrowing func cancel() throws(InvalidStateError) {
 		guard __cswiftslash_future_t_broadcast_cancel(prim) else {
 			throw InvalidStateError()
 		}
@@ -129,13 +129,15 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 			__cswiftslash_future_t_destroy(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler)
 		}
 
-		// extract the result and deallocate the result
+		// extract the result and deallocate the result that
 		let extractedResult = deallocResult.consumeResult()
 		switch extractedResult {
 			case .success(_, let ptr):
 				if successDeallocator != nil {
+					// the retained value must be passed to the success deallocator
 					successDeallocator!(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeRetainedValue().value())
 				} else {
+					// the retained value can be discarded
 					_ = Unmanaged<Contained<R>>.fromOpaque(ptr!).takeRetainedValue()
 				}
 			case .failure(_, let ptr):
@@ -178,18 +180,12 @@ extension Future {
 		if (waiterID != 0) {
 			if E.self == Never.self {
 				// task cancellation is set to never throw, so we can just wait for the result.
-				await withUnsafeContinuation({ [arp = arPtr] (cont:UnsafeContinuation<Void, Never>) in
-					arp.pointee.wait()
-					cont.resume()
-				})
+				await arPtr.pointee.wait()
 				return resultPtr.pointee
 			} else {
 				// task cancellation is set to throw, so we need to wait for the result within a cancellation handler.
 				await withTaskCancellationHandler { [arpO = arPtr] in
-					await withUnsafeContinuation({ [arpI = arpO] (cont:UnsafeContinuation<Void, Never>) in
-						arpI.pointee.wait()
-						cont.resume()
-					})
+					await arpO.pointee.wait()
 				} onCancel: {
 					__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
 				}
@@ -221,7 +217,7 @@ extension Future {
 	}
 }
 
-// MARK: - Bridging Symbols
+// MARK: - bridging symbols
 fileprivate enum SuccessFailureCancel {
 	case success(UInt8, UnsafeMutableRawPointer?)
 	case failure(UInt8, UnsafeMutableRawPointer?)
@@ -292,18 +288,12 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 			uniHandler.pointee = nil
 		}
 	}
-	fileprivate borrowing func wait() {
-		pthread_mutex_lock(internalStateMutex)
-		defer {
-			pthread_mutex_unlock(internalStateMutex)
-		}
-
-		if __cswiftslash_auint8_load(isResultMutexLocked) == 1 {
-			pthread_mutex_unlock(internalStateMutex)
+	fileprivate borrowing func wait() async {
+		await withUnsafeContinuation({ (continuation:UnsafeContinuation<Void, Never>) in
 			pthread_mutex_lock(resultMutex)
-			pthread_mutex_lock(internalStateMutex)
 			pthread_mutex_unlock(resultMutex)
-		}
+			continuation.resume()
+		})
 	}
 
 	deinit {
@@ -343,7 +333,7 @@ fileprivate struct SyncResult:~Copyable {
 	}
 }
 
-// MARK: - Sync C Handlers
+// MARK: - sync c handlers
 /// the sync handler for results
 fileprivate let futureSyncResultHandler:__cswiftslash_future_result_val_handler_f = { resType, resPtr, ctxPtr in
 	ctxPtr!.assumingMemoryBound(to:SyncResult.self).pointee.setResult(type:resType, pointer:resPtr)
@@ -357,7 +347,7 @@ fileprivate let futureSyncCancelHandler:__cswiftslash_future_result_cncl_handler
 	ctxPtr!.assumingMemoryBound(to:SyncResult.self).pointee.setCancel()
 }
 
-// MARK: - Async C Handlers
+// MARK: - async c handlers
 /// the async handler for results
 fileprivate let futureAsyncResultHandler:__cswiftslash_future_result_val_handler_f = { resType, resPtr, ctxPtr in
 	let boundPtr = ctxPtr!.assumingMemoryBound(to:AsyncResult.self)

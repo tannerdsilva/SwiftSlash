@@ -50,19 +50,19 @@ fileprivate let cswiftslashTargets:[Target] = [
 		publicHeadersPath:"."
 	),
 	// unit tests for all c targets
-	.testTarget(
-		name:"__cswiftslash_tests",
-		dependencies:[
-			"__cswiftslash_auint8",
-			"__cswiftslash_fifo",
-			"__cswiftslash_future",
-			"__cswiftslash_types",
-			"__cswiftslash_threads",
-			"__cswiftslash_eventtrigger",
-			"__cswiftslash_identified_list"
-		],
-		path: "Tests/__cswiftslash"
-	)
+	// .testTarget(
+	// 	name:"__cswiftslash_tests",
+	// 	dependencies:[
+	// 		"__cswiftslash_auint8",
+	// 		"__cswiftslash_fifo",
+	// 		"__cswiftslash_future",
+	// 		"__cswiftslash_types",
+	// 		"__cswiftslash_threads",
+	// 		"__cswiftslash_eventtrigger",
+	// 		"__cswiftslash_identified_list"
+	// 	],
+	// 	path: "Tests/__cswiftslash"
+	// )
 ]
 
 fileprivate let swiftTargets:[Target] = [
@@ -77,14 +77,14 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	/*.testTarget(
-		name:"SwiftSlashFutureTests",
-		dependencies:[
-			"SwiftSlashFuture",
-			"__cswiftslash_auint8",
-		],
-		path:"Tests/SwiftSlashFutureTests"
-	),*/
+	// .testTarget(
+	// 	name:"SwiftSlashFutureTests",
+	// 	dependencies:[
+	// 		"SwiftSlashFuture",
+	// 		"__cswiftslash_auint8",
+	// 	],
+	// 	path:"Tests/SwiftSlashFutureTests"
+	// ),
 	/*.testTarget(
 		name:"SwiftSlashPThreadTests",
 		dependencies:[
@@ -106,7 +106,24 @@ fileprivate let swiftTargets:[Target] = [
 	)
 ]
 
-fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets /* + [
+fileprivate let testTarget:Target = .testTarget(
+	name:"SwiftSlashInternalTests",
+	dependencies:[
+		"__cswiftslash_auint8",
+		"__cswiftslash_fifo",
+		"__cswiftslash_future",
+		"__cswiftslash_types",
+		"__cswiftslash_threads",
+		"__cswiftslash_eventtrigger",
+		"__cswiftslash_identified_list",
+		"SwiftSlashFuture",
+		"SwiftSlashContained",
+		"SwiftSlashPThread"
+	],
+	path:"Tests/SwiftSlashInternalTests"
+)
+
+fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets + [testTarget] /* + [
 	.target(
 		name:"SwiftSlash",
 		dependencies:[
@@ -221,7 +238,7 @@ fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets /
 let package = Package(
 	name:"SwiftSlash",
 	platforms:[
-		.macOS(.v12) // NO SANDBOXING
+		.macOS(.v13) // NO SANDBOXING
 	],
 	products:[
 		.library(
