@@ -91,7 +91,7 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 	/// - returns: the id of the waiter that was created. this id can be used to cancel the waiter. nil is returned if the callback was fired immediately from the current thread.
 	@discardableResult public func whenResult(_ callback:consuming @escaping (Result<R, F>?) -> Void) -> UInt64? {
 		// define the async result here so that it will remain in memory for at least the duration of the function call.
-		let asr = AsyncResult(handle: { [cb = callback] res in
+		let asr = AsyncResult(storage:nil, handle: { [cb = callback] res, _ in
 			switch res {
 				case .success(_, let res):
 					cb(.success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value()))
@@ -161,14 +161,14 @@ extension Future {
 		}
 
 		// initialize the async tool that will allow us to wait for the result and also cancel our waiting if necessary.
-		let asr = AsyncResult(handle: { [rp = resultPtr] res in
+		let asr = AsyncResult(storage:resultPtr, handle: { res, rp in
 			switch res {
 				case .success(_, let res):
-					rp.pointee = .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
+					rp!.assumingMemoryBound(to:Result<R, F>?.self).pointee = .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
 				case .failure(_, let res):
-					rp.pointee = .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
+					rp!.assumingMemoryBound(to:Result<R, F>?.self).pointee = .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
 				case .cancel:
-					rp.pointee = nil
+					rp!.assumingMemoryBound(to:Result<R, F>?.self).pointee = nil
 			}
 		})
 
@@ -180,19 +180,18 @@ extension Future {
 		if (waiterID != 0) {
 			if E.self == Never.self {
 				// task cancellation is set to never throw, so we can just wait for the result.
-				await arPtr.pointee.wait()
-				return resultPtr.pointee
+				return await arPtr.pointee.wait(loadingAs:Result<R, F>?.self)
 			} else {
 				// task cancellation is set to throw, so we need to wait for the result within a cancellation handler.
-				await withTaskCancellationHandler { [arpO = arPtr] in
-					await arpO.pointee.wait()
+				let returnResult = await withTaskCancellationHandler { [arpO = arPtr] in
+					return await arpO.pointee.wait(loadingAs:Result<R, F>?.self)
 				} onCancel: {
 					__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
 				}
-				if Task.isCancelled == true && resultPtr.pointee == nil {
+				if Task.isCancelled == true && returnResult == nil {
 					throw throwOnTaskCancellation()
 				} else {
-					return resultPtr.pointee
+					return returnResult
 				}
 			}
 		} else {
@@ -226,10 +225,11 @@ fileprivate enum SuccessFailureCancel {
 
 /// a reference type that is used to bridge the c future result handlers to strict swift types. c functions cannot be declared or utilized within the context of generic types, so types like this are used to help bridge the C functions into strict Swift typing.
 fileprivate final class AsyncResult:@unchecked Sendable {
-	fileprivate typealias UniHandler = (SuccessFailureCancel) -> Void
+	fileprivate typealias UniHandler = (SuccessFailureCancel, UnsafeMutableRawPointer?) -> Void
 
 	private let memorySpace:UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>
-	
+	private let storage:UnsafeMutableRawPointer?
+
 	private let internalStateMutex:UnsafeMutablePointer<pthread_mutex_t>
 	
 	private let resultMutex:UnsafeMutablePointer<pthread_mutex_t>
@@ -237,13 +237,13 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 
 	private let uniHandler:UnsafeMutablePointer<UniHandler?>
 
-	fileprivate init(handle:consuming @escaping UniHandler) {
+	fileprivate init(storage strPtr:UnsafeMutableRawPointer?, handle:consuming @escaping UniHandler) {
 		memorySpace = UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>.allocate(capacity:1)
 		memorySpace.initialize(to:(pthread_mutex_t(), pthread_mutex_t(), __cswiftslash_auint8_init(1), handle))
 		pthread_mutex_init(&memorySpace.pointee.0, nil)
 		pthread_mutex_init(&memorySpace.pointee.1, nil)
 		pthread_mutex_lock(&memorySpace.pointee.1)
-
+		storage = strPtr
 		internalStateMutex = memorySpace.pointer(to:\.0)!
 		resultMutex = memorySpace.pointer(to:\.1)!
 		isResultMutexLocked = memorySpace.pointer(to:\.2)!
@@ -258,7 +258,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.success(type, pointer))
+			uniHandler.pointee!(.success(type, pointer), storage)
 			uniHandler.pointee = nil
 		}
 	}
@@ -271,7 +271,7 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.failure(type, pointer))
+			uniHandler.pointee!(.failure(type, pointer), storage)
 			uniHandler.pointee = nil
 		}
 	}
@@ -284,14 +284,25 @@ fileprivate final class AsyncResult:@unchecked Sendable {
 		var expected:UInt8 = 1
 		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
 			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.cancel)
+			uniHandler.pointee!(.cancel, storage)
 			uniHandler.pointee = nil
 		}
 	}
-	fileprivate borrowing func wait() async {
+	fileprivate borrowing func wait<T>(loadingAs:T.Type) async -> T {
+		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<T, Never>) in
+			pthread_mutex_lock(resultMutex)
+			pthread_mutex_lock(internalStateMutex)
+			pthread_mutex_unlock(resultMutex)
+			continuation.resume(returning:storage!.assumingMemoryBound(to:T.self).pointee)
+			pthread_mutex_unlock(internalStateMutex)
+		})
+	}
+	fileprivate borrowing func wait(loadingAs:Void.Type = Void.self) async {
 		await withUnsafeContinuation({ (continuation:UnsafeContinuation<Void, Never>) in
 			pthread_mutex_lock(resultMutex)
+			pthread_mutex_lock(internalStateMutex)
 			pthread_mutex_unlock(resultMutex)
+			pthread_mutex_unlock(internalStateMutex)
 			continuation.resume()
 		})
 	}
@@ -364,8 +375,8 @@ fileprivate let futureAsyncErrorHandler:__cswiftslash_future_result_err_handler_
 }
 /// the async handler for cancellations
 fileprivate let futureAsyncCancelHandler:__cswiftslash_future_result_cncl_handler_f = { ctxPtr in
-	let boundPtr = ctxPtr!.assumingMemoryBound(to:AsyncResult.self)
-	boundPtr.pointee.setCancel()
-	boundPtr.deinitialize(count:1)
-	boundPtr.deallocate()
+	let boundPtr = ctxPtr?.assumingMemoryBound(to:AsyncResult.self)
+	boundPtr?.pointee.setCancel()
+	boundPtr?.deinitialize(count:1)
+	boundPtr?.deallocate()
 }

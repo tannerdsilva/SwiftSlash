@@ -92,7 +92,7 @@ extension __cswiftslash_tests {
 				}
 			
 				dealloc_f = { ws in
-					let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeRetainedValue()
+					let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 					harness.handlerCallsLock.lock()
 					harness.handlerCalls.append(.deallocCalled)
 					harness.handlerCallsLock.unlock()
@@ -101,7 +101,7 @@ extension __cswiftslash_tests {
 			}
 		
 			fileprivate func startThread() {
-				let arg = Unmanaged.passRetained(self).toOpaque()
+				let arg = Unmanaged.passUnretained(self).toOpaque()
 				let config = __cswiftslash_threads_config_init(
 					arg,
 					alloc_f,

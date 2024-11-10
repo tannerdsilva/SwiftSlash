@@ -418,6 +418,7 @@ extension __cswiftslash_tests {
 			func coreAsyncCancel() async throws {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
+						try await Task.sleep(nanoseconds:100_000)
 						#expect(future.cancel() == true)
 					}
 					let waitResult = try await future.waitAsync()

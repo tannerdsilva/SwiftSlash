@@ -207,6 +207,8 @@ void __cswiftslash_future_t_wait_sync(
 	#endif
 	__cswiftslash_future_wait_ptr_t __1 = ____cswiftslash_future_wait_t_init_sync(__, ___, ____, _____);
 	pthread_mutex_lock(&__1->____m);
+	uint8_t __2;
+	__cswiftslash_optr_t __3;
 	checkStat:
 		switch (atomic_load_explicit(&_->____s, memory_order_acquire)) {
 			case FUTURE_STATUS_PEND:
@@ -219,12 +221,22 @@ void __cswiftslash_future_t_wait_sync(
 				#endif
 				goto blockUntilDone;
 			case FUTURE_STATUS_RESULT:
-				___(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
+				__2 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__3 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				pthread_mutex_unlock(&_->____m);
+				pthread_mutex_unlock(&__1->____m);
+				___(__2, __3, __);
 				goto returnTime;	
 			case FUTURE_STATUS_THROW:
-				____(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
-				goto returnTime;	
+				__2 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__3 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				pthread_mutex_unlock(&_->____m);
+				pthread_mutex_unlock(&__1->____m);
+				____(__2, __3, __);
+				goto returnTime;
 			case FUTURE_STATUS_CANCEL:
+				pthread_mutex_unlock(&_->____m);
+				pthread_mutex_unlock(&__1->____m);
 				_____(__);
 				goto returnTime;
 			default:
@@ -232,8 +244,6 @@ void __cswiftslash_future_t_wait_sync(
 				abort();
 		}
 	returnTime:
-		pthread_mutex_unlock(&_->____m);
-		pthread_mutex_unlock(&__1->____m);
 		____cswiftslash_future_wait_t_destroy_sync(__1);
 		return;
 	blockUntilDone:
@@ -257,18 +267,27 @@ uint64_t __cswiftslash_future_t_wait_async(
 	pthread_mutex_lock(&_->____m);
 	const int8_t __1 = atomic_load_explicit(&_->____s, memory_order_acquire);
 	uint64_t __2;
+	uint8_t __3;
+	__cswiftslash_optr_t __4;
 	checkStat:
 	switch (__1) {
 		case FUTURE_STATUS_PEND:
 			__2 = __cswiftslash_identified_list_insert(_->____wi, (__cswiftslash_ptr_t)__0);
 			goto returnTimeWaiting;
 		case FUTURE_STATUS_RESULT:
-			___(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
+			__3 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+			__4 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+			pthread_mutex_unlock(&_->____m);
+			___(__3, __4, __);
 			goto returnTimeNoWait;
 		case FUTURE_STATUS_THROW:
-			____(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
+			__3 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+			__4 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+			pthread_mutex_unlock(&_->____m);
+			____(__3, __4, __);
 			goto returnTimeNoWait;
 		case FUTURE_STATUS_CANCEL:
+			pthread_mutex_unlock(&_->____m);
 			_____(NULL);
 			goto returnTimeNoWait;
 		default:
@@ -276,7 +295,6 @@ uint64_t __cswiftslash_future_t_wait_async(
 			abort();
 	}
 	returnTimeNoWait:
-		pthread_mutex_unlock(&_->____m);
 		____cswiftslash_future_wait_t_destroy_async(__0);
 		return 0;
 	returnTimeWaiting:

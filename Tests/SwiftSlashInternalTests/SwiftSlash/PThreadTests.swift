@@ -22,10 +22,11 @@ fileprivate struct PThreadWorkerTesterThing<A:Sendable>:PThreadWork {
 }
 
 extension SwiftSlashTests {
-	@Suite("SwiftSlashPThreadTests")
+	@Suite("SwiftSlashPThreadTests",
+		.serialized
+	)
 	internal struct PThreadTests {
-
-		@Test("SwiftSlashPThread :: return values from pthreads")
+		@Test("SwiftSlashPThread :: return values from pthreads", .timeLimit(.minutes(1)))
 		func testPthreadReturn() async throws {
 			for _ in 0..<512 {
 				let randomString = String.random(length:56)
@@ -94,7 +95,7 @@ extension SwiftSlashTests {
 			}
 		}
 		
-		@Test("SwiftSlashPThread :: cancellation of pthreads that are already in flight (with memory checks)")
+		@Test("SwiftSlashPThread :: cancellation of pthreads that are already in flight (with memory checks)", .timeLimit(.minutes(1)))
 		func testPthreadCancellation() async throws {
 			// we do NOT expect the pthread to return.
 			let returnExpect = Expectation(isInverted:true, description:"PThread delay")
@@ -128,7 +129,7 @@ extension SwiftSlashTests {
 					try lf.setSuccess(())
 
 					// wait for the cancelation to be set.
-					try cf.blockingResult()!.get()
+					cf.blockingResult()!.get()
 
 					// test for cancellation. this would usually be the end of the pthread.
 					pthread_testcancel()
@@ -138,10 +139,10 @@ extension SwiftSlashTests {
 				}
 
 				// wait for the thread to launch.
-				try await launchFuture.result()!.get()
+				await launchFuture.result()!.get()
 
 				// cancel the thread
-				try runTask.cancel()
+				runTask.cancel()
 
 				// set the cancellation future to success.
 				try cancelFuture.setSuccess(())
