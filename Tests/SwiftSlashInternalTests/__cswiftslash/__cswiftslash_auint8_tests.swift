@@ -19,6 +19,7 @@ extension Tag {
 
 extension __cswiftslash_tests {
 	@Suite("__cswiftslash_auint8",
+		.serialized,
 		.tags(.__cswiftslash_auint8)
 	)
 	internal struct __cswiftslash_auint8 {
@@ -38,8 +39,8 @@ extension __cswiftslash_tests {
 				__cswiftslash_auint8_store(auint8Ptr, value)
 			}
 
-			fileprivate func compareExchangeWeak(expected:inout UInt8, desired:UInt8) -> Bool {
-				return __cswiftslash_auint8_compare_exchange_weak(auint8Ptr, &expected, desired)
+			fileprivate func compareExchangeWeak(expected:UnsafeMutablePointer<UInt8>, desired:UInt8) -> Bool {
+				return __cswiftslash_auint8_compare_exchange_weak(auint8Ptr, expected, desired)
 			}
 
 			fileprivate func add(_ value:UInt8) -> UInt8 {
@@ -142,8 +143,7 @@ extension __cswiftslash_tests {
 				#expect(result == false)
 				
 				// verify that the value was not changed
-				let loadedValue = atomicValue.load()
-				#expect(loadedValue == initialValue)
+				#expect(expected == initialValue)
 			}
 		}
 

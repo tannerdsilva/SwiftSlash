@@ -1,8 +1,30 @@
 import Testing
 @testable import SwiftSlashFuture
+import __cswiftslash_future
+import SwiftSlashContained
+
+extension Future {
+	/// blocking wait for the result of the future. this is used only for unit testing.
+	internal borrowing func blockingResult() -> Result<R, F>? {
+		var getResult = SyncResult()
+		withUnsafeMutablePointer(to:&getResult) { rptr in
+			__cswiftslash_future_t_wait_sync(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler)
+		}
+		switch getResult.consumeResult()! {
+			case .success(_, let res):
+				return .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
+			case .failure(_, let res):
+				return .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
+			case .cancel:
+				return nil
+		}
+	}
+}
 
 extension SwiftSlashTests {
-	@Suite("SwiftSlashFutureTests")
+	@Suite("SwiftSlashFutureTests",
+		.serialized
+	)
 	internal struct FutureTests {
 		internal static func randomInt() -> Int {
 			return Int.random(in:Int.min...Int.max)
@@ -11,101 +33,166 @@ extension SwiftSlashTests {
 			let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 			return String((0..<length).map{ _ in letters.randomElement()! })
 		}
-
+		final class IntHeap:Equatable {
+			private var value:Int
+			private var conf:Confirmation?
+			init(_ initialValue:Int, c:Confirmation) {
+				value = initialValue
+				conf = c
+			}
+			func getValue() -> Int {
+				return value
+			}
+			func replaceConfirmation(_ newConf:Confirmation?) {
+				conf = newConf
+			}
+			static func == (lhs:IntHeap, rhs:IntHeap) -> Bool {
+				return lhs.value == rhs.value
+			}
+			deinit {
+				conf?.confirm()
+			}
+		}
+		final class RandomTestError:@unchecked Sendable, Swift.Error, Equatable {
+			let c:Int
+			let m:String
+			private let conf:UnsafeMutablePointer<Confirmation?>
+			init(code:Int, message:String, confirmation:Confirmation?) {
+				c = code
+				m = message
+				conf = UnsafeMutablePointer<Confirmation?>.allocate(capacity:1)
+				conf.initialize(to:confirmation)
+			}
+			func replaceConfirmation(_ newConf:Confirmation?) {
+				conf.pointee = newConf
+			}
+			static func == (lhs:RandomTestError, rhs:RandomTestError) -> Bool {
+				return lhs.c == rhs.c && lhs.m == rhs.m
+			}
+			deinit {
+				conf.pointee?.confirm()
+				conf.deinitialize(count:1)
+				conf.deallocate()
+			}
+		}
 		private var future:Future<Int, Swift.Error> = Future<Int, Swift.Error>()
 
-		@Test("SwiftSlashFuture :: test successful assignment (random integer value)", .timeLimit(.minutes(1)))
-		mutating internal func setSuccessWithRandomIntegers() async throws {
-			for _ in 0..<100 {
-				let randomValue = Self.randomInt()
-				try future.setSuccess(randomValue)
-				let result = await future.result()
-				var foundResult: Int? = nil
-				switch result {
-				case .success(let i):
-					foundResult = i
-				default:
-					foundResult = nil
-				}
-				#expect(foundResult == randomValue)
-				future = Future<Int, Swift.Error>()
-			}
-		}
-
-		@Test("SwiftSlashFuture :: test successful assignment with edge integers", .timeLimit(.minutes(1)))
-		mutating internal func testSetSuccessWithEdgeIntegers() async throws {
-			let edgeValues = [Int.min, -1, 0, 1, Int.max]
-			for value in edgeValues {
-				try future.setSuccess(value)
-				let result = await future.result()!
-				var foundResult: Int? = nil
-				switch result {
-				case .success(let i):
-					foundResult = i
-				default:
-					foundResult = nil
-				}
-				#expect(foundResult == value)
-				future = Future<Int, Swift.Error>()
-			}
-		}
-
-		@Test("SwiftSlashFuture :: test failure assignment with random integers", .timeLimit(.minutes(1)))
-		mutating func testSetFailureWithRandomErrors() async throws {
-			struct RandomTestError:Swift.Error, Equatable {
-				let code:Int
-				let message:String
-				static func == (lhs: RandomTestError, rhs: RandomTestError) -> Bool {
-					return lhs.code == rhs.code && lhs.message == rhs.message
+		@Test("SwiftSlashFuture :: test successful assignment with memory checks (random integer value)", .timeLimit(.minutes(1)))
+		mutating internal func setSuccessWithMemoryChecks() async throws {
+			try await confirmation("successful result value deallocation (with consume)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, Swift.Error> = Future<IntHeap, Swift.Error>()
+				for _ in 0..<100 {
+					let randomValue = IntHeap(Self.randomInt(), c:resultValueDeallocatorCounter)
+					try future.setSuccess(randomValue)
+					let result = try await future.result()!.get().getValue()
+					#expect(result == randomValue.getValue())
+					future = Future<IntHeap, Swift.Error>()
 				}
 			}
-
-			for _ in 0..<100 {
-				let error = RandomTestError(code: Self.randomInt(), message: Self.randomString(length: 20))
-				try future.setFailure(error)
-				let result = await future.result()!
-				var foundError: RandomTestError? = nil
-				switch result {
-				case .failure(let e):
-					if let e = e as? RandomTestError {
-						foundError = e
+			try await confirmation("successful result value deallocation (no consume)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, Swift.Error> = Future<IntHeap, Swift.Error>()
+				for _ in 0..<100 {
+					let randomValue = IntHeap(Self.randomInt(), c:resultValueDeallocatorCounter)
+					try future.setSuccess(randomValue)
+					future = Future<IntHeap, Swift.Error>()
+				}
+			}
+			
+			// test a loop of 100 successful results with the result NOT being consumed
+			try await confirmation("successful result value deallocation (direct pass)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, Swift.Error> = Future<IntHeap, Swift.Error>()
+				for _ in 0..<100 {
+					try await confirmation("testing for internal result value retention on direct pass", expectedCount:0) { resultValueHopeNoCountHere in
+						try future.setSuccess(IntHeap(Self.randomInt(), c:resultValueHopeNoCountHere))
 					}
-				default:
-					break
+					try await future.result()!.get().replaceConfirmation(resultValueDeallocatorCounter)
+					future = Future<IntHeap, Swift.Error>()
 				}
-				#expect(foundError == error)
-				future = Future<Int, Swift.Error>()
+			}
+		}
+
+		@Test("SwiftSlashFuture :: test failure assignment with memory checks (random integer value)", .timeLimit(.minutes(1)))
+		mutating func testSetFailureWithRandomErrors() async throws {
+			try await confirmation("successful result value deallocation (with consume)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, RandomTestError> = Future<IntHeap, RandomTestError>()
+				for _ in 0..<100 {
+					let error = RandomTestError(code: Self.randomInt(), message: Self.randomString(length: 20), confirmation:resultValueDeallocatorCounter)
+					try future.setFailure(error)
+					let result = await future.result()!
+					#expect(result == Result.failure(error))
+					future = Future<IntHeap, RandomTestError>()
+				}
+			}
+
+			try await confirmation("successful result value deallocation (with consume)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, RandomTestError> = Future<IntHeap, RandomTestError>()
+				for _ in 0..<100 {
+					let error = RandomTestError(code:Self.randomInt(), message:Self.randomString(length:20), confirmation:resultValueDeallocatorCounter)
+					try future.setFailure(error)
+					future = Future<IntHeap, RandomTestError>()
+				}
+			}
+
+			try await confirmation("successful result value deallocation (with consume)", expectedCount:100) { resultValueDeallocatorCounter in
+				var future:Future<IntHeap, RandomTestError> = Future<IntHeap, RandomTestError>()
+				for _ in 0..<100 {
+					let randomInt = Self.randomInt()
+					let randomMessage = Self.randomString(length: 20)
+					try await confirmation("testing for internal result value retention on direct pass", expectedCount:0) { resultValueHopeNoCountHere in
+						try future.setFailure(RandomTestError(code:randomInt, message:randomMessage, confirmation:resultValueHopeNoCountHere))
+					}
+					let result = await future.result()!
+					#expect(result == Result.failure(RandomTestError(code:randomInt, message:randomMessage, confirmation:nil)))
+					guard case .failure(let e) = result else {
+						fatalError("should never happen")
+					}
+					e.replaceConfirmation(resultValueDeallocatorCounter)
+					future = Future<IntHeap, RandomTestError>()
+				}
 			}
 		}
 
 		@Test("SwiftSlashFuture :: test async waiter with cancellation", .timeLimit(.minutes(1)))
-		func testAsyncWaiterCancellation() throws {
+		func testAsyncWaiterCancellation() async throws {
 			let future = Future<Int, Never>()
-			let cancelHandler = future.whenResult { r in 
-				#expect(r == nil)
-			}
-			let resultHandler = future.whenResult { r in
-				#expect(r != nil)
-				switch r {
-				case .success(let i):
-					#expect(i == 5)
-				default:
-					break
+			let resultHandler = await confirmation("test for correct dereferencing of @escaping handler references after firing", expectedCount:1) { cancelCounter in
+				struct WhenDeinit:~Copyable {
+					let cancelCounter:Confirmation
+					init(_ c:Confirmation) {
+						cancelCounter = c
+					}
+					deinit {
+						cancelCounter.confirm()
+					}
 				}
+				let cancelHandler = future.whenResult { [d = WhenDeinit(cancelCounter)] r in
+					_ = d
+					#expect(r == nil)
+				}
+				let resultHandler = future.whenResult { r in
+					#expect(r != nil)
+					switch r {
+					case .success(let i):
+						#expect(i == 5)
+					default:
+						break
+					}
+				}
+				#expect(resultHandler != nil)
+				#expect(cancelHandler != nil)
+				#expect(future.cancelWaiter(cancelHandler!) == true)
+				return resultHandler
 			}
-			#expect(resultHandler != nil)
-			#expect(cancelHandler != nil)
-			#expect(future.cancel(waiterID:cancelHandler!) == true)
 
 			try future.setSuccess(5)
 
-			#expect(future.cancel(waiterID:resultHandler!) == false)
+			#expect(future.cancelWaiter(resultHandler!) == false)
 		}
 
 		@Test("SwiftSlashFuture :: test blocking waiter", .timeLimit(.minutes(1)))
 		func testBlockingWaiter() throws {
 			let future = Future<Int, Never>()
-			try future.setSuccess(5)
+			Task { [f = future] in try f.setSuccess(5) }
 			let result = future.blockingResult()!.get()
 			#expect(result == 5)
 		}

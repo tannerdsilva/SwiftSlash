@@ -260,7 +260,9 @@ extension __cswiftslash_tests {
 		}
 
 		// MARK: - core sync tests
-		@Suite("__cswiftslash_future core (sync)")
+		@Suite("__cswiftslash_future core (sync)",
+			.serialized
+		)
 		struct CoreSync {
 			private var future = Harness()
 
@@ -337,7 +339,9 @@ extension __cswiftslash_tests {
 		}
 
 		// MARK: - core async tests
-		@Suite("__cswiftslash_future core (async)")
+		@Suite("__cswiftslash_future core (async)",
+			.serialized
+		)
 		struct CoreAsync {
 			private var future = Harness()
 
@@ -428,7 +432,9 @@ extension __cswiftslash_tests {
 		}
 
 		// MARK: - additional tests
-		@Suite("__cswiftslash_future (additional coverage)")
+		@Suite("__cswiftslash_future (additional coverage)",
+			.serialized
+		)
 		struct Additional {
 			private var future = Harness()
 
@@ -611,7 +617,9 @@ extension __cswiftslash_tests {
 		}
 
 		// MARK: - additional tests for multiple waiters
-		@Suite("__cswiftslash_future (multiple waiters)")
+		@Suite("__cswiftslash_future (multiple waiters)",
+			.serialized
+		)
 		struct MultipleWaiters {
 			@Test("__cswiftslash_future :: multiple waiters :: async result", .timeLimit(.minutes(1)))
 			func testMultipleWaitersAsyncResult() async throws {

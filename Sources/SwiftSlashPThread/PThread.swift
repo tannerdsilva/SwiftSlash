@@ -41,6 +41,7 @@ extension PThreadWork {
 		let retainedValue = Unmanaged.passRetained(Contained(result)).toOpaque()
 		try! future.setSuccess(retainedValue)		
 	}
+	// builds the strictly typed future with deallocator function that the pthread worker will use.
 	fileprivate static func buildReturnFuture() -> Future<UnsafeMutableRawPointer, Never> {
 		return Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
 			_ = Unmanaged<Contained<Result<ReturnType, ThrowType>>>.fromOpaque(ptr).takeRetainedValue()
@@ -154,20 +155,20 @@ public final class Running<W> where W:PThreadWork {
 
 	/// cancels the running pthread. it will exit when it reaches the next pthread cancellation point.
 	/// - returns: true if the pthread was successfully set to cancelled, false if the pthread was not successfully canceled.
-	@discardableResult public borrowing func cancel() -> Bool {
+	public borrowing func cancel() throws(CancellationError) {
 		guard pthread_cancel(ptp) == 0 else {
-			return false
+			throw CancellationError()
 		}
-		return true
 	}
 
 	deinit {
 		// cancel the pthread if it is still running.
-		_ = cancel()
+		do { try cancel() } catch {}
 		// join the pthread
 		guard pthread_join(ptp, nil) == 0 else {
 			fatalError("SwiftSlashPThread: pthread_join failed. This is a critical error. \(#file):\(#line)")
 		}
+		// release our strong reference to 
 		_ = Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFuture).takeRetainedValue()
 	}
 }
@@ -219,9 +220,9 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async thr
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
 fileprivate let _run_alloc:@convention(c) (__cswiftslash_ptr_t) -> __cswiftslash_ptr_t = { csPtr in
-	let setup = UnsafeMutablePointer<Workspace>.allocate(capacity:1)
-	setup.initialize(to:Workspace(csPtr.assumingMemoryBound(to:Setup.self).pointee))
-	return UnsafeMutableRawPointer(setup)
+	let ws = UnsafeMutablePointer<Workspace>.allocate(capacity:1)
+	ws.initialize(to:Workspace(csPtr.assumingMemoryBound(to:Setup.self).pointee))
+	return UnsafeMutableRawPointer(ws)
 }
 // deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
 fileprivate let _run_dealloc:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in

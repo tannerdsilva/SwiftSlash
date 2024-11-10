@@ -24,14 +24,14 @@ __cswiftslash_atomic_uint8_t __cswiftslash_auint8_init(
 uint8_t __cswiftslash_auint8_load(
 	__cswiftslash_atomic_uint8_t *_Nonnull _
 ) {
-	return atomic_load(&_->_);
+	return atomic_load_explicit(&_->_, memory_order_acquire);
 }
 
 void __cswiftslash_auint8_store(
 	__cswiftslash_atomic_uint8_t *_Nonnull _,
 	const uint8_t __
 ) {
-	atomic_store(&_->_, __);
+	atomic_store_explicit(&_->_, __, memory_order_release);
 }
 
 bool __cswiftslash_auint8_compare_exchange_weak(
@@ -39,12 +39,12 @@ bool __cswiftslash_auint8_compare_exchange_weak(
 	uint8_t *_Nonnull __,
 	const uint8_t ___
 ) {
-	return atomic_compare_exchange_weak(&_->_, __, ___);
+	return atomic_compare_exchange_weak_explicit(&_->_, __, ___, memory_order_acq_rel, memory_order_acquire);
 }
 
 uint8_t __cswiftslash_auint8_increment(
 	__cswiftslash_atomic_uint8_t *_Nonnull _,
 	const uint8_t __
 ) {
-	return atomic_fetch_add(&_->_, __);
+	return atomic_fetch_add_explicit(&_->_, __, memory_order_acq_rel);
 }

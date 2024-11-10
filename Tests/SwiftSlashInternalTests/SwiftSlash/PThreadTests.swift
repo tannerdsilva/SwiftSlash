@@ -7,17 +7,24 @@ import __cswiftslash_threads
 import func Foundation.sleep
 
 // a declaration of the pthread worker that will be used to test the pthreads.
-fileprivate struct PThreadWorkerTesterThing<A:Sendable>:PThreadWork {
+fileprivate struct SimpleReturnWorker<A:Sendable>:PThreadWork {
 	// the argument type of the pthread worker
 	typealias Argument = A
+	
 	// the return type of the pthread worker
 	typealias ReturnType = A
-	private let inputArgument:Argument
-	internal init(_ a:Argument) {
-		self.inputArgument = a
+	
+	// the input argument for the worker 
+	private let ia:Argument
+	
+	// initialize the worker thing with a given argument value
+	internal init(_ a:consuming Argument) {
+		ia = a
 	}
+	
+	// the pthread work that needs to be executed
 	fileprivate mutating func pthreadWork() throws -> A {
-		return inputArgument
+		return ia
 	}
 }
 
@@ -30,15 +37,7 @@ extension SwiftSlashTests {
 		func testPthreadReturn() async throws {
 			for _ in 0..<512 {
 				let randomString = String.random(length:56)
-				let myString:String?
-				switch try await PThreadWorkerTesterThing<String>.run(randomString) {
-				case .success(let s):
-					myString = s
-				case .failure(let e):
-					throw e
-				case .none:
-					myString = nil
-				}
+				let myString:String? = try await SimpleReturnWorker<String?>.run(randomString)!.get()
 				#expect(randomString == myString)
 			}
 		}
@@ -142,7 +141,7 @@ extension SwiftSlashTests {
 				await launchFuture.result()!.get()
 
 				// cancel the thread
-				runTask.cancel()
+				try runTask.cancel()
 
 				// set the cancellation future to success.
 				try cancelFuture.setSuccess(())

@@ -5,6 +5,7 @@ public struct GenericPThread<R:Sendable>:PThreadWork {
 
 	/// the argument type for the function to run.
 	public typealias Argument = @Sendable () throws -> R
+	
 	/// the return type for the function to run.
 	public typealias ReturnType = R
 

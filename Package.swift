@@ -238,7 +238,7 @@ fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets +
 let package = Package(
 	name:"SwiftSlash",
 	platforms:[
-		.macOS(.v13) // NO SANDBOXING
+		.macOS(.v15) // NO SANDBOXING
 	],
 	products:[
 		.library(
