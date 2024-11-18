@@ -16,6 +16,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /// forward declaration of the fifo link structure. represents a single link (a single element) in a chain of n number of elements. a foundational structure for the fifo mechanism.
 struct __cswiftslash_fifo_link;

@@ -18,7 +18,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 #if defined(__APPLE__)
 typedef pthread_t _Nonnull __cswiftslash_threads_t_type;
 #else
-typedef pthread_t __cswiftslash_thread_t_type;
+typedef pthread_t __cswiftslash_threads_t_type;
 #endif
 
 /// a type that describes a function that will be run as the main function of a pthread.
