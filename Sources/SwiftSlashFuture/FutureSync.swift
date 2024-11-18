@@ -1,3 +1,5 @@
+import __cswiftslash_future
+
 // internal tool to help extract the result from the future in a synchronous manner.
 internal struct SyncResult:~Copyable {
 	private var result:SuccessFailureCancel? = nil

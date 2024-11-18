@@ -92,15 +92,11 @@ typedef struct __cswiftslash_fifo_linkpair {
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
 typedef __cswiftslash_fifo_linkpair_t*_Nonnull __cswiftslash_fifo_linkpair_ptr_t;
 
-/// initializes a new mutex for use with a fifo chain. this is a convenience function that wraps the pthread_mutex_init function.
-/// @return a newly initialized mutex that can be passed directly into the fifo initializer.
-pthread_mutex_t __cswiftslash_fifo_mutex_new();
-
 /// initializes a new fifo pair. if this fifo is used as an independent concurrency unit in your application, a mutex should be initialized (using `_cswiftslash_fifo_mutex_new`) and passed in here. any valid non-null value passed here will automatically be destroyed at the apropriate time (pass and forget). a mutex is not required if the fifo is used in a single-threaded context.
-/// @param _ optional mutex to be used for synchronization of the fifo chain. NULL if no internal synchronization is desired for the instance.
+/// @param _ boolean value indicating if the fifo should be initialized with its own private mutex for synchronization. false can be passed here when the fifo is used in a single-threaded context.
 /// @return a heap pointer to a newly initialized `_cswiftslash_fifo_linkpair_t`. NOTE: this pointer must be closed with `__cswiftslash_fifo_close` to free all associated memory.
 __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
-	pthread_mutex_t *_Nullable _
+	const bool _
 );
 
 /// sets the maximum number of elements that can be buffered by the fifo if there is not a consumer immediately available.

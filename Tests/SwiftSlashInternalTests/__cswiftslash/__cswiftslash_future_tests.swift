@@ -13,7 +13,7 @@ import Testing
 
 @testable import __cswiftslash_future
 
-import __cswiftslash_auint8
+import Synchronization
 
 extension Tag {
 	@Tag internal static var __cswiftslash_future:Self
@@ -99,7 +99,7 @@ extension __cswiftslash_tests {
 				private var istate = pthread_mutex_t()
 
 				private var mutex:pthread_mutex_t = pthread_mutex_t()
-				private var mlocked:__cswiftslash_atomic_uint8_t
+				private var isMutexLocked:UnsafeMutablePointer<Atomic<Bool>>
 				
 				private var resultHandler:Optional<(UInt8, UnsafeMutableRawPointer?) -> Void>
 				private var errorHandler:Optional<(UInt8, UnsafeMutableRawPointer?) -> Void>
@@ -109,7 +109,8 @@ extension __cswiftslash_tests {
 					resultHandler = rh
 					errorHandler = eh
 					cancelHandler = ch
-					mlocked = __cswiftslash_auint8_init(1)
+					isMutexLocked = UnsafeMutablePointer<Atomic<Bool>>.allocate(capacity:1)
+					isMutexLocked.initialize(to:Atomic<Bool>(false))
 					pthread_mutex_init(&mutex, nil)
 					pthread_mutex_lock(&mutex)
 					pthread_mutex_init(&istate, nil)
@@ -118,8 +119,7 @@ extension __cswiftslash_tests {
 				fileprivate func setResult(type:UInt8, pointer result:__cswiftslash_optr_t?) {
 					pthread_mutex_lock(&istate)
 					resultHandler?(type, result)
-					var expectedLockVal:UInt8 = 1
-					if __cswiftslash_auint8_compare_exchange_weak(&mlocked, &expectedLockVal, 0) {
+					if isMutexLocked.pointee.compareExchange(expected: false, desired: true, successOrdering: .acquiring, failureOrdering: .relaxed).exchanged == true {
 						pthread_mutex_unlock(&mutex)
 					}
 					expectedPID = pthread_self()
@@ -132,8 +132,7 @@ extension __cswiftslash_tests {
 				fileprivate func setError(type:UInt8, pointer error:__cswiftslash_optr_t?) {
 					pthread_mutex_lock(&istate)
 					errorHandler?(type, error)
-					var expectedLockVal:UInt8 = 1
-					if __cswiftslash_auint8_compare_exchange_weak(&mlocked, &expectedLockVal, 0) {
+					if isMutexLocked.pointee.compareExchange(expected: false, desired: true, successOrdering: .acquiring, failureOrdering: .relaxed).exchanged == true {
 						pthread_mutex_unlock(&mutex)
 					}
 					expectedPID = pthread_self()
@@ -146,8 +145,7 @@ extension __cswiftslash_tests {
 				fileprivate func setCancel(contextPtr:UnsafeMutableRawPointer?) {
 					pthread_mutex_lock(&istate)
 					cancelHandler?()
-					var expectedLockVal:UInt8 = 1
-					if __cswiftslash_auint8_compare_exchange_weak(&mlocked, &expectedLockVal, 0) {
+					if isMutexLocked.pointee.compareExchange(expected: false, desired: true, successOrdering: .acquiring, failureOrdering: .relaxed).exchanged == true {
 						pthread_mutex_unlock(&mutex)
 					}
 					expectedPID = pthread_self()
@@ -164,7 +162,7 @@ extension __cswiftslash_tests {
 						pthread_mutex_lock(&mutex)
 						pthread_mutex_lock(&istate)
 						pthread_mutex_unlock(&mutex)
-						__cswiftslash_auint8_store(&mlocked, 0)
+						isMutexLocked.pointee.store(false, ordering:.releasing)
 					}
 					let ret = expectedPID!
 					pthread_mutex_unlock(&istate)
@@ -173,11 +171,13 @@ extension __cswiftslash_tests {
 
 				deinit {
 					pthread_mutex_lock(&istate)
-					if __cswiftslash_auint8_load(&mlocked) == 1 {
+					if isMutexLocked.pointee.load(ordering:.sequentiallyConsistent) == true {
 						pthread_mutex_unlock(&mutex)
 					}
 					pthread_mutex_unlock(&istate)
 					pthread_mutex_destroy(&mutex)
+					isMutexLocked.deinitialize(count:1)
+					isMutexLocked.deallocate()
 				}
 			}
 

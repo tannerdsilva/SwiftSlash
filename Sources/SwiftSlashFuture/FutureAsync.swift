@@ -1,105 +1,115 @@
 import __cswiftslash_future
-import __cswiftslash_auint8
+import Synchronization
+import SwiftSlashContained
 
 /// a reference type that is used to bridge the c future result handlers to strict swift types. c functions cannot be declared or utilized within the context of generic types, so types like this are used to help bridge the C functions into strict Swift typing.
+/// - NOTE: this type is designed with the HARD REQUIREMENT that with each initialization, a corresponding result must be set into each instance before complete dereferencing.
 internal final class AsyncResult:@unchecked Sendable {
-	internal typealias UniHandler = (SuccessFailureCancel, UnsafeMutableRawPointer?) -> Void
+	internal typealias UniHandler = @Sendable (SuccessFailureCancel, UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
 
-	private let memorySpace:UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>
-	private let storage:UnsafeMutableRawPointer?
+	private struct Memory:~Copyable {
+		// used as a guard to ensure that the result is only set once.
+		internal let hasResult:Atomic<Bool> = .init(false)
+		// the unihandler returns a pointer that later retrieved. this lock guards the reading and writing of that returned pointer.
+		internal var uniHandlerReturnValueLock:pthread_mutex_t = pthread_mutex_t()
+		// this lock is used to block a single waiter until the intevitable result is set.
+		internal var resultWaiterLock:pthread_mutex_t = pthread_mutex_t()
+		// the pointer that is returned from the unihandler. this is the pointer that is returned to the caller.
+		internal let userStoragePointer:Atomic<UnsafeMutableRawPointer?>
 
-	private let internalStateMutex:UnsafeMutablePointer<pthread_mutex_t>
-	
-	private let resultMutex:UnsafeMutablePointer<pthread_mutex_t>
-	private let isResultMutexLocked:UnsafeMutablePointer<__cswiftslash_atomic_uint8_t>
+		internal var unihandler:UniHandler?
 
-	private let uniHandler:UnsafeMutablePointer<UniHandler?>
+		internal init(_ usrPtr:UnsafeMutableRawPointer?, _ handler:@escaping UniHandler) {
+			pthread_mutex_init(&uniHandlerReturnValueLock, nil)
+			pthread_mutex_init(&resultWaiterLock, nil)
+			// there is no result yet so anyone coming in looking for a result needs to block immediately.
+			// this AsyncResult is designed with the HARD REQUIREMENT that with each initialization, a corresponding result must be set into each instance before complete dereferencing. as such, we can trust that this lock will be balanced at result time.
+			pthread_mutex_lock(&resultWaiterLock)
+			unihandler = handler
+			userStoragePointer = .init(usrPtr)
+		}
+		internal mutating func fireUniHandler(_ result:SuccessFailureCancel) -> UnsafeMutableRawPointer? {
+			defer {
+				unihandler = nil
+			}
+			return unihandler!(result, userStoragePointer.load(ordering:.acquiring))
+		}
+		internal func tryAssignResult() -> Bool {
+			return hasResult.compareExchange(expected:false, desired:true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged
+		}
+		internal mutating func lockUHReturnValueLock() {
+			pthread_mutex_lock(&uniHandlerReturnValueLock)
+		}
+		internal mutating func unlockUHReturnValueLock() {
+			pthread_mutex_unlock(&uniHandlerReturnValueLock)
+		}
+		internal mutating func storeUHReturnValue(_ pointer:UnsafeMutableRawPointer?) {
+			userStoragePointer.store(pointer, ordering:.releasing)
+			pthread_mutex_unlock(&resultWaiterLock)
+		}
+		internal mutating func waitForResult() -> UnsafeMutableRawPointer? {
+			pthread_mutex_lock(&resultWaiterLock)
+			pthread_mutex_lock(&uniHandlerReturnValueLock)
+			pthread_mutex_unlock(&resultWaiterLock)
+			let rv = userStoragePointer.load(ordering:.acquiring)
+			pthread_mutex_unlock(&uniHandlerReturnValueLock)
+			return rv
+		}
+		deinit {
+			guard hasResult.load(ordering:.acquiring) == true else {
+				fatalError("invalid state for future result setting. \(#file):\(#line)")
+			}
 
-	internal init(storage strPtr:UnsafeMutableRawPointer?, handle:consuming @escaping UniHandler) {
-		memorySpace = UnsafeMutablePointer<(pthread_mutex_t, pthread_mutex_t, __cswiftslash_atomic_uint8_t, UniHandler?)>.allocate(capacity:1)
-		memorySpace.initialize(to:(pthread_mutex_t(), pthread_mutex_t(), __cswiftslash_auint8_init(1), handle))
-		pthread_mutex_init(&memorySpace.pointee.0, nil)
-		pthread_mutex_init(&memorySpace.pointee.1, nil)
-		pthread_mutex_lock(&memorySpace.pointee.1)
-		storage = strPtr
-		internalStateMutex = memorySpace.pointer(to:\.0)!
-		resultMutex = memorySpace.pointer(to:\.1)!
-		isResultMutexLocked = memorySpace.pointer(to:\.2)!
-		uniHandler = memorySpace.pointer(to:\.3)!
+			var mutex = uniHandlerReturnValueLock
+			pthread_mutex_destroy(&mutex)
+			mutex = resultWaiterLock
+			pthread_mutex_destroy(&mutex)
+		}
 	}
-	internal borrowing func setResult(type:consuming UInt8, pointer:consuming UnsafeMutableRawPointer?) {
-		pthread_mutex_lock(internalStateMutex)
-		defer {
-			pthread_mutex_unlock(internalStateMutex)
-		}
 
-		var expected:UInt8 = 1
-		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
-			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.success(type, pointer), storage)
-			uniHandler.pointee = nil
+	private let workingMemory:UnsafeMutablePointer<Memory> = .allocate(capacity:1)
+
+	internal init(ptr:UnsafeMutableRawPointer?, handle:consuming @escaping UniHandler) {
+		workingMemory.initialize(to:.init(ptr, handle))
+	}
+
+	internal borrowing func setResult(type:consuming UInt8, pointer:consuming UnsafeMutableRawPointer?) {
+		guard workingMemory.pointee.tryAssignResult() == true else {
+			fatalError("invalid state for future result setting. \(#file):\(#line)")
 		}
+		workingMemory.pointee.lockUHReturnValueLock()
+		let p = workingMemory.pointee.fireUniHandler(.success(type, pointer))
+		workingMemory.pointee.storeUHReturnValue(p)
+		workingMemory.pointee.unlockUHReturnValueLock()
 	}
 	internal borrowing func setError(type:consuming UInt8, pointer:consuming UnsafeMutableRawPointer?) {
-		pthread_mutex_lock(internalStateMutex)
-		defer {
-			pthread_mutex_unlock(internalStateMutex)
+		guard workingMemory.pointee.tryAssignResult() == true else {
+			fatalError("invalid state for future result setting. \(#file):\(#line)")
 		}
-
-		var expected:UInt8 = 1
-		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
-			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.failure(type, pointer), storage)
-			uniHandler.pointee = nil
-		}
+		workingMemory.pointee.lockUHReturnValueLock()
+		let p = workingMemory.pointee.fireUniHandler(.failure(type, pointer))
+		workingMemory.pointee.storeUHReturnValue(p)
+		workingMemory.pointee.unlockUHReturnValueLock()
 	}
 	internal borrowing func setCancel() {
-		pthread_mutex_lock(internalStateMutex)
-		defer {
-			pthread_mutex_unlock(internalStateMutex)
+		guard workingMemory.pointee.tryAssignResult() == true else {
+			fatalError("invalid state for future result setting. \(#file):\(#line)")
 		}
-
-		var expected:UInt8 = 1
-		if __cswiftslash_auint8_compare_exchange_weak(isResultMutexLocked, &expected, 0) {
-			pthread_mutex_unlock(resultMutex)
-			uniHandler.pointee!(.cancel, storage)
-			uniHandler.pointee = nil
-		}
+		workingMemory.pointee.lockUHReturnValueLock()
+		let p = workingMemory.pointee.fireUniHandler(.cancel)
+		workingMemory.pointee.storeUHReturnValue(p)
+		workingMemory.pointee.unlockUHReturnValueLock()
 	}
-	internal borrowing func wait<T>(loadingAs:T.Type) async -> T {
-		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<T, Never>) in
-			pthread_mutex_lock(resultMutex)
-			pthread_mutex_lock(internalStateMutex)
-			pthread_mutex_unlock(resultMutex)
-			continuation.resume(returning:storage!.assumingMemoryBound(to:T.self).pointee)
-			pthread_mutex_unlock(internalStateMutex)
-		})
-	}
-	internal borrowing func wait(loadingAs:Void.Type = Void.self) async {
-		await withUnsafeContinuation({ (continuation:UnsafeContinuation<Void, Never>) in
-			pthread_mutex_lock(resultMutex)
-			pthread_mutex_lock(internalStateMutex)
-			pthread_mutex_unlock(resultMutex)
-			pthread_mutex_unlock(internalStateMutex)
-			continuation.resume()
-		})
+	internal borrowing func wait() -> UnsafeMutableRawPointer? {
+		return workingMemory.pointee.waitForResult()
 	}
 
 	deinit {
-		
-		// destroy and deallocate internal state mutex
-		pthread_mutex_destroy(internalStateMutex)
-
-		// unlock the result mutex if it is still locked
-		if __cswiftslash_auint8_load(isResultMutexLocked) == 1 {
-			pthread_mutex_unlock(resultMutex)
+		guard workingMemory.pointee.hasResult.load(ordering:.acquiring) == true else {
+			fatalError("invalid state for future result setting. \(#file):\(#line)")
 		}
 
-		// destroy and deallocate the result mutex
-		pthread_mutex_destroy(resultMutex)
-
-		// deallocate the unified memory space for the async result
-		memorySpace.deinitialize(count:1)
-		memorySpace.deallocate()
+		workingMemory.deinitialize(count:1)
+		workingMemory.deallocate()
 	}
 }

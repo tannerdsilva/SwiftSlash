@@ -25,9 +25,9 @@ pthread_mutex_t __cswiftslash_fifo_mutex_new() {
 }
 
 __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
-	pthread_mutex_t *_Nullable _
+	const bool _
 ) {
-	if (_ != NULL) {
+	if (_ == true) {
 
 		// initialize WITH a state mutex.
 		__cswiftslash_fifo_linkpair_t __0 = {
@@ -36,15 +36,15 @@ __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
 			.____ec = 0,
 			.____ic = false,
 			.____hm = true,
-			.____m = *_,
 			.____iwl = false,
 			.____hme = false,
 			.____me = 0
 		};
+		pthread_mutex_init(&__0.____m, NULL);
 		pthread_mutex_init(&__0.____wm, NULL);
 
 		void *__1 = malloc(sizeof(__cswiftslash_fifo_linkpair_t));
-		memcpy(__1, &_, sizeof(__cswiftslash_fifo_linkpair_t));
+		memcpy(__1, &__0, sizeof(__cswiftslash_fifo_linkpair_t));
 
 		return __1;
 		
@@ -65,7 +65,6 @@ __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
 
 		void *__1 = malloc(sizeof(__cswiftslash_fifo_linkpair_t));
 		memcpy(__1, &__0, sizeof(__cswiftslash_fifo_linkpair_t));
-
 		return __1;
 	}
 }
@@ -75,7 +74,7 @@ bool __cswiftslash_fifo_set_max_elements(
 	const size_t __
 ) {
 	bool __0 = false;
-	if (_->____hm) {
+	if (_->____hm == true) {
 		pthread_mutex_lock(&_->____m);
 	}
 	if (atomic_load_explicit(&_->____ic, memory_order_acquire) == true) {
@@ -88,7 +87,7 @@ bool __cswiftslash_fifo_set_max_elements(
 	atomic_store_explicit(&_->____me, __, memory_order_release);
 	__0 = true;
 	returnTime:
-		if (_->____hm) {
+		if (_->____hm == true) {
 			pthread_mutex_unlock(&_->____m);
 		}
 		return __0;
@@ -115,7 +114,7 @@ __cswiftslash_optr_t __cswiftslash_fifo_close(
 			__0 = __1;
 		}
 	}
-	if (_->____hm) {
+	if (_->____hm == true) {
 		pthread_mutex_destroy(&_->____m);
 	}
 	if (atomic_load_explicit(&_->____iwl, memory_order_acquire) == true) {
@@ -137,7 +136,7 @@ bool __cswiftslash_fifo_pass_cap(
 	const __cswiftslash_optr_t __
 ) {
 	bool __0 = false;
-	if (_->____hm) {
+	if (_->____hm == true) {
 		pthread_mutex_lock(&_->____m);
 	}
 	bool __1 = false;
@@ -154,7 +153,7 @@ bool __cswiftslash_fifo_pass_cap(
 		goto returnTime;
 	}
 	returnTime:
-		if (_->____hm) {
+		if (_->____hm == true) {
 			pthread_mutex_unlock(&_->____m);
 		}
 		return __0;
@@ -188,7 +187,7 @@ int8_t __cswiftslash_fifo_pass(
 	const __cswiftslash_ptr_t __
 ) {
 	int8_t __0 = -1;
-	if (_->____hm) {
+	if (_->____hm == true) {
 		pthread_mutex_lock(&_->____m);
 	}
 	if (atomic_load_explicit(&_->____ic, memory_order_acquire) == false) {
@@ -220,7 +219,7 @@ int8_t __cswiftslash_fifo_pass(
 		goto returnTime;
 	}
 	returnTime:
-		if (_->____hm) {
+		if (_->____hm == true) {
 			pthread_mutex_unlock(&_->____m);
 		}
 		return __0;
@@ -256,7 +255,7 @@ __cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_nonblocking(
 	const __cswiftslash_fifo_linkpair_ptr_t _,
 	__cswiftslash_optr_t *_Nonnull __
 ) {
-	if (_->____hm) {
+	if (_->____hm == true) {
 		pthread_mutex_lock(&_->____m);
 	}
 	__cswiftslash_fifo_consume_result_t __0;
@@ -279,7 +278,7 @@ __cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_nonblocking(
 		}
 	}
 	returnTime:
-		if (_->____hm) {
+		if (_->____hm == true) {
 			pthread_mutex_unlock(&_->____m);
 		}
 		return __0;
@@ -291,7 +290,7 @@ __cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_blocking(
 ) {
 	bool __0 = false;
 	loadAgain:
-		if (_->____hm) {
+		if (_->____hm == true) {
 			pthread_mutex_lock(&_->____m);
 		}
 		if (__0 == true) {

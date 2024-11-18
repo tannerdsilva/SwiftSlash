@@ -2,11 +2,6 @@
 import PackageDescription
 
 fileprivate let cswiftslashTargets:[Target] = [
-	// atomic uint8_t
-	.target(
-		name:"__cswiftslash_auint8",
-		publicHeadersPath:"."
-	),
 	// event trigger
 	.target(
 		name:"__cswiftslash_eventtrigger",
@@ -73,7 +68,6 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashFuture",
 		dependencies:[
 			"__cswiftslash_future",
-			"__cswiftslash_auint8",
 			"SwiftSlashContained"
 		]
 	),
@@ -99,7 +93,6 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashPThread",
 		dependencies:[
 			"__cswiftslash_threads",
-			"__cswiftslash_auint8",
 			"SwiftSlashContained",
 			"SwiftSlashFuture"
 		]
@@ -109,7 +102,7 @@ fileprivate let swiftTargets:[Target] = [
 fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
-		"__cswiftslash_auint8",
+		// "__cswiftslash_auint8",
 		"__cswiftslash_fifo",
 		"__cswiftslash_future",
 		"__cswiftslash_types",
