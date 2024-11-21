@@ -18,6 +18,18 @@ copyright (c) tanner silva 2024. all rights reserved.
 #include <stdint.h>
 #include <stdbool.h>
 
+// status values.
+typedef enum __cswiftslash_future_status_t {
+	// pending status (future not fufilled).
+	__CSWIFTSLASH_FUTURE_STATUS_PEND = 0,
+	// result status (future fufilled normally).
+	__CSWIFTSLASH_FUTURE_STATUS_RESULT = 1,
+	// thrown status (future fufilled with an error).
+	__CSWIFTSLASH_FUTURE_STATUS_THROW = 2,
+	// cancel status (future was not fufilled and will NOT fufill in the future).
+	__CSWIFTSLASH_FUTURE_STATUS_CANCEL = 3,
+} __cswiftslash_future_status_t;
+
 // handler types -----
 /// result handler function.
 /// @param _ result type field.
@@ -79,6 +91,18 @@ void __cswiftslash_future_t_destroy(
 	const __cswiftslash_optr_t __,
 	const _Nonnull __cswiftslash_future_result_val_handler_f ___,
 	const _Nonnull __cswiftslash_future_result_err_handler_f ____
+);
+
+
+/// @brief for use only in situations where the user can guarantee that the future is already complete. this function eliminates a lot of the overhead associated with wait_sync and is optimized for immediate completion.
+/// @param _ the future to wait for.
+/// @param __ pointer to store the result type value.
+/// @param ___ pointer to store the result value.
+/// @return the status of the future.
+__cswiftslash_future_status_t __cswiftslash_future_t_wait_immediate(
+	const __cswiftslash_future_ptr_t _,
+	uint8_t *_Nonnull __,
+	__cswiftslash_optr_t *_Nonnull ___
 );
 
 /// block the calling thread until the future is complete.

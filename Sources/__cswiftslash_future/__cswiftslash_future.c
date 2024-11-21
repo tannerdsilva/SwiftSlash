@@ -22,18 +22,6 @@ copyright (c) tanner silva 2024. all rights reserved.
 #define CLIBSWIFTSLASH_PTRFUTURE_MAXLOOPS_SYNC 1
 #endif
 
-// status values.
-typedef enum future_status {
-	// pending status (future not fufilled).
-	FUTURE_STATUS_PEND = 0,
-	// result status (future fufilled normally).
-	FUTURE_STATUS_RESULT = 1,
-	// thrown status (future fufilled with an error).
-	FUTURE_STATUS_THROW = 2,
-	// cancel status (future was not fufilled and will NOT fufill in the future).
-	FUTURE_STATUS_CANCEL = 3,
-} _cswiftslash_future_status_t;
-
 /// used to represent a thread that is synchronously waiting and blocking for the result of a future.
 typedef struct __cswiftslash_future_wait_t {
 	/// the context pointer that will be transparenly passed to the result handler.
@@ -132,8 +120,8 @@ bool __cswiftslash_future_t_broadcast_cancel(
 	const __cswiftslash_future_ptr_t _
 ) {	
 	pthread_mutex_lock(&_->____m);
-	uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_relaxed) == false) {
+	uint8_t expected_complete = __CSWIFTSLASH_FUTURE_STATUS_PEND;
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, __CSWIFTSLASH_FUTURE_STATUS_CANCEL, memory_order_acq_rel, memory_order_relaxed) == false) {
 		pthread_mutex_unlock(&_->____m);
 		return false;
 	}
@@ -152,7 +140,7 @@ void ____cswiftslash_future_identified_list_close(
 
 __cswiftslash_future_ptr_t __cswiftslash_future_t_init() {
 	__cswiftslash_future_ptr_t __0 = malloc(sizeof(__cswiftslash_future_t));
-	atomic_store_explicit(&__0->____s, FUTURE_STATUS_PEND, memory_order_release);
+	atomic_store_explicit(&__0->____s, __CSWIFTSLASH_FUTURE_STATUS_PEND, memory_order_release);
 	if (pthread_mutex_init(&__0->____m, NULL) != 0) {
 		printf("swiftslash future internal error: couldn't initialize future mutex\n");
 		abort();
@@ -173,13 +161,13 @@ void __cswiftslash_future_t_destroy(
 	pthread_mutex_lock(&_->____m);
 	int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
 	switch (__0) {
-		case FUTURE_STATUS_PEND:
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 			__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL);
 			break;
-		case FUTURE_STATUS_RESULT:
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
 			___(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
 			break;
-		case FUTURE_STATUS_THROW:
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
 			____(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
 			break;
 		default:
@@ -192,6 +180,31 @@ void __cswiftslash_future_t_destroy(
 	pthread_mutex_unlock(&_->____m);
 	pthread_mutex_destroy(&_->____m);
 	free(_);
+}
+
+__cswiftslash_future_status_t __cswiftslash_future_t_wait_immediate(
+	const __cswiftslash_future_ptr_t _,
+	uint8_t *_Nonnull __,
+	__cswiftslash_optr_t *_Nonnull ___
+) {
+	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_seq_cst);
+	switch (__0) {
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
+			return __CSWIFTSLASH_FUTURE_STATUS_PEND;
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+			*__ = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
+			*___ = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
+			return __CSWIFTSLASH_FUTURE_STATUS_RESULT;
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+			*__ = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
+			*___ = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
+			return __CSWIFTSLASH_FUTURE_STATUS_THROW;
+		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
+			return __CSWIFTSLASH_FUTURE_STATUS_CANCEL;
+		default:
+			printf("swiftslash future internal error: invalid future status\n");
+			abort();
+	}
 }
 
 void __cswiftslash_future_t_wait_sync(
@@ -210,8 +223,8 @@ void __cswiftslash_future_t_wait_sync(
 	uint8_t __2;
 	__cswiftslash_optr_t __3;
 	checkStat:
-		switch (atomic_load_explicit(&_->____s, memory_order_acquire)) {
-			case FUTURE_STATUS_PEND:
+		switch (atomic_load_explicit(&_->____s, memory_order_seq_cst)) {
+			case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 				__cswiftslash_identified_list_insert(_->____wi, __1);
 				#ifdef DEBUG
 				if (__0 >= CLIBSWIFTSLASH_PTRFUTURE_MAXLOOPS_SYNC) {
@@ -220,17 +233,17 @@ void __cswiftslash_future_t_wait_sync(
 				}
 				#endif
 				goto blockUntilDone;
-			case FUTURE_STATUS_RESULT:
-				__2 = atomic_load_explicit(&_->____rt, memory_order_acquire);
-				__3 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+			case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+				__2 = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
+				__3 = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
 				___(__2, __3, __);
 				goto returnTime;	
-			case FUTURE_STATUS_THROW:
-				__2 = atomic_load_explicit(&_->____rt, memory_order_acquire);
-				__3 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+			case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+				__2 = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
+				__3 = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
 				____(__2, __3, __);
 				goto returnTime;
-			case FUTURE_STATUS_CANCEL:
+			case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
 				_____(__);
 				goto returnTime;
 			default:
@@ -267,20 +280,20 @@ uint64_t __cswiftslash_future_t_wait_async(
 	__cswiftslash_optr_t __4;
 	checkStat:
 	switch (__1) {
-		case FUTURE_STATUS_PEND:
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 			__2 = __cswiftslash_identified_list_insert(_->____wi, (__cswiftslash_ptr_t)__0);
 			goto returnTimeWaiting;
-		case FUTURE_STATUS_RESULT:
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
 			__3 = atomic_load_explicit(&_->____rt, memory_order_acquire);
 			__4 = atomic_load_explicit(&_->____rv, memory_order_acquire);
 			___(__3, __4, __);
 			goto returnTimeNoWait;
-		case FUTURE_STATUS_THROW:
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
 			__3 = atomic_load_explicit(&_->____rt, memory_order_acquire);
 			__4 = atomic_load_explicit(&_->____rv, memory_order_acquire);
 			____(__3, __4, __);
 			goto returnTimeNoWait;
-		case FUTURE_STATUS_CANCEL:
+		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
 			_____(NULL);
 			goto returnTimeNoWait;
 		default:
@@ -308,13 +321,13 @@ bool __cswiftslash_future_t_wait_async_invalidate(
 	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
 	__cswiftslash_optr_t __1;
 	switch (__0) {
-		case FUTURE_STATUS_PEND:
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 			goto cancelWaiter;
-		case FUTURE_STATUS_RESULT:
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
 			goto returnFalse;
-		case FUTURE_STATUS_THROW:
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
 			goto returnFalse;
-		case FUTURE_STATUS_CANCEL:
+		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
 			goto returnFalse;
 		default:
 			printf("swiftslash future internal error: invalid future status\n");
@@ -366,8 +379,8 @@ bool __cswiftslash_future_t_broadcast_res_val(
 	const __cswiftslash_optr_t ___
 ) {
 	pthread_mutex_lock(&_->____m);
-    uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_RESULT, memory_order_acq_rel, memory_order_relaxed) == false) {
+    uint8_t expected_complete = __CSWIFTSLASH_FUTURE_STATUS_PEND;
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, __CSWIFTSLASH_FUTURE_STATUS_RESULT, memory_order_acq_rel, memory_order_relaxed) == false) {
 		pthread_mutex_unlock(&_->____m);
 		return false;
 	}
@@ -388,8 +401,8 @@ bool __cswiftslash_future_t_broadcast_res_throw(
 	const __cswiftslash_optr_t ___
 ) {
 	pthread_mutex_lock(&_->____m);
-	uint8_t expected_complete = FUTURE_STATUS_PEND;
-	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, FUTURE_STATUS_THROW, memory_order_acq_rel, memory_order_relaxed) == false) {
+	uint8_t expected_complete = __CSWIFTSLASH_FUTURE_STATUS_PEND;
+	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, __CSWIFTSLASH_FUTURE_STATUS_THROW, memory_order_acq_rel, memory_order_relaxed) == false) {
 		pthread_mutex_unlock(&_->____m);
 		return false;
 	}

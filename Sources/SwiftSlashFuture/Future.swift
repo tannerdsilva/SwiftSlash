@@ -124,17 +124,15 @@ extension Future {
 	/// - returns: the id of the waiter that was created. this id can be used to cancel the waiter. nil is returned if the callback was fired immediately from the current thread.
 	@discardableResult public func whenResult(_ callback:consuming @escaping @Sendable (Result<R, F>?) -> Void) -> UInt64? {
 		// define the async result here so that it will remain in memory for at least the duration of the function call.
-		let asr = AsyncResult(ptr:nil, handle: { [cb = callback] res, _ in
+		let asr = AsyncResult(handle: { [cb = callback] res in
 			switch res {
 				case .success(_, let res):
 					cb(.success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value()))
-					return nil
 				case .failure(_, let res):
 					cb(.failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value()))
 				case .cancel:
 					cb(nil)
 			}
-			return nil
 		})
 
 		// copy a reference of the async result handler to new heap space so that the c code can interact with it and dereference it as needed.
@@ -167,45 +165,55 @@ extension Future {
 		}
 
 		// initialize the async tool that will allow us to wait for the result and also cancel our waiting if necessary.
-		let asr = AsyncResult(ptr:allocatedMemory, handle: { res, ptr in
-			switch res {
-				case .success(_, let rp):
-					ptr!.assumingMemoryBound(to:Result<R, F>?.self).initialize(to:.success(Unmanaged<Contained<R>>.fromOpaque(rp!).takeUnretainedValue().value()))
-				case .failure(_, let res):
-					ptr!.assumingMemoryBound(to:Result<R, F>?.self).initialize(to:.failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value()))
-				case .cancel:
-					ptr!.assumingMemoryBound(to:Result<R, F>?.self).initialize(to:nil)
-			}
-			return ptr
-		})
+		let asr = AsyncResult()
 
 		// copy a reference of the asyncresult to heap so that the c primitive can interact it and free its reference when it is done.
 		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
 		arPtr.initialize(to:asr)
 
+		func acquireResult() -> Result<R, F>? {
+			var resType:UInt8 = 0
+			var resPtr:UnsafeMutableRawPointer? = nil
+			switch __cswiftslash_future_t_wait_immediate(prim, &resType, &resPtr) {
+				case __CSWIFTSLASH_FUTURE_STATUS_PEND:
+					fatalError("future is in a pending state. this is an internal error. \(#file):\(#line)")
+				case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+					return .success(Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value())
+				case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+					return .failure(Unmanaged<Contained<F>>.fromOpaque(resPtr!).takeUnretainedValue().value())
+				case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
+					return nil
+				default:
+					fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
+			}
+		}
+
 		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
 		if (waiterID != 0) {
 			if E.self == Never.self {
 				// task cancellation is set to never throw, so we can just wait for the result directly from the AsyncResult.
-				let rp = await withUnsafeContinuation({ [a = asr] (cont:UnsafeContinuation<UnsafeMutablePointer<Result<R, F>?>, Never>) in
-					let pt = a.wait()!.assumingMemoryBound(to:Result<R, F>?.self)
-					cont.resume(returning:pt)
+				await withUnsafeContinuation({ [a = asr] (cont:UnsafeContinuation<Void, Never>) in
+					a.exclusiveWait()
+					cont.resume()
 				})
-				return rp.pointee
+
+				return acquireResult()
 			} else {
 				let didCallCancellationHandler:Atomic<Bool> = .init(false)
 
 				// task cancellation is set to throw, so we need to wait for the result within a cancellation handler.
-				let returnResult = await withTaskCancellationHandler { [a = asr] in
-					let rp = await withUnsafeContinuation({ [a] (cont:UnsafeContinuation<UnsafeMutablePointer<Result<R, F>?>, Never>) in
-						let pt = a.wait()!.assumingMemoryBound(to:Result<R, F>?.self)
-						cont.resume(returning:pt)
+				await withTaskCancellationHandler { [a = asr] in
+					await withUnsafeContinuation({ [a] (cont:UnsafeContinuation<Void, Never>) in
+						a.exclusiveWait()
+						cont.resume()
 					})
-					return rp.pointee
 				} onCancel: {
 					didCallCancellationHandler.store(true, ordering:.releasing)
 					__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
 				}
+
+				let returnResult = acquireResult()
+
 				if didCallCancellationHandler.load(ordering:.acquiring) && returnResult == nil {
 					throw throwOnTaskCancellation()
 				} else {
@@ -213,7 +221,7 @@ extension Future {
 				}
 			}
 		} else {
-			return asr.wait()!.assumingMemoryBound(to:Result<R, F>?.self).pointee
+			return acquireResult()
 		}
 	}		
 }
