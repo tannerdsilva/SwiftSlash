@@ -274,7 +274,27 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:consuming [String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> pid_t {
+
+	fileprivate enum SpawnError:UInt8, Swift.Error {
+		/// describes a failure to change the working directory of the child process.
+		case chdirFailure = 0xAA
+		/// describes a failure to clear the environment variables of the child process.
+		case envClearFailure = 0xBA
+		/// describes a failure to set the environment variables of the child process.
+		case envSetFailure = 0xBB
+		/// describes a failure to assign the reading end of a pipe to the child process.
+		case dup2ReaderFailure = 0xCA
+		/// describes a failure to assign the writing end of a pipe to the child process.
+		case dup2WriterFailure = 0xCB
+		/// describes a failure to open the system's directory of file handles.
+		case fhCleanupDirOpenFailure = 0xDA
+		/// describes a failure to close a file handle.
+		case fhCleanupCloseFailure = 0xDB
+		/// describes a failure to close the system's directory of file handles.
+		case fhCleanupDirCloseFailure = 0xDC
+	}
+
+	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:consuming [String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(SpawnError) -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 
@@ -293,36 +313,36 @@ internal struct ProcessLogistics {
 			// change the working directory.
 			guard chdir(wd) == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([0xFF])
+				_ = try? internalNotify.writing.writeFH([SpawnError.chdirFailure.rawValue])
 				internalNotify.writing.closeFileHandle()
-				exit(40)
+				exit(SpawnError.chdirFailure.rawValue)
 			}
 
 			// clear the environment variables inherited from the parent process.
 			guard CurrentProcess.clearEnvironmentVariables() == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([0xFF])
+				_ = try? internalNotify.writing.writeFH([SpawnError.envClearFailure.rawValue])
 				internalNotify.writing.closeFileHandle()
-				exit(41)
+				exit(SpawnError.envClearFailure.correspondingExitCode)
 			}
 
 			// assign the new environment variables.
 			envVarsLoop: for (key, value) in env {
 				guard setenv(key, value, 1) == 0 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([0xFF])
+					_ = try? internalNotify.writing.writeFH([SpawnError.envSetFailure.rawValue])
 					internalNotify.writing.closeFileHandle()
-					exit(42)
+					exit(SpawnError.envSetFailure.rawValue)
 				}
 			}
 
-			// asssign the raeding pipes to the child process.
+			// assign the reading pipes to the child process.
 			readerPipesLoop: for reader in readPipes {
 				guard dup2(reader.value.reading, reader.key) != -1 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([0xFF])
+					_ = try? internalNotify.writing.writeFH([SpawnError.dup2ReaderFailure.rawValue])
 					internalNotify.writing.closeFileHandle()
-					exit(43)
+					exit(SpawnError.dup2ReaderFailure.rawValue)
 				}
 				close(reader.value.reading)
 				close(reader.value.writing)
@@ -332,17 +352,18 @@ internal struct ProcessLogistics {
 			writerPipesLoop: for writer in writePipes {
 				guard dup2(writer.value.writing, writer.key) != -1 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([0xFF])
+					_ = try? internalNotify.writing.writeFH([SpawnError.dup2WriterFailure.rawValue])
 					internalNotify.writing.closeFileHandle()
-					exit(44)
+					exit(SpawnError.dup2WriterFailure.rawValue)
 				}
 				close(writer.value.reading)
 				close(writer.value.writing)
 			}
 
 			// loop to determine which file handles are open and close any that are not intended for this launch.
-			// i dont love that this has to be here but theres no better way to reliably determine which file handles are open, let alone doing so in a remotely cross platform way.
+			// i dont love that this has to be here but theres no better way to reliably determine which file handles are open on the current process, let alone doing so in a remotely cross platform way.
 			// as it sits, I'd much rather have this loop than have no fh cleanup at all. after all, the launches are serialized, so this isn't going to have a tangible impact on performance.
+			// file handles are a huge security concern, so this is an effort worth making.
 			#if os(Linux)
 			let fdPath = "/proc/self/fd"
 			#elseif os(macOS)
@@ -350,9 +371,9 @@ internal struct ProcessLogistics {
 			#endif
 			guard let openFileHandlesPointer = opendir(fdPath) else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([0x1])
+				_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupDirOpenFailure.rawValue])
 				internalNotify.writing.closeFileHandle()
-				exit(50)
+				exit(SpawnError.fhCleanupDirOpenFailure.rawValue)
 			}
 			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
 				withUnsafePointer(to:&curPointer.pointee.d_name) { newPointer in
@@ -360,12 +381,22 @@ internal struct ProcessLogistics {
 					if fdString.contains(".") == false {
 						let curFh = atoi(fdString)
 						if writePipes[curFh] == nil && readPipes[curFh] == nil {
-							close(curFh)
+							guard close(curFh) == 0 else {
+								// pass the error condition to the parent process.
+								_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupCloseFailure.rawValue])
+								internalNotify.writing.closeFileHandle()
+								exit(SpawnError.fhCleanupCloseFailure.rawValue)
+							}
 						}
 					}
 				}
 			}
-			closedir(openFileHandlesPointer)
+			guard closedir(openFileHandlesPointer) == 0 else {
+				// pass the error condition to the parent process.
+				_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupDirCloseFailure.rawValue])
+				internalNotify.writing.closeFileHandle()
+				exit(SpawnError.fhCleanupDirCloseFailure.rawValue)
+			}
 			internalNotify.writing.closeFileHandle()
 			_cswiftslash_execvp(path, arguments)
 			exit(0)
