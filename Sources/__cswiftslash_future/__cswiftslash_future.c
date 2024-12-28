@@ -18,62 +18,52 @@ copyright (c) tanner silva 2024. all rights reserved.
 #include <string.h>
 #include <stdio.h>
 
-#ifdef DEBUG
-#define CLIBSWIFTSLASH_PTRFUTURE_MAXLOOPS_SYNC 1
-#endif
-
-/// used to represent a thread that is synchronously waiting and blocking for the result of a future.
-typedef struct __cswiftslash_future_wait_t {
-	/// the context pointer that will be transparenly passed to the result handler.
-	__cswiftslash_optr_t ____c;
-
-	/// reflects the synchronous state of the future waiter. true for sync, false for async.
-	const bool ____s;
-	
-	/// the mutex that is used to block the thread until the future is complete. this is only used if the waiter is synchronous.
-	pthread_mutex_t ____m;
-
-	/// the result handler to call when the future is complete.
-	__cswiftslash_future_result_val_handler_f ____r;
-	/// the error handler to call when the future is complete.
-	__cswiftslash_future_result_err_handler_f ____e;
-	/// the cancel handler to call when the future is cancelled and a result will never be available.
-	__cswiftslash_future_result_cncl_handler_f ____v;
-} __cswiftslash_future_wait_t;
-
+/// an internal tool to help with the identified list iterator.
 struct ____cswiftslash_future_identified_list_tool {
 	const uint8_t _;
 	const __cswiftslash_optr_t __;
 };
 
-typedef __cswiftslash_future_wait_t *_Nonnull __cswiftslash_future_wait_ptr_t;
+__cswiftslash_future_wait_t __cswiftslash_future_wait_t_init_struct() {
+	__cswiftslash_future_wait_t __0 = {
+		.____c = NULL,
+		.____sy = false,
+		.____r = NULL,
+		.____e = NULL,
+		.____v = NULL,
+		.____ic = false
+	};
+	return __0;
+}
 
 /// create a new synchronous waiter for a future.
 /// @param _ the context pointer to pass to the result handler when it comes time to fire.
 /// @param __ the handler to call when the future is complete with a valid result.
 /// @param ___ the handler to call when the future is complete with an error.
 /// @param ____ the handler to call when the future is cancelled and a result will never be available.
+/// @param _____ a pointer to the memory space that the waiter structure will be initialized into.
 /// @return a pointer to the waiter structure on the heap.
-__cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_sync(
+void ____cswiftslash_future_wait_t_init_sync(
 	__cswiftslash_optr_t _,
 	__cswiftslash_future_result_val_handler_f __,
 	__cswiftslash_future_result_err_handler_f ___,
-	__cswiftslash_future_result_cncl_handler_f ____
+	__cswiftslash_future_result_cncl_handler_f ____,
+	__cswiftslash_future_wait_ptr_t _____
 ) {
-	__cswiftslash_future_wait_t __0 = {
+	const __cswiftslash_future_wait_t __0 = {
 		.____c = _,
-		.____s = true,
-		.____r = __,
-		.____e = ___,
-		.____v = ____
+		.____sy = true,
+		.____r = (__cswiftslash_ptr_t)__,
+		.____e = (__cswiftslash_ptr_t)___,
+		.____v = (__cswiftslash_ptr_t)____,
+		.____ic = false
 	};
-	if (pthread_mutex_init(&__0.____m, NULL) != 0) {
+	memcpy(_____, &__0, sizeof(__cswiftslash_future_wait_t));
+	if (pthread_mutex_init(&_____->____rm, NULL) != 0) {
 		printf("swiftslash future internal error: couldn't initialize future sync_wait mutex\n");
 		abort();
 	}
-	__cswiftslash_future_wait_ptr_t __1 = malloc(sizeof(__cswiftslash_future_wait_t));
-	memcpy(__1, &__0, sizeof(__cswiftslash_future_wait_t));
-	return __1;
+	pthread_mutex_lock(&_____->____rm);
 }
 
 /// create a new asynchronous waiter for a future.
@@ -85,20 +75,26 @@ __cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_sync(
 __cswiftslash_future_wait_ptr_t ____cswiftslash_future_wait_t_init_async(__cswiftslash_optr_t _, __cswiftslash_future_result_val_handler_f __, __cswiftslash_future_result_err_handler_f ___, __cswiftslash_future_result_cncl_handler_f ____) {
 	__cswiftslash_future_wait_t __0 = {
 		.____c = _,
-		.____s = false,
+		.____sy = false,
 		.____r = (__cswiftslash_ptr_t)__,
 		.____e = (__cswiftslash_ptr_t)___,
-		.____v = (__cswiftslash_ptr_t)____
+		.____v = (__cswiftslash_ptr_t)____,
+		.____ic = false
 	};
 	__cswiftslash_future_wait_ptr_t __1 = malloc(sizeof(__cswiftslash_future_wait_t));
 	memcpy(__1, &__0, sizeof(__cswiftslash_future_wait_t));
 	return __1;
 }
 
-void ____cswiftslash_future_wait_t_destroy_sync(__cswiftslash_future_wait_ptr_t _) {
-	pthread_mutex_destroy(&_->____m);
-	free((void*)_);
+/// @brief unlock and destroy a synchronous waiter result for a future.
+/// @param _ the waiter to destroy.
+void ____cswiftslash_future_wait_t_unlock_destroy_sync(__cswiftslash_future_wait_ptr_t _) {
+	pthread_mutex_unlock(&_->____rm);
+	pthread_mutex_destroy(&_->____rm);
 }
+
+/// @brief destroy an asynchronous waiter for a future.
+/// @param _ the waiter to destroy.
 void ____cswiftslash_future_wait_t_destroy_async(__cswiftslash_future_wait_ptr_t _) {
 	free((void*)_);
 }
@@ -108,8 +104,8 @@ void ____cswiftslash_future_identified_list_cancel_iterator(
 	const __cswiftslash_ptr_t __,
 	const __cswiftslash_optr_t ___
 ) {
-	if (((__cswiftslash_future_wait_ptr_t)__)->____s == true) {
-		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)__)->____m);
+	if (((__cswiftslash_future_wait_ptr_t)__)->____sy == true) {
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)__)->____rm);
 	} else {
 		((__cswiftslash_future_wait_ptr_t)__)->____v(((__cswiftslash_future_wait_ptr_t)__)->____c);
 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)__);
@@ -182,66 +178,33 @@ void __cswiftslash_future_t_destroy(
 	free(_);
 }
 
-__cswiftslash_future_status_t __cswiftslash_future_t_wait_immediate(
-	const __cswiftslash_future_ptr_t _,
-	uint8_t *_Nonnull __,
-	__cswiftslash_optr_t *_Nonnull ___
-) {
-	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_seq_cst);
-	switch (__0) {
-		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
-			return __CSWIFTSLASH_FUTURE_STATUS_PEND;
-		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
-			*__ = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
-			*___ = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
-			return __CSWIFTSLASH_FUTURE_STATUS_RESULT;
-		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
-			*__ = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
-			*___ = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
-			return __CSWIFTSLASH_FUTURE_STATUS_THROW;
-		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
-			return __CSWIFTSLASH_FUTURE_STATUS_CANCEL;
-		default:
-			printf("swiftslash future internal error: invalid future status\n");
-			abort();
-	}
-}
-
-void __cswiftslash_future_t_wait_sync(
+__cswiftslash_optr_t __cswiftslash_future_t_wait_sync_register(
 	const __cswiftslash_future_ptr_t _,
 	const __cswiftslash_optr_t __,
 	const _Nonnull __cswiftslash_future_result_val_handler_f ___,
 	const _Nonnull __cswiftslash_future_result_err_handler_f ____,
-	const _Nonnull __cswiftslash_future_result_cncl_handler_f _____
+	const _Nonnull __cswiftslash_future_result_cncl_handler_f _____,
+	const __cswiftslash_future_wait_ptr_t ______
 ) {
 	pthread_mutex_lock(&_->____m);
-	#ifdef DEBUG
-	uint32_t __0 = 0;
-	#endif
-	__cswiftslash_future_wait_ptr_t __1 = ____cswiftslash_future_wait_t_init_sync(__, ___, ____, _____);
-	pthread_mutex_lock(&__1->____m);
-	uint8_t __2;
-	__cswiftslash_optr_t __3;
+	uint8_t __1;
+	__cswiftslash_optr_t __2;
+	uint64_t __3;
 	checkStat:
-		switch (atomic_load_explicit(&_->____s, memory_order_seq_cst)) {
+		switch (atomic_load_explicit(&_->____s, memory_order_acquire)) {
 			case __CSWIFTSLASH_FUTURE_STATUS_PEND:
-				__cswiftslash_identified_list_insert(_->____wi, __1);
-				#ifdef DEBUG
-				if (__0 >= CLIBSWIFTSLASH_PTRFUTURE_MAXLOOPS_SYNC) {
-					printf("swiftslash future internal error: infinite loop detected in future wait\n");
-					abort();
-				}
-				#endif
-				goto blockUntilDone;
+				____cswiftslash_future_wait_t_init_sync(__, ___, ____, _____, ______);
+				atomic_store_explicit(&______->____i, __cswiftslash_identified_list_insert(_->____wi, ______), memory_order_release);
+				goto proceedToBlock;
 			case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
-				__2 = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
-				__3 = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
-				___(__2, __3, __);
-				goto returnTime;	
+				__1 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__2 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				___(__1, __2, __);
+				goto returnTime;
 			case __CSWIFTSLASH_FUTURE_STATUS_THROW:
-				__2 = atomic_load_explicit(&_->____rt, memory_order_seq_cst);
-				__3 = atomic_load_explicit(&_->____rv, memory_order_seq_cst);
-				____(__2, __3, __);
+				__1 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__2 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				____(__1, __2, __);
 				goto returnTime;
 			case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
 				_____(__);
@@ -252,17 +215,92 @@ void __cswiftslash_future_t_wait_sync(
 		}
 	returnTime:
 		pthread_mutex_unlock(&_->____m);
-		pthread_mutex_unlock(&__1->____m);
-		____cswiftslash_future_wait_t_destroy_sync(__1);
-		return;
-	blockUntilDone:
-		#ifdef DEBUG
-		__0 += 1;
-		#endif
+		return (__cswiftslash_optr_t)NULL;
+	proceedToBlock:
 		pthread_mutex_unlock(&_->____m);
-		pthread_mutex_lock(&__1->____m);
-		pthread_mutex_lock(&_->____m);
-		goto checkStat;
+		return (__cswiftslash_optr_t)______;
+}
+
+/// returns the unique waiter ID for a future waiter.
+/// @param _ the unique pointer that was returned from `__cswiftslash_future_t_wait_sync_register`.
+/// @return the unique waiter ID.
+uint64_t __cswiftslash_future_wait_id_get(
+	const __cswiftslash_optr_t _
+) {
+	return atomic_load_explicit(&((__cswiftslash_future_wait_ptr_t)_)->____i, memory_order_acquire);
+}
+
+void __cswiftslash_future_t_wait_sync_block(
+	const __cswiftslash_future_ptr_t _,
+	const __cswiftslash_ptr_t __
+) {
+	pthread_mutex_lock(&((__cswiftslash_future_wait_ptr_t)__)->____rm);
+	pthread_mutex_lock(&_->____m);
+	uint8_t __1;
+	__cswiftslash_optr_t __2;
+	if (atomic_load_explicit(&((__cswiftslash_future_wait_ptr_t)__)->____ic, memory_order_acquire) == true) {
+		((__cswiftslash_future_wait_ptr_t)__)->____v(((__cswiftslash_future_wait_ptr_t)__)->____c);
+	} else {
+		switch (atomic_load_explicit(&_->____s, memory_order_acquire)) {
+			case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+				__1 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__2 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				((__cswiftslash_future_wait_ptr_t)__)->____r(__1, __2, ((__cswiftslash_future_wait_ptr_t)__)->____c);
+				break;
+			case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+				__1 = atomic_load_explicit(&_->____rt, memory_order_acquire);
+				__2 = atomic_load_explicit(&_->____rv, memory_order_acquire);
+				((__cswiftslash_future_wait_ptr_t)__)->____e(__1, __2, ((__cswiftslash_future_wait_ptr_t)__)->____c);
+				break;
+			case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
+				((__cswiftslash_future_wait_ptr_t)__)->____v(((__cswiftslash_future_wait_ptr_t)__)->____c);
+				break;
+			default:
+				printf("swiftslash future internal error: invalid future status\n");
+				abort();
+		}
+	}
+	pthread_mutex_unlock(&_->____m);
+	____cswiftslash_future_wait_t_unlock_destroy_sync(((__cswiftslash_future_wait_ptr_t)__));
+}
+
+/// @brief a optional pointer to a future waiter.
+typedef __cswiftslash_future_wait_t *_Nullable __cswiftslash_future_wait_optr_t;
+
+bool __cswiftslash_future_wait_sync_invalidate(
+	const __cswiftslash_future_ptr_t _,
+	const uint64_t __
+) {
+	pthread_mutex_lock(&_->____m);
+	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
+	__cswiftslash_future_wait_optr_t __1;
+	switch (__0) {
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
+			goto cancelWaiter;
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+			goto returnFalse;
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+			goto returnFalse;
+		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
+			goto returnFalse;
+		default:
+			printf("swiftslash future internal error: invalid future status\n");
+			abort();
+	}
+	cancelWaiter:
+		__1 = (__cswiftslash_future_wait_optr_t)__cswiftslash_identified_list_remove(_->____wi, __);
+		if (__1 == NULL) {
+			pthread_mutex_unlock(&_->____m);
+			return false;
+		} else {
+			atomic_store_explicit(&((__cswiftslash_future_wait_ptr_t)__1)->____ic, true, memory_order_release);
+			pthread_mutex_unlock(&_->____m);
+			pthread_mutex_unlock(&__1->____rm);
+			return true;
+		}
+	returnFalse:
+		pthread_mutex_unlock(&_->____m);
+		return false;
 }
 
 uint64_t __cswiftslash_future_t_wait_async(
@@ -282,6 +320,7 @@ uint64_t __cswiftslash_future_t_wait_async(
 	switch (__1) {
 		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 			__2 = __cswiftslash_identified_list_insert(_->____wi, (__cswiftslash_ptr_t)__0);
+			atomic_store_explicit(&__0->____i, __2, memory_order_release);
 			goto returnTimeWaiting;
 		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
 			__3 = atomic_load_explicit(&_->____rt, memory_order_acquire);
@@ -352,8 +391,8 @@ void ____cswiftslash_future_identified_list_val_iterator(
 	const __cswiftslash_ptr_t wptr,
 	const __cswiftslash_ptr_t ___
 ) {
-	if (((__cswiftslash_future_wait_ptr_t)wptr)->____s == true) {
-		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____m);
+	if (((__cswiftslash_future_wait_ptr_t)wptr)->____sy == true) {
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____rm);
 	} else {
 		((__cswiftslash_future_wait_ptr_t)wptr)->____r(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, ((__cswiftslash_future_wait_ptr_t)wptr)->____c);
 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);
@@ -365,8 +404,8 @@ void ____cswiftslash_future_identified_list_throw_iterator(
 	const __cswiftslash_ptr_t wptr,
 	const __cswiftslash_ptr_t ___
 ) {
-	if (((__cswiftslash_future_wait_ptr_t)wptr)->____s == true) {
-		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____m);
+	if (((__cswiftslash_future_wait_ptr_t)wptr)->____sy == true) {
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____rm);
 	} else {
 		((__cswiftslash_future_wait_ptr_t)wptr)->____e(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, ((__cswiftslash_future_wait_ptr_t)wptr)->____c);
 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);

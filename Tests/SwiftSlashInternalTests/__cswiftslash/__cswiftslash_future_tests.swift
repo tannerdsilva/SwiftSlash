@@ -59,23 +59,6 @@ extension __cswiftslash_tests {
 				__cswiftslash_future_t_broadcast_cancel(futurePtr)
 			}
 
-			fileprivate func waitImmediate() -> Result? {
-				var type:UInt8 = 0
-				var ptr:UnsafeMutableRawPointer? = nil
-				switch __cswiftslash_future_t_wait_immediate(futurePtr, &type, &ptr) {
-					case __CSWIFTSLASH_FUTURE_STATUS_PEND:
-						fatalError("future is in a pending state. this is an internal error. \(#file):\(#line)")
-					case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
-						return .success(type, ptr)
-					case __CSWIFTSLASH_FUTURE_STATUS_THROW:
-						return .failure(type, ptr)
-					case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
-						return nil
-					default:
-						fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
-				}
-			}
-
 			fileprivate func waitAsync() async throws -> Result? {
 				var resultStore:(pthread_t, Result?)? = nil
 				let asyncResultMemory = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
@@ -246,7 +229,12 @@ extension __cswiftslash_tests {
 						let mytid = pthread_self()
 						var srInstance = SyncResult()
 						withUnsafeMutablePointer(to:&srInstance) { srInstance in
-							__cswiftslash_future_t_wait_sync(futurePtr, srInstance, Self.futureSyncResultHandler, Self.futureSyncErrorHandler, Self.futureSyncCancelHandler)
+							var memory = __cswiftslash_future_wait_t_init_struct()
+							let ptr = __cswiftslash_future_t_wait_sync_register(futurePtr, srInstance, Self.futureSyncResultHandler, Self.futureSyncErrorHandler, Self.futureSyncCancelHandler, &memory)
+							guard ptr != nil else {
+								return
+							}
+							__cswiftslash_future_t_wait_sync_block(futurePtr, ptr!)
 						}
 						let getr = try srInstance.getResult()
 						guard pthread_equal(mytid, getr.1) != 0 else {
@@ -307,10 +295,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 1)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x1234))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .success(1, UnsafeMutableRawPointer(bitPattern: 0x1234)))
 				}
 			}
 
@@ -339,10 +323,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 2)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x4321))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .failure(2, UnsafeMutableRawPointer(bitPattern: 0x4321)))
 				}
 			}
 
@@ -359,10 +339,6 @@ extension __cswiftslash_tests {
 						i += 1
 					}
 					#expect(i == 1)
-
-					// verify wait immediate returns nil
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == nil)
 				}
 			}
 		}
@@ -399,10 +375,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 3)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5678))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .success(3, UnsafeMutableRawPointer(bitPattern: 0x5678)))
 				}
 			}
 
@@ -448,10 +420,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 4)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0xbeef))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .failure(4, UnsafeMutableRawPointer(bitPattern: 0xbeef)))
 				}
 			}
 
@@ -464,10 +432,6 @@ extension __cswiftslash_tests {
 					}
 					let waitResult = try await future.waitAsync()
 					#expect(waitResult == nil)
-
-					// verify wait immediate returns nil
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == nil)
 				}
 			}
 		}
@@ -538,10 +502,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 5)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x3000))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .success(5, UnsafeMutableRawPointer(bitPattern: 0x3000)))
 				}
 			}
 
@@ -573,10 +533,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 7)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x5000))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .failure(7, UnsafeMutableRawPointer(bitPattern: 0x5000)))
 				}
 			}
 
@@ -608,10 +564,6 @@ extension __cswiftslash_tests {
 
 					#expect(foundType == 9)
 					#expect(foundValue == UnsafeMutableRawPointer(bitPattern: 0x7000))
-
-					// verify wait immediate returns the same result
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .failure(9, UnsafeMutableRawPointer(bitPattern: 0x7000)))
 				}
 			}
 
@@ -649,11 +601,6 @@ extension __cswiftslash_tests {
 								let foundByte = valPtr!.load(as: UInt8.self)
 								let expectedByte = await tgg.next()!
 								#expect(foundByte == expectedByte)
-
-								// verify wait immediate returns the same result
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == .success(11, valPtr))
-
 								valPtr!.deallocate()
 							case .failure(let valType, let valPtr):
 								#expect(action > 10 && action <= 20)
@@ -661,20 +608,11 @@ extension __cswiftslash_tests {
 								let foundByte = valPtr!.load(as: UInt8.self)
 								let expectedByte = await tgg.next()!
 								#expect(foundByte == expectedByte)
-								
-								// verify wait immediate returns the same result
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == .failure(12, valPtr))
-								
 								valPtr!.deallocate()
 							case .none:
 								#expect(action > 20)
 								let expectedByte = await tgg.next()!
 								#expect(expectedByte == nil)
-
-								// verify wait immediate returns nil
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == nil)
 						}
 						await tgg.waitForAll()
 					}
@@ -700,11 +638,6 @@ extension __cswiftslash_tests {
 						group.addTask {
 							do {
 								let result = try await future.waitAsync()
-
-								// verify that immediate result is the same
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == result)
-
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -741,11 +674,6 @@ extension __cswiftslash_tests {
 						group.addTask {
 							do {
 								let result = try await future.waitAsync()
-
-								// verify that immediate result is the same
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == result)
-
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -756,11 +684,6 @@ extension __cswiftslash_tests {
 					// broadcast an error after some delay
 					let errorData = UnsafeMutableRawPointer(bitPattern: 0xAAAA)!
 					#expect(future.broadcastErrorValue(errType: 24, errVal: errorData) == true)
-
-					// verify that immediate result is the same
-					let immediateResult = future.waitImmediate()
-					#expect(immediateResult == .failure(24, UnsafeMutableRawPointer(bitPattern: 0xAAAA)))
-					
 					// collect results from waiters
 					for _ in 0..<waiterCount {
 						let (index, result) = try await group.next()!
@@ -792,10 +715,6 @@ extension __cswiftslash_tests {
 				let data = UnsafeMutableRawPointer(bitPattern: 0xCCCC)!
 				#expect(future.broadcastResultValue(resType: 99, resVal: data) == true)
 
-				// verify that immediate result is the same
-				let immediateResult = future.waitImmediate()
-				#expect(immediateResult == .success(99, UnsafeMutableRawPointer(bitPattern: 0xCCCC)))
-				
 				let waiterCount = 4
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)
 				
@@ -805,11 +724,6 @@ extension __cswiftslash_tests {
 						group.addTask {
 							do {
 								let result = try await future.waitAsync()
-
-								// verify that immediate result is the same
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == result)
-
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -852,11 +766,6 @@ extension __cswiftslash_tests {
 						group.addTask {
 							do {
 								let result = try await future.waitAsync()
-
-								// verify that immediate result is the same
-								let immediateResult = future.waitImmediate()
-								#expect(immediateResult == result)
-								
 								return (i, result)
 							} catch {
 								return (i, nil)

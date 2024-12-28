@@ -8,7 +8,12 @@ extension Future {
 	internal borrowing func blockingResult() -> Result<R, F>? {
 		var getResult = SyncResult()
 		withUnsafeMutablePointer(to:&getResult) { rptr in
-			__cswiftslash_future_t_wait_sync(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler)
+			var memory = __cswiftslash_future_wait_t_init_struct()
+			let waiter = __cswiftslash_future_t_wait_sync_register(prim, rptr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler, &memory)
+			guard waiter != nil else {
+				return
+			}
+			__cswiftslash_future_t_wait_sync_block(prim, waiter!)
 		}
 		switch getResult.consumeResult()! {
 			case .success(_, let res):

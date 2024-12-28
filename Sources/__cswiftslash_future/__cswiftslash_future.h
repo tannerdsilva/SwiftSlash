@@ -35,7 +35,7 @@ typedef enum __cswiftslash_future_status_t {
 /// @param _ result type field.
 /// @param __ result pointer field (optional).
 /// @param ___ function context pointer (optional).
-typedef void(* __cswiftslash_future_result_val_handler_f)(
+typedef void(* _Nonnull __cswiftslash_future_result_val_handler_f)(
 	const uint8_t _,
 	const __cswiftslash_optr_t __,
 	const __cswiftslash_optr_t ___
@@ -45,7 +45,7 @@ typedef void(* __cswiftslash_future_result_val_handler_f)(
 /// @param _ error type field.
 /// @param __ error pointer field (optional).
 /// @param ___ function context pointer (optional).
-typedef void(* __cswiftslash_future_result_err_handler_f)(
+typedef void(* _Nonnull __cswiftslash_future_result_err_handler_f)(
 	const uint8_t _,
 	const __cswiftslash_optr_t __,
 	const __cswiftslash_optr_t ___
@@ -53,9 +53,39 @@ typedef void(* __cswiftslash_future_result_err_handler_f)(
 
 /// cancel handler function.
 /// @param _ function context pointer (optional).
-typedef void(* __cswiftslash_future_result_cncl_handler_f)(
+typedef void(* _Nonnull __cswiftslash_future_result_cncl_handler_f)(
 	const __cswiftslash_optr_t _
 );
+
+/// used to represent a thread that is synchronously waiting and blocking for the result of a future.
+typedef struct __cswiftslash_future_wait_t {
+	/// the context pointer that will be transparenly passed to the result handler.
+	const __cswiftslash_optr_t ____c;
+	/// reflects the synchronous state of the future waiter. true for sync, false for async.
+	const bool ____sy;
+	
+	/// the mutex that is used to block the thread until the future is complete. this is only used if the waiter is synchronous.
+	pthread_mutex_t ____rm;
+
+	/// the result handler to call when the future is complete.
+	const __cswiftslash_future_result_val_handler_f ____r;
+	/// the error handler to call when the future is complete.
+	const __cswiftslash_future_result_err_handler_f ____e;
+	/// the cancel handler to call when the future is cancelled and a result will never be available.
+	const __cswiftslash_future_result_cncl_handler_f ____v;
+
+	/// the waiter ID for the future waiter.
+	_Atomic uint64_t ____i;
+
+	/// has the individual waiter instance been cancelled?
+	_Atomic bool ____ic;
+} __cswiftslash_future_wait_t;
+
+/// initialize a synchronous future waiter.
+__cswiftslash_future_wait_t __cswiftslash_future_wait_t_init_struct();
+
+/// a non-optional pointer to a future waiter.
+typedef __cswiftslash_future_wait_t *_Nonnull __cswiftslash_future_wait_ptr_t;
 
 /// a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct __cswiftslash_future {
@@ -93,31 +123,45 @@ void __cswiftslash_future_t_destroy(
 	const _Nonnull __cswiftslash_future_result_err_handler_f ____
 );
 
-
-/// @brief for use only in situations where the user can guarantee that the future is already complete. this function eliminates a lot of the overhead associated with wait_sync and is optimized for immediate completion.
-/// @param _ the future to wait for.
-/// @param __ pointer to store the result type value.
-/// @param ___ pointer to store the result value.
-/// @return the status of the future.
-__cswiftslash_future_status_t __cswiftslash_future_t_wait_immediate(
-	const __cswiftslash_future_ptr_t _,
-	uint8_t *_Nonnull __,
-	__cswiftslash_optr_t *_Nonnull ___
-);
-
-/// block the calling thread until the future is complete.
+/// register a synchronous waiter for a future. a synchronous waiter is used to describe the process where a thread is blocked and the result handling functions are called from that same blocking thread. the registration thread and the thread that blocks may be different. NOTE: this function does not block the calling thread, instead, it registers the waiting information without blocking and allows the calling thread to determine when to block and handle the result.
 /// @param _ the future to wait for.
 /// @param __ the context pointer to pass to the result handler.
 /// @param ___ the result handler to call when the future is complete.
 /// @param ____ the error handler to call when the future is complete.
 /// @param _____ the cancel handler to call when the future is cancelled.
-/// @return void is returned (calling thread is no longer blocked) when one of the result handlers is fired with the result.
-void __cswiftslash_future_t_wait_sync(
+/// @param ______ the storage space for the waiter struct.
+/// @return a unique pointer that is used to wait or cancel waiting synchronously. the contents of the pointer are not to be accessed. if the returned pointer is NULL, the future is already complete, and the result handler will be called immediately. NOTE: if a non-null pointer is returned, the user is OBLIGATED to call the `__cswiftslash_future_wait_sync_invalidate` function to deallocate the waiter.
+__cswiftslash_optr_t __cswiftslash_future_t_wait_sync_register(
 	const __cswiftslash_future_ptr_t _,
 	const __cswiftslash_optr_t __,
 	const _Nonnull __cswiftslash_future_result_val_handler_f ___,
 	const _Nonnull __cswiftslash_future_result_err_handler_f ____,
-	const _Nonnull __cswiftslash_future_result_cncl_handler_f _____
+	const _Nonnull __cswiftslash_future_result_cncl_handler_f _____,
+	const __cswiftslash_future_wait_ptr_t ______
+);
+
+/// returns the unique waiter ID for a future waiter.
+/// @param _ the unique pointer that was returned from `__cswiftslash_future_t_wait_sync_register`.
+/// @return the unique waiter ID.
+uint64_t __cswiftslash_future_wait_id_get(
+	const __cswiftslash_optr_t _
+);
+
+/// block the calling thread until the future is complete. the result handlers registered in `__cswiftslash_future_t_wait_sync_register` will be called from the thread that calls (and possibly blocks) on this function.
+/// @param _ the future to wait for.
+/// @param __ the unique waiter pointer (must not be NULL)
+/// @return void is returned after the future is complete. results of the future are passed into the handlers that were provided at the time of registration.
+void __cswiftslash_future_t_wait_sync_block(
+	const __cswiftslash_future_ptr_t _,
+	const __cswiftslash_ptr_t __
+);
+
+/// @brief cancel a synchronous waiter for a future.
+/// @param _ the future to cancel the waiter for.
+/// @param __ the unique waiter pointer to cancel.
+bool __cswiftslash_future_wait_sync_invalidate(
+	const __cswiftslash_future_ptr_t _,
+	const uint64_t __
 );
 
 /// register completion handlers for the future and return immediately. handler functions will be called from the thread that completes the future.

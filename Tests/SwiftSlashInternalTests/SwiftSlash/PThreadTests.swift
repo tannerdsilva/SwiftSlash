@@ -42,131 +42,65 @@ extension SwiftSlashTests {
 			}
 		}
 
-		fileprivate actor Expectation {
-			private let isInverted:Bool
-			private var didFulfill = false
-			private let fulfillFuture = Future<Void, Never>()
-			private let description:String
-			fileprivate init(isInverted invert:Bool = false, description desc:String) {
-				isInverted = invert
-				description = desc
-			}
-			
-			/// fulfills the expectation
-			/// - returns: true if the expectation was fulfilled, false if it was already fulfilled.
-			fileprivate func fulfill() -> Bool {
-				guard didFulfill == false else {
-					return false
-				}
-				didFulfill = true
-				try! fulfillFuture.setSuccess(())
-				return true
-			}
-
-			fileprivate func didFulfill(waitForSeconds secs:Double) async throws -> Bool {
-				if didFulfill {
-					return true
-				}
-				try await withThrowingTaskGroup(of:Bool.self, returning:Void.self) { tg in
-					tg.addTask {
-						try await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
-						return false
-					}
-					tg.addTask { [ff = fulfillFuture] in
-						_ = try await ff.result(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError: CancellationError())
-						return true
-					}
-					do {
-						consumeLoop: for try await _ in tg {
-							break consumeLoop
-						}
-						tg.cancelAll()
-					} catch {
-						tg.cancelAll()
-						throw error
-					}
-				}
-				if isInverted {
-					return !didFulfill
-				} else {
-					return didFulfill
-				}
-			}
-		}
 		
 		@Test("SwiftSlashPThread :: cancellation of pthreads that are already in flight (with memory checks)", .timeLimit(.minutes(1)))
 		func testPthreadCancellation() async throws {
-			// we do NOT expect the pthread to return.
-			let returnExpect = Expectation(isInverted:true, description:"PThread delay")
+			try await confirmation("confirm that memoryspace is freed as a result of the cancellation", expectedCount:1) { freeConfirm in
+				try await confirmation("confirm that the pthread does not return", expectedCount:0) { returnConfirm in
+					// this is a thing that holds an expectation and fulfills it when it is deinitialized.
+					final class MyTest {
+						init(_ expect:Confirmation) {
+							self.expect = expect
+						}
+						let expect:Confirmation
+						deinit {
+							expect.confirm()
+						}
+					}
 
-			// we DO expect memoryspace to be freed as a result of the cancellation.
-			let freeExpect = Expectation(description:"PThread delay")
-			
-			// this is a thing that holds an expectation and fulfills it when it is deinitialized.
-			final class MyTest {
-				init(_ expect:Expectation) {
-					self.expect = expect
-				}
-				let expect:Expectation
-				deinit {
-					Task { [e = self.expect] in await e.fulfill() }
+					let launchFuture = Future<Void, Never>()
+					let cancelFuture = Future<Void, Never>()
+					
+					// launch the pthread that will be subject to cancellation testing.
+					let runTask = try await SwiftSlashPThread.launch { [lf = launchFuture, cf = cancelFuture] in
+						
+						// declare a memory artifact within the pthread.
+						_ = MyTest(freeConfirm)
+						
+						try lf.setSuccess(())
+						
+						// wait for the cancelation to be set.
+						cf.blockingResult()!.get()
+						
+						// test for cancellation. this would usually be the end of the pthread.
+						pthread_testcancel()
+						
+						// this should never fulfill.
+						returnConfirm.confirm()
+					}
+					
+					// wait for the thread to launch.
+					await launchFuture.result()!.get()
+					
+					// cancel the thread
+					try runTask.cancel()
+					
+					// set the cancellation future to success.
+					try cancelFuture.setSuccess(())
+					
+					let gotReturn:Bool
+					switch await runTask.workResult() {
+					case .success:
+						gotReturn = true
+					case .failure(let error):
+						#expect(error is CancellationError)
+						gotReturn = false
+					case .none:
+						gotReturn = false
+					}
+					#expect(gotReturn == false)
 				}
 			}
-
-			// contains the asynchronous task that runs as a part of the test.
-			let ltask = Task {
-
-				let launchFuture = Future<Void, Never>()
-				let cancelFuture = Future<Void, Never>()
-
-				// launch the pthread that will be subject to cancellation testing.
-				let runTask = try await SwiftSlashPThread.launch { [lf = launchFuture, cf = cancelFuture] in
-
-					// declare a memory artifact within the pthread.
-					_ = MyTest(freeExpect)
-
-					try lf.setSuccess(())
-
-					// wait for the cancelation to be set.
-					cf.blockingResult()!.get()
-
-					// test for cancellation. this would usually be the end of the pthread.
-					pthread_testcancel()
-
-					// this should never fulfill.
-					Task { await returnExpect.fulfill() }
-				}
-
-				// wait for the thread to launch.
-				await launchFuture.result()!.get()
-
-				// cancel the thread
-				try runTask.cancel()
-
-				// set the cancellation future to success.
-				try cancelFuture.setSuccess(())
-
-				let gotReturn:Bool
-				switch await runTask.workResult() {
-				case .success:
-					gotReturn = true
-				case .failure(let error):
-					#expect(error is CancellationError)
-					gotReturn = false
-				case .none:
-					gotReturn = false
-				}
-				#expect(gotReturn == false)
-			}
-
-			// verify the results of the test.
-			async let returnE = returnExpect.didFulfill(waitForSeconds: 2)
-			async let freeE = freeExpect.didFulfill(waitForSeconds: 2)
-			let returnR = try await returnE
-			let freeR = try await freeE
-			_ = try await ltask.value
-			#expect(returnR == true)
-			#expect(freeR == true)
 		}
 	}
 }

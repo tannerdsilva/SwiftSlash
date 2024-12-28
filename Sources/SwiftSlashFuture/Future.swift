@@ -108,14 +108,18 @@ extension Future {
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
 	/// - throws: this function will run the @autoclosure argument from `taskCancellationError` and throw the corresponding result if the current task was canceled while waiting for the result.
 	public func result<E>(throwingOnCurrentTaskCancellation taskThrowType:E.Type, taskCancellationError:@autoclosure () -> E) async throws(E) -> Result<R, F>? where E:Swift.Error {
-		return try await _result_main(throwing:taskThrowType, onCurrentTaskCancellation:taskCancellationError())
+		var syncResult = SyncResult()
+		var memory = __cswiftslash_future_wait_t_init_struct()
+		return try await _result_main(throwing:taskThrowType, onCurrentTaskCancellation:taskCancellationError(), memory:&memory, syncResult:&syncResult)
 	}
 
 	/// wait for the result of the future. this function will not throw if the current task is canceled.
 	/// - throws: this function does NOT throw.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
 	public func result(throwingOnCurrentTaskCancellation taskThrowType:Never.Type = Never.self) async -> Result<R, F>? {
-		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file) \(#line)"))
+		var syncResult = SyncResult()
+		var memory = __cswiftslash_future_wait_t_init_struct()
+		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file) \(#line)"), memory:&memory, syncResult:&syncResult)
 	}
 
 	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 
@@ -157,71 +161,70 @@ extension Future {
 }
 
 extension Future {
-	fileprivate borrowing func _result_main<E>(throwing _:E.Type, onCurrentTaskCancellation throwOnTaskCancellation:@autoclosure () -> E) async throws(E) -> Result<R, F>? where E:Swift.Error {
-		let allocatedMemory = UnsafeMutablePointer<Result<R, F>?>.allocate(capacity:1)
-		defer {
-			allocatedMemory.deinitialize(count:1)
-			allocatedMemory.deallocate()
-		}
-
-		// initialize the async tool that will allow us to wait for the result and also cancel our waiting if necessary.
-		let asr = AsyncResult()
-
-		// copy a reference of the asyncresult to heap so that the c primitive can interact it and free its reference when it is done.
-		let arPtr = UnsafeMutablePointer<AsyncResult>.allocate(capacity:1)
-		arPtr.initialize(to:asr)
-
-		func acquireResult() -> Result<R, F>? {
-			var resType:UInt8 = 0
-			var resPtr:UnsafeMutableRawPointer? = nil
-			switch __cswiftslash_future_t_wait_immediate(prim, &resType, &resPtr) {
-				case __CSWIFTSLASH_FUTURE_STATUS_PEND:
-					fatalError("future is in a pending state. this is an internal error. \(#file):\(#line)")
-				case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
-					return .success(Unmanaged<Contained<R>>.fromOpaque(resPtr!).takeUnretainedValue().value())
-				case __CSWIFTSLASH_FUTURE_STATUS_THROW:
-					return .failure(Unmanaged<Contained<F>>.fromOpaque(resPtr!).takeUnretainedValue().value())
-				case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
-					return nil
-				default:
-					fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
-			}
-		}
-
-		let waiterID = __cswiftslash_future_t_wait_async(prim, arPtr, futureAsyncResultHandler, futureAsyncErrorHandler, futureAsyncCancelHandler)
-		if (waiterID != 0) {
-			if E.self == Never.self {
-				// task cancellation is set to never throw, so we can just wait for the result directly from the AsyncResult.
-				await withUnsafeContinuation({ [a = asr] (cont:UnsafeContinuation<Void, Never>) in
-					a.exclusiveWait()
-					cont.resume()
-				})
-
-				return acquireResult()
+	fileprivate borrowing func _result_main<E>(throwing _:E.Type, onCurrentTaskCancellation throwOnTaskCancellation:@autoclosure () -> E, memory:UnsafeMutablePointer<__cswiftslash_future_wait_t>, syncResult sPtr:UnsafeMutablePointer<SyncResult>) async throws(E) -> Result<R, F>? where E:Swift.Error {
+		return try await sPtr.pointee.withWaiterPrimitiveAccess { wptr throws(E) -> Result<R, F>? in
+			let waiterPtr = __cswiftslash_future_t_wait_sync_register(prim, sPtr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler, memory)
+			if waiterPtr == nil {
+				switch sPtr.pointee.consumeResult() {
+					case .success(_, let ptr):
+						return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+					case .failure(_, let ptr):
+						return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+					case .cancel:
+						return nil
+					case .none:
+						fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
+				}
 			} else {
-				let didCallCancellationHandler:Atomic<Bool> = .init(false)
-
-				// task cancellation is set to throw, so we need to wait for the result within a cancellation handler.
-				await withTaskCancellationHandler { [a = asr] in
-					await withUnsafeContinuation({ [a] (cont:UnsafeContinuation<Void, Never>) in
-						a.exclusiveWait()
+				if E.self == Never.self {
+					// task cancellation is set to never throw, so we can just wait for the result directly from the AsyncResult.
+					await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
+						__cswiftslash_future_t_wait_sync_block(prim, waiterPtr!)
 						cont.resume()
 					})
-				} onCancel: {
-					didCallCancellationHandler.store(true, ordering:.releasing)
-					__cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
-				}
 
-				let returnResult = acquireResult()
-
-				if didCallCancellationHandler.load(ordering:.acquiring) && returnResult == nil {
-					throw throwOnTaskCancellation()
+					switch sPtr.pointee.consumeResult() {
+						case .success(_, let ptr):
+							return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						case .failure(_, let ptr):
+							return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						case .cancel:
+							return nil
+						case .none:
+							fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
+					}
 				} else {
-					return returnResult
+					let cancelID = __cswiftslash_future_wait_id_get(waiterPtr!)
+
+					let didCallCancellationHandler:Atomic<Bool> = .init(false)
+
+					// task cancellation is set to throw, so we need to wait for the result within a cancellation handler.
+					await withTaskCancellationHandler {
+						await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
+							__cswiftslash_future_t_wait_sync_block(prim, waiterPtr!)
+							cont.resume()
+						})
+					} onCancel: {
+						didCallCancellationHandler.store(true, ordering:.releasing)
+						__cswiftslash_future_wait_sync_invalidate(prim, cancelID)
+					}
+
+					switch sPtr.pointee.consumeResult() {
+						case .success(_, let ptr):
+							return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						case .failure(_, let ptr):
+							return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						case .cancel:
+							if didCallCancellationHandler.load(ordering:.acquiring) {
+								throw throwOnTaskCancellation()
+							} else {
+								return nil
+							}
+						case .none:
+							fatalError("invalid future status. this is an internal error. \(#file):\(#line)")
+					}
 				}
 			}
-		} else {
-			return acquireResult()
 		}
 	}		
 }
