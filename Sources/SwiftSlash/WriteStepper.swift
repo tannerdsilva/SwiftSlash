@@ -2,7 +2,7 @@ import __cswiftslash
 import SwiftSlashFuture
 
 /// helps to manage the state of a write operation. a write buffer may take an unknown amount of data when written to, while the amount of data we are holding are received as they are. this struct helps the two substates to work together.
-internal struct WriteStepper {
+internal struct WriteStepper:~Copyable {
 
 	/// actions that a holder of a WriteStepper can take after a write operation.
 	internal enum Action {
@@ -24,7 +24,7 @@ internal struct WriteStepper {
 	internal let completeFuture:Future<Void>?
 
 	/// creates a new instance of WriteStepper.
-	internal init(_ dataIn:consuming [UInt8], writeFuture:Future<Void>?) {
+	internal init(_ dataIn:consuming [UInt8], writeFuture:consuming Future<Void>?) {
 		data = dataIn
 		completeFuture = writeFuture
 	}

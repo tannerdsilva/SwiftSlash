@@ -72,12 +72,14 @@ internal struct ProcessLogistics {
 
 	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
 		return try withUnsafeMutablePointer(to:&package) { packagePtr in
+			// pipes that will be used to 
 			var writePipes = [Int32:PosixPipe]()
 			var readPipes = [Int32:PosixPipe]()
 			var nullPipes = Set<PosixPipe>()
 
-			// configure the file handles that we will write to
+			// configure the file handles that we will write to (process will read)
 			for (fh, config) in packagePtr.pointee.writables {
+				// for each writer configured...
 				switch config {
 					case .active(let channel):
 						
@@ -109,13 +111,13 @@ internal struct ProcessLogistics {
 							let userDataConsume = userDataStream.makeAsyncConsumer()
 
 							// represents the main work that coordinates the written channel with the system file handle
-							func mainWork(_ currentStep:inout WriteStepper?) async throws {
+							func writeStep(_ currentStep:UnsafeMutablePointer<WriteStepper?>) async throws {
 								defer {
 									// the user data stream should not store any more values after the main work returns.
 									userDataStream.finish()
 								}
 								// main system event loop for the file handle.
-								systemEventLoop: while let _ = try await writeConsumer.next(whenTaskCancelled:.finish) {
+								systemEventLoop: while try await writeConsumer.next(whenTaskCancelled:.finish) != nil {
 									do {
 										// system is indicating that the file handle is ready to be written to.
 
@@ -123,12 +125,12 @@ internal struct ProcessLogistics {
 										writeAvailLoop: repeat {
 
 											// only take new data from the stream if the current write buffer is empty.
-											if currentStep == nil {
+											if currentStep.pointee == nil {
 
 												// does not have any data to write. wait for the user to provide some data to write.
 												if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
 													// apply this as the data we will step through in one or more writes.
-													currentStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+													currentStep.pointee = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
 												} else {
 													// user is ready for this stream to be closed.
 													break systemEventLoop
@@ -136,9 +138,9 @@ internal struct ProcessLogistics {
 											}
 
 											// write the data to the file handle.
-											switch try currentStep!.write(to:wFH) {
+											switch try currentStep.pointee!.write(to:wFH) {
 												case .retireMe:
-													currentStep = nil
+													currentStep.pointee = nil
 													fallthrough
 												case .holdMe:
 													continue writeAvailLoop
@@ -150,10 +152,11 @@ internal struct ProcessLogistics {
 								}
 							}
 
-							// the user data stream may be holding futures that need to be closed. this function will handle remaining futures from the user data stream.
+							// the user data stream may be holding futures that need to be closed. these are the futures that a dev can use to wait for a chunk of data to be written before  this function will handle remaining futures from the user data stream.
 							func flushRemainingFuturesFromUserStream(failure error:Swift.Error) async {
 								// implied task already cancelled.
 								while let (_, future) = await userDataConsume.next(whenTaskCancelled:.noAction) {
+									// if this chunk of data had a future associated with it, the future will be handled
 									if future != nil {
 										try? future!.setFailure(error)
 									}
@@ -163,16 +166,16 @@ internal struct ProcessLogistics {
 							var currentStep:WriteStepper? = nil
 							do {
 								// do the main work.
-								try await mainWork(&currentStep)
+								try await writeStep(&currentStep)
 
 								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
-								if let currentStep = currentStep {
-									try? currentStep.completeFuture?.setFailure(DataChannelClosedError())
+								if currentStep != nil {
+									try? currentStep!.completeFuture?.setFailure(DataChannelClosedError())
 								}
 							} catch let error {
 								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
-								if let currentStep = currentStep {
-									try? currentStep.completeFuture?.setFailure(error)
+								if currentStep != nil {
+									try? currentStep!.completeFuture?.setFailure(error)
 								}
 							}
 							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
@@ -271,7 +274,7 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> pid_t {
+	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:consuming [String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 
@@ -287,41 +290,38 @@ internal struct ProcessLogistics {
 			// close the reading end of the internal pipe immediately after fork. the parent process will be reading, our job is to write.
 			internalNotify.reading.closeFileHandle()
 
-			// enable cloexec on our writer.
-			let existingFlags = _cswiftslash_fcntl_getfd(internalNotify.writing)
-			guard existingFlags != -1 else {
-				_ = try? internalNotify.writing.writeFH([1])
-				exit(60)
-			}
-			guard _cswiftslash_fcntl_setfd(internalNotify.writing, existingFlags | FD_CLOEXEC) != -1 else {
-				_ = try? internalNotify.writing.writeFH([1])
-				exit(61)
-			}
-
 			// change the working directory.
 			guard chdir(wd) == 0 else {
-				_ = try? internalNotify.writing.writeFH([1])
+				// pass the error condition to the parent process.
+				_ = try? internalNotify.writing.writeFH([0xFF])
+				internalNotify.writing.closeFileHandle()
 				exit(40)
 			}
 
 			// clear the environment variables inherited from the parent process.
 			guard CurrentProcess.clearEnvironmentVariables() == 0 else {
-				_ = try? internalNotify.writing.writeFH([1])
+				// pass the error condition to the parent process.
+				_ = try? internalNotify.writing.writeFH([0xFF])
+				internalNotify.writing.closeFileHandle()
 				exit(41)
 			}
 
 			// assign the new environment variables.
-			for (key, value) in env {
+			envVarsLoop: for (key, value) in env {
 				guard setenv(key, value, 1) == 0 else {
-					_ = try? internalNotify.writing.writeFH([1])
+					// pass the error condition to the parent process.
+					_ = try? internalNotify.writing.writeFH([0xFF])
+					internalNotify.writing.closeFileHandle()
 					exit(42)
 				}
 			}
 
 			// asssign the raeding pipes to the child process.
-			for reader in readPipes {
+			readerPipesLoop: for reader in readPipes {
 				guard dup2(reader.value.reading, reader.key) != -1 else {
-					_ = try? internalNotify.writing.writeFH([1])
+					// pass the error condition to the parent process.
+					_ = try? internalNotify.writing.writeFH([0xFF])
+					internalNotify.writing.closeFileHandle()
 					exit(43)
 				}
 				close(reader.value.reading)
@@ -329,28 +329,34 @@ internal struct ProcessLogistics {
 			}
 
 			// assign the writing pipes to the child process.
-			for writer in writePipes {
+			writerPipesLoop: for writer in writePipes {
 				guard dup2(writer.value.writing, writer.key) != -1 else {
-					_ = try? internalNotify.writing.writeFH([1])
+					// pass the error condition to the parent process.
+					_ = try? internalNotify.writing.writeFH([0xFF])
+					internalNotify.writing.closeFileHandle()
 					exit(44)
 				}
 				close(writer.value.reading)
 				close(writer.value.writing)
 			}
 
-			// determine which file handles are open and close any that are not intended for this launch.
+			// loop to determine which file handles are open and close any that are not intended for this launch.
+			// i dont love that this has to be here but theres no better way to reliably determine which file handles are open, let alone doing so in a remotely cross platform way.
+			// as it sits, I'd much rather have this loop than have no fh cleanup at all. after all, the launches are serialized, so this isn't going to have a tangible impact on performance.
 			#if os(Linux)
 			let fdPath = "/proc/self/fd"
 			#elseif os(macOS)
 			let fdPath = "/dev/fd"
 			#endif
 			guard let openFileHandlesPointer = opendir(fdPath) else {
-				_ = try? internalNotify.writing.writeFH([1])
+				// pass the error condition to the parent process.
+				_ = try? internalNotify.writing.writeFH([0x1])
+				internalNotify.writing.closeFileHandle()
 				exit(50)
 			}
-			while let curPointer = readdir(openFileHandlesPointer) {
+			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
 				withUnsafePointer(to:&curPointer.pointee.d_name) { newPointer in
-					let fdString = String(cString:UnsafeRawPointer(newPointer).assumingMemoryBound(to: CChar.self))
+					let fdString = String(cString:UnsafeRawPointer(newPointer).assumingMemoryBound(to:CChar.self))
 					if fdString.contains(".") == false {
 						let curFh = atoi(fdString)
 						if writePipes[curFh] == nil && readPipes[curFh] == nil {
@@ -360,7 +366,7 @@ internal struct ProcessLogistics {
 				}
 			}
 			closedir(openFileHandlesPointer)
-
+			internalNotify.writing.closeFileHandle()
 			_cswiftslash_execvp(path, arguments)
 			exit(0)
 		}
@@ -389,7 +395,7 @@ internal struct ProcessLogistics {
 					case 0:
 						break;
 					case 1:
-						guard byte == 1 else {
+						guard byte == 0xFF else {
 							throw InternalLaunchError()
 						}
 					default:
