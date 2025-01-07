@@ -225,10 +225,10 @@ int8_t __cswiftslash_fifo_pass(
 		return __0;
 }
 
-/// internal function that flushes a single writer entry.
+/// internal function that flushes a single entry.
 ///	@param _ the pre-loaded atomic base pointer of the chain.
-///	@param __: the chain that this operation will act on.
-///	@param ___: the pointer that will be set to the consumed pointer.
+///	@param __ the chain that this operation will act on.
+///	@param ___ the pointer that will be set to the consumed pointer.
 /// - returns: true if the operation was successful and the element count could be decremented. false if the operation was not successful.
 bool ____cswiftslash_fifo_consume_next(
 	__cswiftslash_fifo_link_ptr_t _,

@@ -18,15 +18,15 @@ copyright (c) tanner silva 2024. all rights reserved.
 #include <stdint.h>
 #include <stdbool.h>
 
-// status values.
+/// status values.
 typedef enum __cswiftslash_future_status_t {
-	// pending status (future not fufilled).
+	/// pending status (future not fufilled).
 	__CSWIFTSLASH_FUTURE_STATUS_PEND = 0,
-	// result status (future fufilled normally).
+	/// result status (future fufilled normally).
 	__CSWIFTSLASH_FUTURE_STATUS_RESULT = 1,
-	// thrown status (future fufilled with an error).
+	/// thrown status (future fufilled with an error).
 	__CSWIFTSLASH_FUTURE_STATUS_THROW = 2,
-	// cancel status (future was not fufilled and will NOT fufill in the future).
+	/// cancel status (future was not fufilled and will NOT fufill in the future).
 	__CSWIFTSLASH_FUTURE_STATUS_CANCEL = 3,
 } __cswiftslash_future_status_t;
 
