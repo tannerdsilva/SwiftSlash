@@ -171,7 +171,7 @@ extension __cswiftslash_tests {
 
 				deinit {
 					pthread_mutex_lock(&istate)
-					if isMutexLocked.pointee.load(ordering:.sequentiallyConsistent) == true {
+					if isMutexLocked.pointee.load(ordering:.acquiring) == true {
 						pthread_mutex_unlock(&mutex)
 					}
 					pthread_mutex_unlock(&istate)

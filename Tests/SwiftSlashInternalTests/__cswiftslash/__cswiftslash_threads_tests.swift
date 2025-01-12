@@ -54,7 +54,7 @@ extension __cswiftslash_tests {
 				case deallocCalled
 			}
 		
-			fileprivate var handlerCalls:[HandlerCall] = []
+			fileprivate let handlerCalls:UnsafeMutablePointer<Array<HandlerCall>> = .allocate(capacity:1)
 			fileprivate let handlerCallsLock = Mutex()
 		
 			// thread
@@ -62,42 +62,43 @@ extension __cswiftslash_tests {
 		
 			// function pointers for the thread configuration
 			fileprivate let alloc_f:__cswiftslash_threads_alloc_f!
-			fileprivate var run_f:__cswiftslash_threads_main_f!
-			fileprivate var cancel_f:__cswiftslash_threads_cancel_f!
-			fileprivate var dealloc_f:__cswiftslash_threads_dealloc_f!
+			fileprivate let run_f:UnsafeMutablePointer<__cswiftslash_threads_main_f> = .allocate(capacity:1)
+			fileprivate let cancel_f:__cswiftslash_threads_cancel_f!
+			fileprivate let dealloc_f:__cswiftslash_threads_dealloc_f!
 		
 			fileprivate init() {
+				handlerCalls.initialize(to: [])
+
 				// define the function pointers
 				alloc_f = { arg in
 					let harness = Unmanaged<ThreadHarness>.fromOpaque(arg).takeUnretainedValue()
 					harness.handlerCallsLock.lock()
-					harness.handlerCalls.append(.allocatorCalled)
+					harness.handlerCalls.pointee.append(.allocatorCalled)
 					harness.handlerCallsLock.unlock()
 					return Unmanaged.passUnretained(harness).toOpaque()
 				}
 			
-				run_f = { ws in
+				run_f.initialize(to:{ ws in
 					let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 					harness.handlerCallsLock.lock()
-					harness.handlerCalls.append(.mainCalled(pthread_self()))
+					harness.handlerCalls.pointee.append(.mainCalled(pthread_self()))
 					harness.handlerCallsLock.unlock()
 					sleep(1) // sleep for 1 second to simulate work
-				}
+				})
 			
 				cancel_f = { ws in
 					let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 					harness.handlerCallsLock.lock()
-					harness.handlerCalls.append(.cancelCalled)
+					harness.handlerCalls.pointee.append(.cancelCalled)
 					harness.handlerCallsLock.unlock()
 				}
 			
 				dealloc_f = { ws in
 					let harness = Unmanaged<ThreadHarness>.fromOpaque(ws).takeUnretainedValue()
 					harness.handlerCallsLock.lock()
-					harness.handlerCalls.append(.deallocCalled)
+					harness.handlerCalls.pointee.append(.deallocCalled)
 					harness.handlerCallsLock.unlock()
 				}
-
 			}
 		
 			fileprivate func startThread() {
@@ -105,7 +106,7 @@ extension __cswiftslash_tests {
 				let config = __cswiftslash_threads_config_init(
 					arg,
 					alloc_f,
-					run_f,
+					run_f.pointee,
 					cancel_f,
 					dealloc_f
 				)
@@ -115,9 +116,7 @@ extension __cswiftslash_tests {
 			}
 		
 			fileprivate func cancelThread() {
-				// if let thread = self.thread {
-					pthread_cancel(thread!)
-				// }
+				pthread_cancel(thread!)
 			}
 		
 			fileprivate func joinThread() async -> [HandlerCall] {
@@ -127,10 +126,17 @@ extension __cswiftslash_tests {
 				}
 				let cont = await withUnsafeContinuation { (continuation:UnsafeContinuation<[HandlerCall], Never>) in
 					handlerCallsLock.lock()
-					continuation.resume(returning:handlerCalls)
+					continuation.resume(returning:handlerCalls.pointee)
 					handlerCallsLock.unlock()
 				}
 				return cont
+			}
+
+			deinit {
+				handlerCalls.deinitialize(count:1)
+				handlerCalls.deallocate()
+				run_f.deinitialize(count:1)
+				run_f.deallocate()
 			}
 		}
 
@@ -161,7 +167,7 @@ extension __cswiftslash_tests {
 			let calls = await harness.joinThread()
 
 			#expect(calls.count == 4 || calls.count == 3, "expected 3 or 4 handler calls, got \(calls.count)")
-			switch harness.handlerCalls.count {
+			switch harness.handlerCalls.pointee.count {
 			case 4:
 				#expect(calls[0] == .allocatorCalled, "expected allocator to be called first")
 				#expect(calls[1] == .mainCalled(harness.thread!), "expected main function to be called second")
@@ -196,7 +202,7 @@ extension __cswiftslash_tests {
 			let harness = ThreadHarness()
 		
 			// modify main function to exit immediately
-			harness.run_f = { ws in
+			harness.run_f.pointee = { ws in
 				// exit immediately
 				return
 			}
@@ -266,10 +272,10 @@ extension __cswiftslash_tests {
 					}
 				} else {
 					// thread ran to completion
-					#expect(harness.handlerCalls.count == 3, "expected 3 handler calls for completed thread")
-					#expect(harness.handlerCalls[0] == .allocatorCalled, "expected allocator first")
-					#expect(harness.handlerCalls[1] == .mainCalled(harness.thread!), "expected main function second")
-					#expect(harness.handlerCalls[2] == .deallocCalled, "expected deallocator last")
+					#expect(harness.handlerCalls.pointee.count == 3, "expected 3 handler calls for completed thread")
+					#expect(harness.handlerCalls.pointee[0] == .allocatorCalled, "expected allocator first")
+					#expect(harness.handlerCalls.pointee[1] == .mainCalled(harness.thread!), "expected main function second")
+					#expect(harness.handlerCalls.pointee[2] == .deallocCalled, "expected deallocator last")
 				}
 			}
 		}
