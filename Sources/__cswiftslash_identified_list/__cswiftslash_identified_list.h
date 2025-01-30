@@ -16,16 +16,17 @@ copyright (c) tanner silva 2024. all rights reserved.
 
 #include <pthread.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 /// forward declaration of the identified list structure.
 struct __cswiftslash_identified_list;
 
 /// nullable pointer to a single element in the atomic list.
-typedef struct __cswiftslash_identified_list* _Nullable __cswiftslash_identified_list_ptr_t;
+typedef struct __cswiftslash_identified_list *_Nullable __cswiftslash_identified_list_ptr_t;
 /// defines an atomic pointer to a single element in the atomic list.
 typedef __cswiftslash_identified_list_ptr_t __cswiftslash_identified_list_ptr_t;
 /// consumer function prototype for processing data pointers in the atomic list. this is essentially the "last point of contact" for the data pointer before it is passed to the deallocator.
-typedef void (*_Nonnull __cswiftslash_identified_list_iterator_f)(const uint64_t, const __cswiftslash_ptr_t, const __cswiftslash_ptr_t);
+typedef void (*_Nonnull __cswiftslash_identified_list_iterator_f)(const uint64_t, const __cswiftslash_ptr_t, const __cswiftslash_optr_t);
 
 /// structure representing a single element within the atomic list.
 typedef struct __cswiftslash_identified_list {
@@ -34,15 +35,15 @@ typedef struct __cswiftslash_identified_list {
 	/// data pointer that the element instance is storing.
 	const __cswiftslash_ptr_t ____d;
 	/// next element that was stored in the hash table.
-	struct __cswiftslash_identified_list* _Nullable ____n;
+	struct __cswiftslash_identified_list *_Nullable ____n;
 	/// previous element that was stored in the hash table.
-	struct __cswiftslash_identified_list* _Nullable ____p;
+	struct __cswiftslash_identified_list *_Nullable ____p;
 } __cswiftslash_identified_list_t;
 
 /// primary storage container for the atomic list.
 typedef struct __cswiftslash_identified_list_pair {
 	/// hash table array of pointers to linked lists.
-	__cswiftslash_identified_list_ptr_t* _Nonnull ____ht;
+	__cswiftslash_identified_list_ptr_t *_Nonnull ____ht;
 	/// current size of the hash table.
 	size_t ____hn;
 	/// number of elements currently stored.
@@ -58,7 +59,7 @@ typedef struct __cswiftslash_identified_list_pair {
 } __cswiftslash_identified_list_pair_t;
 
 /// non-null pointer to an atomic list pair.
-typedef __cswiftslash_identified_list_pair_t* _Nonnull __cswiftslash_identified_list_pair_ptr_t;
+typedef __cswiftslash_identified_list_pair_t *_Nonnull __cswiftslash_identified_list_pair_ptr_t;
 
 // initialization and deinitialization functions.
 
@@ -97,25 +98,31 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 	const uint64_t __
 );
 
-/// iterates through all elements in the atomic list, processing each data pointer with the provided consumer function.
-/// @param _ pointer to the atomic list pair instance.
-/// @param __ function used to process each data pointer in the atomic list.
-/// @param ___ context pointer to be passed into the consumer function.
-void __cswiftslash_identified_list_iterate(
+/// @brief initiates a new iteration sequence over the identified list.
+/// @param _ the instance to invoke the iteration sequence on.
+/// @param __ the pointer to store the first element in the iteration sequence. NOTE: you will not read from this pointer directly, instead, you will pass it to `__cswiftslash_identified_list_iterator_next`, and this function will then return the corresponding data pointer for the element.
+/// @return true if the iteration sequence was successfully initiated and iteration may proceed, false if the list is empty and no iteration is needed.
+bool __cswiftslash_identified_list_iterator_register(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	const __cswiftslash_identified_list_iterator_f __,
-	const __cswiftslash_optr_t ___
+	__cswiftslash_optr_t *_Nonnull __
 );
 
-
-/// iterates through all elements in the atomic list, processing each data pointer with the provided consumer function. after each element is processed, the element is removed from the identified list.
-/// @param _ pointer to the atomic list pair instance.
-/// @param __ function used to process each data pointer in the atomic list.
-/// @param ___ context pointer to be passed into the consumer function.
-void __cswiftslash_identified_list_iterate_consume_zero(
+/// @brief retrieves the next data pointer in the iteration sequence. NOTE: do not call this function if the iteration sequence has not been initiated with `__cswiftslash_identified_list_iterator_register`, or if this function has returned `false`.
+/// @param _ the instance that is being iterated over. this must be the same instance used in the call to `__cswiftslash_identified_list_iterator_register`.
+/// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
+/// @return the data pointer for the next element in the iteration sequence.
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	const __cswiftslash_identified_list_iterator_f __,
-	const __cswiftslash_optr_t ___
+	__cswiftslash_optr_t *_Nonnull __
+);
+
+/// @brief retrieves the data data pointer in the iteration sequence and deallocates the element from the atomic list. NOTE: after calling this function (immediately after the first call to `__cswiftslash_identified_list_iterator_register`), you may not call `__cswiftslash_identified_list_iterator_next`. instead, you must call `__cswiftslash_identified_list_iterator_next_zero` until it returns NULL.
+/// @param _ instance to iterate over.
+/// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
+/// @return the data pointer for the next element in the iteration sequence.
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	__cswiftslash_optr_t *_Nonnull __
 );
 
 #endif // __CSWIFTSLASH_IDENTIFIED_LIST_H
