@@ -110,19 +110,23 @@ bool __cswiftslash_identified_list_iterator_register(
 /// @brief retrieves the next data pointer in the iteration sequence. NOTE: do not call this function if the iteration sequence has not been initiated with `__cswiftslash_identified_list_iterator_register`, or if this function has returned `false`.
 /// @param _ the instance that is being iterated over. this must be the same instance used in the call to `__cswiftslash_identified_list_iterator_register`.
 /// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
+/// @param ___ a pointer to store the key value associated with the data pointer.
 /// @return the data pointer for the next element in the iteration sequence.
 __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	__cswiftslash_optr_t *_Nonnull __,
+	uint64_t *_Nonnull ___
 );
 
 /// @brief retrieves the data data pointer in the iteration sequence and deallocates the element from the atomic list. NOTE: after calling this function (immediately after the first call to `__cswiftslash_identified_list_iterator_register`), you may not call `__cswiftslash_identified_list_iterator_next`. instead, you must call `__cswiftslash_identified_list_iterator_next_zero` until it returns NULL.
 /// @param _ instance to iterate over.
 /// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
+/// @param ___ the pointer to store the key value associated with the data pointer.
 /// @return the data pointer for the next element in the iteration sequence.
 __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	__cswiftslash_optr_t *_Nonnull __,
+	uint64_t *_Nonnull ___
 );
 
 #endif // __CSWIFTSLASH_IDENTIFIED_LIST_H

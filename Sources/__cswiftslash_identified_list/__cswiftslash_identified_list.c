@@ -217,10 +217,12 @@ bool __cswiftslash_identified_list_iterator_register(
 
 __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	__cswiftslash_optr_t *_Nonnull __,
+	uint64_t *_Nonnull ___
 ) {
 	__cswiftslash_identified_list_ptr_t __0 = (__cswiftslash_identified_list_ptr_t)*__;
 	__cswiftslash_ptr_t __1 = __0->____d;
+	*___ = __0->____k;
 	*__ = __0->____n;
 	if (*__ == NULL) {
 		pthread_mutex_unlock(&_->____m);
@@ -230,10 +232,12 @@ __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 
 __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	__cswiftslash_optr_t *_Nonnull __,
+	uint64_t *_Nonnull ___
 ) {
 	__cswiftslash_identified_list_ptr_t __0 = (__cswiftslash_identified_list_ptr_t)*__;
 	__cswiftslash_ptr_t __1 = __0->____d;
+	*___ = __0->____k;
 	*__ = __0->____n;
 	if (*__ == NULL) {
 		_->____o = NULL;
