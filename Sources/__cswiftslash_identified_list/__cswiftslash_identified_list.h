@@ -67,17 +67,6 @@ typedef __cswiftslash_identified_list_pair_t *_Nonnull __cswiftslash_identified_
 /// @return a new atomic list pair instance. Must be deallocated with `__cswiftslash_identified_list_close`.
 __cswiftslash_identified_list_pair_t __cswiftslash_identified_list_init();
 
-/// deallocates memory of the atomic list pair instance.
-/// any remaining elements in the list will be deallocated.
-/// @param _ pointer to the atomic list pair instance to be deallocated.
-/// @param __ function used to process the data pointer before deallocation.
-/// @param ___ optional context pointer to be passed into the consumer function.
-void __cswiftslash_identified_list_close(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	const __cswiftslash_identified_list_iterator_f __,
-	const __cswiftslash_optr_t ___
-);
-
 // data handling functions.
 
 /// inserts a new data pointer into the atomic list.
@@ -100,11 +89,10 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 
 /// @brief initiates a new iteration sequence over the identified list.
 /// @param _ the instance to invoke the iteration sequence on.
-/// @param __ the pointer to store the first element in the iteration sequence. NOTE: you will not read from this pointer directly, instead, you will pass it to `__cswiftslash_identified_list_iterator_next`, and this function will then return the corresponding data pointer for the element.
-/// @return true if the iteration sequence was successfully initiated and iteration may proceed, false if the list is empty and no iteration is needed.
-bool __cswiftslash_identified_list_iterator_register(
+/// @param __ indicates if this is a closing session (not to be confused with a session that may be zeroing).....meaning, the identified list will be freed from memory after the final element has been consumed from a freeing session. if true, you MUST call `__cswiftslash_identified_list_iterator_next_zero` until it returns NULL.
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_register2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	const bool __
 );
 
 /// @brief retrieves the next data pointer in the iteration sequence. NOTE: do not call this function if the iteration sequence has not been initiated with `__cswiftslash_identified_list_iterator_register`, or if this function has returned `false`.
@@ -112,7 +100,7 @@ bool __cswiftslash_identified_list_iterator_register(
 /// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
 /// @param ___ a pointer to store the key value associated with the data pointer.
 /// @return the data pointer for the next element in the iteration sequence.
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
 	__cswiftslash_optr_t *_Nonnull __,
 	uint64_t *_Nonnull ___
@@ -122,11 +110,13 @@ __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 /// @param _ instance to iterate over.
 /// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
 /// @param ___ the pointer to store the key value associated with the data pointer.
+/// @param ____ should the identified list be closed after the iteration sequence has ended?
 /// @return the data pointer for the next element in the iteration sequence.
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
 	__cswiftslash_optr_t *_Nonnull __,
-	uint64_t *_Nonnull ___
+	uint64_t *_Nonnull ___,
+	const bool ____
 );
 
 #endif // __CSWIFTSLASH_IDENTIFIED_LIST_H

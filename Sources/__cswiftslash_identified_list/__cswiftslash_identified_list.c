@@ -70,24 +70,6 @@ __cswiftslash_identified_list_pair_t __cswiftslash_identified_list_init() {
 	return __0;
 }
 
-void __cswiftslash_identified_list_close(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	const __cswiftslash_identified_list_iterator_f __,
-	const __cswiftslash_optr_t ___
-) {
-	pthread_mutex_lock(&_->____m);
-	__cswiftslash_identified_list_ptr_t __0 = _->____o;
-	while (__0 != NULL) {
-		__(__0->____k, __0->____d, ___);
-		__cswiftslash_identified_list_ptr_t __1 = __0;
-		__0 = __0->____n;
-		free(__1);
-	}
-	free(_->____ht);
-	pthread_mutex_unlock(&_->____m);
-	pthread_mutex_destroy(&_->____m);
-}
-
 uint64_t ____increment_overflow_guard(
 	uint64_t *_Nonnull __
 ) {
@@ -200,22 +182,26 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 	return __4;
 }
 
-bool __cswiftslash_identified_list_iterator_register(
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_register2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __
+	const bool __
 ) {
 	pthread_mutex_lock(&_->____m);
 	if (_->____i > 0) {
-		*__ = _->____o;
-		return true;
+		return _->____o;
 	} else {
-		pthread_mutex_unlock(&_->____m);
-		*__ = NULL;
-		return false;
+		if (__ == true) {
+			free(_->____ht);
+			pthread_mutex_unlock(&_->____m);
+			pthread_mutex_destroy(&_->____m);
+		} else {
+			pthread_mutex_unlock(&_->____m);
+		}
+		return NULL;
 	}
 }
 
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
 	__cswiftslash_optr_t *_Nonnull __,
 	uint64_t *_Nonnull ___
@@ -230,10 +216,11 @@ __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next(
 	return __1;
 }
 
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
+__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero2(
 	const __cswiftslash_identified_list_pair_ptr_t _,
 	__cswiftslash_optr_t *_Nonnull __,
-	uint64_t *_Nonnull ___
+	uint64_t *_Nonnull ___,
+	const bool ____
 ) {
 	__cswiftslash_identified_list_ptr_t __0 = (__cswiftslash_identified_list_ptr_t)*__;
 	__cswiftslash_ptr_t __1 = __0->____d;
@@ -243,7 +230,13 @@ __cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero(
 		_->____o = NULL;
 		_->____p = NULL;
 		_->____i = 0;
-		pthread_mutex_unlock(&_->____m);
+		if (____ == true) {
+			pthread_mutex_unlock(&_->____m);
+
+		} else {
+			pthread_mutex_unlock(&_->____m);
+		}
+		
 	}
 	free(__0);
 	return __1;
