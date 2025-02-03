@@ -182,62 +182,69 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 	return __4;
 }
 
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_register2(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	const bool __
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_begin3(
+	const __cswiftslash_identified_list_pair_ptr_t _
 ) {
 	pthread_mutex_lock(&_->____m);
-	if (_->____i > 0) {
-		return _->____o;
+	return _->____o;
+}
+
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step3(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	__cswiftslash_identified_list_t *_Nullable __,
+	uint64_t *_Nonnull ___,
+	__cswiftslash_ptr_t *_Nonnull ____
+) {
+	if (__ != NULL) {
+		(*___) = __->____k;
+		(*____) = __->____d;
+		return __->____n;
 	} else {
-		if (__ == true) {
-			free(_->____ht);
-			pthread_mutex_unlock(&_->____m);
-			pthread_mutex_destroy(&_->____m);
-		} else {
-			pthread_mutex_unlock(&_->____m);
-		}
+		pthread_mutex_unlock(&_->____m);
 		return NULL;
 	}
 }
 
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next2(
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero3(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __,
-	uint64_t *_Nonnull ___
-) {
-	__cswiftslash_identified_list_ptr_t __0 = (__cswiftslash_identified_list_ptr_t)*__;
-	__cswiftslash_ptr_t __1 = __0->____d;
-	*___ = __0->____k;
-	*__ = __0->____n;
-	if (*__ == NULL) {
-		pthread_mutex_unlock(&_->____m);
-	}
-	return __1;
-}
-
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero2(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __,
+	__cswiftslash_identified_list_t *_Nullable __,
 	uint64_t *_Nonnull ___,
-	const bool ____
+	__cswiftslash_ptr_t *_Nonnull ____
 ) {
-	__cswiftslash_identified_list_ptr_t __0 = (__cswiftslash_identified_list_ptr_t)*__;
-	__cswiftslash_ptr_t __1 = __0->____d;
-	*___ = __0->____k;
-	*__ = __0->____n;
-	if (*__ == NULL) {
+	if (__ != NULL) {
+		(*___) = __->____k;
+		(*____) = __->____d;
+		__cswiftslash_identified_list_t *_Nullable __0 = __->____n;
+		free(__);
+		return __0;
+	} else {
 		_->____o = NULL;
 		_->____p = NULL;
 		_->____i = 0;
-		if (____ == true) {
-			pthread_mutex_unlock(&_->____m);
-
-		} else {
-			pthread_mutex_unlock(&_->____m);
-		}
-		
+		pthread_mutex_unlock(&_->____m);
+		return NULL;
 	}
-	free(__0);
-	return __1;
+}
+
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero_close3(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	__cswiftslash_identified_list_t *_Nullable __,
+	uint64_t *_Nonnull ___,
+	__cswiftslash_ptr_t *_Nonnull ____
+) {
+	if (__ != NULL) {
+		(*___) = __->____k;
+		(*____) = __->____d;
+		__cswiftslash_identified_list_t *_Nullable __0 = __->____n;
+		free(__);
+		return __0;
+	} else {
+		_->____o = NULL;
+		_->____p = NULL;
+		_->____i = 0;
+		free(_->____ht);
+		pthread_mutex_unlock(&_->____m);
+		pthread_mutex_destroy(&_->____m);
+		return NULL;
+	}
 }

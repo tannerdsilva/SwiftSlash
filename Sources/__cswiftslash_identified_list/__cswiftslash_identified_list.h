@@ -23,10 +23,6 @@ struct __cswiftslash_identified_list;
 
 /// nullable pointer to a single element in the atomic list.
 typedef struct __cswiftslash_identified_list *_Nullable __cswiftslash_identified_list_ptr_t;
-/// defines an atomic pointer to a single element in the atomic list.
-typedef __cswiftslash_identified_list_ptr_t __cswiftslash_identified_list_ptr_t;
-/// consumer function prototype for processing data pointers in the atomic list. this is essentially the "last point of contact" for the data pointer before it is passed to the deallocator.
-typedef void (*_Nonnull __cswiftslash_identified_list_iterator_f)(const uint64_t, const __cswiftslash_ptr_t, const __cswiftslash_optr_t);
 
 /// structure representing a single element within the atomic list.
 typedef struct __cswiftslash_identified_list {
@@ -89,34 +85,30 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 
 /// @brief initiates a new iteration sequence over the identified list.
 /// @param _ the instance to invoke the iteration sequence on.
-/// @param __ indicates if this is a closing session (not to be confused with a session that may be zeroing).....meaning, the identified list will be freed from memory after the final element has been consumed from a freeing session. if true, you MUST call `__cswiftslash_identified_list_iterator_next_zero` until it returns NULL.
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_register2(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	const bool __
+/// @return a pointer (possibly NULL) to pass to one of numerous iteration functions. you must call your iteration function of choice ONCE with a null pointer to successfully terminate the iteration session.
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_begin3(
+	const __cswiftslash_identified_list_pair_ptr_t _
 );
 
-/// @brief retrieves the next data pointer in the iteration sequence. NOTE: do not call this function if the iteration sequence has not been initiated with `__cswiftslash_identified_list_iterator_register`, or if this function has returned `false`.
-/// @param _ the instance that is being iterated over. this must be the same instance used in the call to `__cswiftslash_identified_list_iterator_register`.
-/// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
-/// @param ___ a pointer to store the key value associated with the data pointer.
-/// @return the data pointer for the next element in the iteration sequence.
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next2(
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step3(
 	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __,
-	uint64_t *_Nonnull ___
-);
-
-/// @brief retrieves the data data pointer in the iteration sequence and deallocates the element from the atomic list. NOTE: after calling this function (immediately after the first call to `__cswiftslash_identified_list_iterator_register`), you may not call `__cswiftslash_identified_list_iterator_next`. instead, you must call `__cswiftslash_identified_list_iterator_next_zero` until it returns NULL.
-/// @param _ instance to iterate over.
-/// @param __ the pointer to store the next element in the iteration sequence. NOTE: you can only use this pointer to check for NULL. in such cases that the stored pointer is NULL, the iteration sequence has ended and the mutex will be unlocked.
-/// @param ___ the pointer to store the key value associated with the data pointer.
-/// @param ____ should the identified list be closed after the iteration sequence has ended?
-/// @return the data pointer for the next element in the iteration sequence.
-__cswiftslash_optr_t __cswiftslash_identified_list_iterator_next_zero2(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_optr_t *_Nonnull __,
+	__cswiftslash_identified_list_t *_Nullable __,
 	uint64_t *_Nonnull ___,
-	const bool ____
+	__cswiftslash_ptr_t *_Nonnull ____
+);
+
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero3(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	__cswiftslash_identified_list_t *_Nullable __,
+	uint64_t *_Nonnull ___,
+	__cswiftslash_ptr_t *_Nonnull ____
+);
+
+__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero_close3(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	__cswiftslash_identified_list_t *_Nullable __,
+	uint64_t *_Nonnull ___,
+	__cswiftslash_ptr_t *_Nonnull ____
 );
 
 #endif // __CSWIFTSLASH_IDENTIFIED_LIST_H
