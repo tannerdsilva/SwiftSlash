@@ -6,7 +6,7 @@ extension SwiftSlashTests {
 		.serialized
 	)
 	internal struct SwiftSlashIdentifiedListTests {
-		@Test("SwiftSlashIdentifiedList :: test memory lifecycle")
+		@Test("SwiftSlashIdentifiedList :: test memory lifecycle", .timeLimit(.minutes(1)))
 		func testIdentifiedListMemoryLifecycle() {
 			var il:IdentifiedList<WhenDeinitTool<Int>>? = IdentifiedList<WhenDeinitTool<Int>>()
 			var diCount = 0
@@ -41,14 +41,14 @@ extension SwiftSlashTests {
 			#expect(diCount == 3)
 		}
 
-		@Test("SwiftSlashIdentifiedList :: test remove non-existing key")
+		@Test("SwiftSlashIdentifiedList :: test remove non-existing key", .timeLimit(.minutes(1)))
 		func testIdentifiedListRemoveNonExistingKey() {
 			let il = IdentifiedList<String>()
 			let removedValue = il.remove(123)
 			#expect(removedValue == nil)
 		}
 
-		@Test("SwiftSlashIdentifiedList :: test concurrent insert and remove")
+		@Test("SwiftSlashIdentifiedList :: test concurrent insert and remove", .timeLimit(.minutes(1)))
 		func testIdentifiedListConcurrentInsertAndRemove() async {
 			let il = IdentifiedList<Int>()
 			let keptItems = await withTaskGroup(of:Optional<(UInt64, Int)>.self, returning:[UInt64:Int].self) { tg in

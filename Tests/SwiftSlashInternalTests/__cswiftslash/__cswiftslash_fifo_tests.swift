@@ -67,7 +67,7 @@ extension __cswiftslash_tests {
 				}
 			}
 			private func close() -> UnsafeMutableRawPointer? {
-				return __cswiftslash_fifo_close(fifoPtr, nil)
+				return __cswiftslash_fifo_close(fifoPtr, nil, nil)
 			}
 			deinit {
 				_ = close()

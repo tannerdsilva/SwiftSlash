@@ -95,7 +95,8 @@ bool __cswiftslash_fifo_set_max_elements(
 
 __cswiftslash_optr_t __cswiftslash_fifo_close(
 	const __cswiftslash_fifo_linkpair_ptr_t _,
-	const __cswiftslash_fifo_link_ptr_consume_f _Nullable __
+	const __cswiftslash_fifo_link_ptr_consume_f _Nullable __,
+	const __cswiftslash_optr_t ___
 ) {
 	__cswiftslash_fifo_link_ptr_t __0 = atomic_load_explicit(&_->____bp, memory_order_acquire);
 	atomic_store_explicit(&_->____bp, NULL, memory_order_release);
@@ -103,7 +104,7 @@ __cswiftslash_optr_t __cswiftslash_fifo_close(
 	if (__ != NULL) {
 		while (__0 != NULL) {
 			__cswiftslash_fifo_link_ptr_t __1 = atomic_load_explicit(&__0->__, memory_order_acquire);
-			__(__0->_);
+			__(__0->_, ___);
 			free(__0);
 			__0 = __1;
 		}

@@ -28,7 +28,10 @@ typedef struct __cswiftslash_fifo_link *_Nullable __cswiftslash_fifo_link_ptr_t;
 typedef _Atomic __cswiftslash_fifo_link_ptr_t __cswiftslash_fifo_link_aptr_t;
 
 /// function prototype for consuming data from the chain.
-typedef void (* __cswiftslash_fifo_link_ptr_consume_f)(const __cswiftslash_ptr_t);
+typedef void (* __cswiftslash_fifo_link_ptr_consume_f)(
+	const __cswiftslash_ptr_t,
+	const __cswiftslash_optr_t
+);
 
 /// fifo consumption result values
 typedef enum __cswiftslash_fifo_consume_result {
@@ -93,7 +96,7 @@ typedef struct __cswiftslash_fifo_linkpair {
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
 typedef __cswiftslash_fifo_linkpair_t*_Nonnull __cswiftslash_fifo_linkpair_ptr_t;
 
-/// initializes a new fifo pair. if this fifo is used as an independent concurrency unit in your application, a mutex should be initialized (using `_cswiftslash_fifo_mutex_new`) and passed in here. any valid non-null value passed here will automatically be destroyed at the apropriate time (pass and forget). a mutex is not required if the fifo is used in a single-threaded context.
+/// initializes a new fifo pair. can be used with or without its own mutex for synchronization.
 /// @param _ boolean value indicating if the fifo should be initialized with its own private mutex for synchronization. false can be passed here when the fifo is used in a single-threaded context.
 /// @return a heap pointer to a newly initialized `_cswiftslash_fifo_linkpair_t`. NOTE: this pointer must be closed with `__cswiftslash_fifo_close` to free all associated memory.
 __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
@@ -112,10 +115,12 @@ bool __cswiftslash_fifo_set_max_elements(
 /// deinitializes a fifo instance, freeing all associated memory and resources.
 /// @param _ pointer to the fifo to be deinitialized.
 /// @param __ function used for deallocating the unconsumed elements in the chain. NULL if no deallocator is needed.
+/// @param ___ the context pointer to be passed to the deallocator consume function.
 /// @return the cap pointer if the chain was capped (the capped pointer may be NULL); else, NULL is returned due to the chain not having a capped value. the caller is responsible for freeing this returned pointer from memory.
 __cswiftslash_optr_t __cswiftslash_fifo_close(
 	const __cswiftslash_fifo_linkpair_ptr_t _,
-	const __cswiftslash_fifo_link_ptr_consume_f _Nullable __
+	const __cswiftslash_fifo_link_ptr_consume_f _Nullable __,
+	const __cswiftslash_optr_t ___
 );
 
 /// cap off the fifo with a final element. any elements passed into the chain after capping it off will be stored and handled by the deallocator when this instance is closed (they will not be passed to a consumer, nor will they be forever leaked into memory).
