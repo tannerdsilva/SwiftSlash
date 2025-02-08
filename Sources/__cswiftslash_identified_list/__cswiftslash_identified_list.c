@@ -199,63 +199,37 @@ void __cswiftslash_identified_list_iterate(
 	}
 }
 
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step3(
+void __cswiftslash_identified_list_close(
+        const __cswiftslash_identified_list_pair_ptr_t _,
+        const __cswiftslash_identified_list_iterator_f __,
+        const __cswiftslash_optr_t ___
+) {
+        pthread_mutex_lock(&_->____m);
+        __cswiftslash_identified_list_ptr_t __0 = _->____o;
+        while (__0 != NULL) {
+                __(__0->____k, __0->____d, ___);
+                __cswiftslash_identified_list_ptr_t __1 = __0;
+                __0 = __0->____n;
+                free(__1);
+        }
+        free(_->____ht);
+        pthread_mutex_unlock(&_->____m);
+        pthread_mutex_destroy(&_->____m);
+}
+
+void __cswiftslash_identified_list_iterate_consume_zero(
 	const __cswiftslash_identified_list_pair_ptr_t _,
 	const __cswiftslash_identified_list_iterator_f __,
 	const __cswiftslash_optr_t ___,
 	const bool ____
 ) {
-	if (__ != NULL) {
-		(*___) = __->____k;
-		(*____) = __->____d;
-		return __->____n;
-	} else {
-		pthread_mutex_unlock(&_->____m);
-		return NULL;
-	}
-}
-
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero3(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_identified_list_t *_Nullable __,
-	uint64_t *_Nonnull ___,
-	__cswiftslash_ptr_t *_Nonnull ____
-) {
-	if (__ != NULL) {
-		(*___) = __->____k;
-		(*____) = __->____d;
-		__cswiftslash_identified_list_t *_Nullable __0 = __->____n;
-		free(__);
-		return __0;
-	} else {
-		_->____o = NULL;
-		_->____p = NULL;
-		_->____i = 0;
-		pthread_mutex_unlock(&_->____m);
-		return NULL;
-	}
-}
-
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero_close3(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_identified_list_t *_Nullable __,
-	uint64_t *_Nonnull ___,
-	__cswiftslash_ptr_t *_Nonnull ____
-) {
-	if (__ != NULL) {
-		(*___) = __->____k;
-		(*____) = __->____d;
-		__cswiftslash_identified_list_t *_Nullable __0 = __->____n;
-		free(__);
-		return __0;
-	} else {
-		_->____o = NULL;
-		_->____p = NULL;
-		_->____i = 0;
-		free(_->____ht);
-		pthread_mutex_unlock(&_->____m);
-		pthread_mutex_destroy(&_->____m);
-		return NULL;
+	pthread_mutex_lock(&_->____m);
+	__cswiftslash_identified_list_ptr_t __0 = _->____o;
+	while (__0 != NULL) {
+		__(__0->____k, __0->____d, ___);
+		__cswiftslash_identified_list_ptr_t __1 = __0;
+		__0 = __0->____n;
+		free(__1);
 	}
 	_->____o = NULL;
 	_->____p = NULL;

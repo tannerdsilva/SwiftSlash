@@ -22,7 +22,11 @@ copyright (c) tanner silva 2024. all rights reserved.
 struct __cswiftslash_identified_list;
 
 /// nullable pointer to a single element in the atomic list.
-typedef struct __cswiftslash_identified_list *_Nullable __cswiftslash_identified_list_ptr_t;
+typedef struct __cswiftslash_identified_list* _Nullable __cswiftslash_identified_list_ptr_t;
+/// defines an atomic pointer to a single element in the atomic list.
+typedef __cswiftslash_identified_list_ptr_t __cswiftslash_identified_list_ptr_t;
+/// consumer function prototype for processing data pointers in the atomic list. this is essentially the "last point of contact" for the data pointer before it is passed to the deallocator.
+typedef void (*_Nonnull __cswiftslash_identified_list_iterator_f)(const uint64_t, const __cswiftslash_ptr_t, const __cswiftslash_ptr_t);
 
 /// structure representing a single element within the atomic list.
 typedef struct __cswiftslash_identified_list {
@@ -31,15 +35,15 @@ typedef struct __cswiftslash_identified_list {
 	/// data pointer that the element instance is storing.
 	const __cswiftslash_ptr_t ____d;
 	/// next element that was stored in the hash table.
-	struct __cswiftslash_identified_list *_Nullable ____n;
+	struct __cswiftslash_identified_list* _Nullable ____n;
 	/// previous element that was stored in the hash table.
-	struct __cswiftslash_identified_list *_Nullable ____p;
+	struct __cswiftslash_identified_list* _Nullable ____p;
 } __cswiftslash_identified_list_t;
 
 /// primary storage container for the atomic list.
 typedef struct __cswiftslash_identified_list_pair {
 	/// hash table array of pointers to linked lists.
-	__cswiftslash_identified_list_ptr_t *_Nonnull ____ht;
+	__cswiftslash_identified_list_ptr_t* _Nonnull ____ht;
 	/// current size of the hash table.
 	size_t ____hn;
 	/// number of elements currently stored.
@@ -55,13 +59,24 @@ typedef struct __cswiftslash_identified_list_pair {
 } __cswiftslash_identified_list_pair_t;
 
 /// non-null pointer to an atomic list pair.
-typedef __cswiftslash_identified_list_pair_t *_Nonnull __cswiftslash_identified_list_pair_ptr_t;
+typedef __cswiftslash_identified_list_pair_t* _Nonnull __cswiftslash_identified_list_pair_ptr_t;
 
 // initialization and deinitialization functions.
 
 /// initializes a new atomic list pair instance.
 /// @return a new atomic list pair instance. Must be deallocated with `__cswiftslash_identified_list_close`.
 __cswiftslash_identified_list_pair_t __cswiftslash_identified_list_init();
+
+/// deallocates memory of the atomic list pair instance.
+/// any remaining elements in the list will be deallocated.
+/// @param _ pointer to the atomic list pair instance to be deallocated.
+/// @param __ function used to process the data pointer before deallocation.
+/// @param ___ optional context pointer to be passed into the consumer function.
+void __cswiftslash_identified_list_close(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	const __cswiftslash_identified_list_iterator_f __,
+	const __cswiftslash_optr_t ___
+);
 
 // data handling functions.
 

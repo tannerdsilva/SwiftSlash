@@ -99,6 +99,19 @@ void ____cswiftslash_future_wait_t_destroy_async(__cswiftslash_future_wait_ptr_t
 	free((void*)_);
 }
 
+void ____cswiftslash_future_identified_list_cancel_iterator(
+	const uint64_t _,
+	const __cswiftslash_ptr_t __,
+	const __cswiftslash_optr_t ___
+) {
+	if (((__cswiftslash_future_wait_ptr_t)__)->____sy == true) {
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)__)->____rm);
+	} else {
+		((__cswiftslash_future_wait_ptr_t)__)->____v(((__cswiftslash_future_wait_ptr_t)__)->____c);
+		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)__);
+	}
+}
+
 bool __cswiftslash_future_t_broadcast_cancel(
 	const __cswiftslash_future_ptr_t _
 ) {	
@@ -143,9 +156,6 @@ void __cswiftslash_future_t_destroy(
 ) {
 	pthread_mutex_lock(&_->____m);
 	int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
-	__cswiftslash_optr_t __1 = NULL;
-	__cswiftslash_future_wait_ptr_t __2;
-	uint64_t __3;
 	switch (__0) {
 		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
 			__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL, false);
@@ -162,6 +172,7 @@ void __cswiftslash_future_t_destroy(
 	}
 	pthread_mutex_unlock(&_->____m);
 	pthread_mutex_lock(&_->____m);
+	__cswiftslash_identified_list_close(_->____wi, ____cswiftslash_future_identified_list_close, NULL);
 	pthread_mutex_unlock(&_->____m);
 	pthread_mutex_destroy(&_->____m);
 	free(_);
@@ -388,18 +399,18 @@ void ____cswiftslash_future_identified_list_val_iterator(
 	}
 }
 
-// void ____cswiftslash_future_identified_list_throw_iterator(
-// 	const uint64_t _,
-// 	const __cswiftslash_ptr_t wptr,
-// 	const __cswiftslash_ptr_t ___
-// ) {
-// 	if (((__cswiftslash_future_wait_ptr_t)wptr)->____sy == true) {
-// 		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____rm);
-// 	} else {
-// 		((__cswiftslash_future_wait_ptr_t)wptr)->____e(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, ((__cswiftslash_future_wait_ptr_t)wptr)->____c);
-// 		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);
-// 	}
-// }
+void ____cswiftslash_future_identified_list_throw_iterator(
+	const uint64_t _,
+	const __cswiftslash_ptr_t wptr,
+	const __cswiftslash_ptr_t ___
+) {
+	if (((__cswiftslash_future_wait_ptr_t)wptr)->____sy == true) {
+		pthread_mutex_unlock(&((__cswiftslash_future_wait_ptr_t)wptr)->____rm);
+	} else {
+		((__cswiftslash_future_wait_ptr_t)wptr)->____e(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, ((__cswiftslash_future_wait_ptr_t)wptr)->____c);
+		____cswiftslash_future_wait_t_destroy_async((__cswiftslash_future_wait_ptr_t)wptr);
+	}
+}
 
 bool __cswiftslash_future_t_broadcast_res_val(
 	const __cswiftslash_future_ptr_t _,
