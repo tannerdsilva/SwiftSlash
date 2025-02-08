@@ -108,21 +108,7 @@ bool __cswiftslash_future_t_broadcast_cancel(
 		pthread_mutex_unlock(&_->____m);
 		return false;
 	}
-	__cswiftslash_optr_t __0 = NULL;
-	__cswiftslash_future_wait_ptr_t __1;
-	uint64_t __2;
-	
-	if ((__0 = __cswiftslash_identified_list_iterator_register2(_->____wi, false)) != NULL) {
-		do {
-			__1 = (__cswiftslash_future_wait_ptr_t)__cswiftslash_identified_list_iterator_next_zero2(_->____wi, &__0, &__2, false);
-			if (__1->____sy == true) {
-				pthread_mutex_unlock(&__1->____rm);
-			} else {
-				__1->____v((__1)->____c);
-				____cswiftslash_future_wait_t_destroy_async(__1);
-			}
-		} while (__0 != NULL);
-	}
+	__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL, false);
 	pthread_mutex_unlock(&_->____m);
 	return true;
 }
@@ -162,17 +148,7 @@ void __cswiftslash_future_t_destroy(
 	uint64_t __3;
 	switch (__0) {
 		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
-			if ((__1 = __cswiftslash_identified_list_iterator_register2(_->____wi, false)) != NULL) {
-				do {
-					__2 = (__cswiftslash_future_wait_ptr_t)__cswiftslash_identified_list_iterator_next_zero2(_->____wi, &__1, &__3, false);
-					if (__2->____sy == true) {
-						pthread_mutex_unlock(&__2->____rm);
-					} else {
-						__2->____v((__2)->____c);
-						____cswiftslash_future_wait_t_destroy_async(__2);
-					}
-				} while (__1 != NULL);
-			}
+			__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_cancel_iterator, NULL, false);
 			break;
 		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
 			___(atomic_load_explicit(&_->____rt, memory_order_acquire), atomic_load_explicit(&_->____rv, memory_order_acquire), __);
@@ -442,20 +418,7 @@ bool __cswiftslash_future_t_broadcast_res_val(
 		._ = __,
 		.__ = ___
 	};
-	__cswiftslash_optr_t __1 = NULL;
-	__cswiftslash_future_wait_ptr_t __2;
-	uint64_t __3;
-	if ((__1 = __cswiftslash_identified_list_iterator_register2(_->____wi, false)) != NULL) {
-		do {
-			__2 = (__cswiftslash_future_wait_ptr_t)__cswiftslash_identified_list_iterator_next_zero2(_->____wi, &__1, &__3, false);
-			if (__2->____sy == true) {
-				pthread_mutex_unlock(&__2->____rm);
-			} else {
-				(__2)->____r(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, __2->____c);
-				____cswiftslash_future_wait_t_destroy_async(__2);
-			}
-		} while (__1 != NULL);
-	}
+	__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_val_iterator, &__0, false);
 	pthread_mutex_unlock(&_->____m);
 	return true;
 }
@@ -477,20 +440,7 @@ bool __cswiftslash_future_t_broadcast_res_throw(
 		._ = __,
 		.__ = ___
 	};
-	__cswiftslash_optr_t __1 = NULL;
-	__cswiftslash_future_wait_ptr_t __2;
-	uint64_t __3;
-	if ((__1 = __cswiftslash_identified_list_iterator_register2(_->____wi, false)) != NULL) {
-		do {
-			__2 = (__cswiftslash_future_wait_ptr_t)__cswiftslash_identified_list_iterator_next_zero2(_->____wi, &__1, &__3, false);
-			if (__2->____sy == true) {
-				pthread_mutex_unlock(&__2->____rm);
-			} else {
-				(__2)->____e(((struct ____cswiftslash_future_identified_list_tool*)___)->_, ((struct ____cswiftslash_future_identified_list_tool*)___)->__, __2->____c);
-				____cswiftslash_future_wait_t_destroy_async(__2);
-			}
-		} while (__1 != NULL);
-	}
+	__cswiftslash_identified_list_iterate_consume_zero(_->____wi, ____cswiftslash_future_identified_list_throw_iterator, &__0, false);
 	pthread_mutex_unlock(&_->____m);
 	return true;
 }

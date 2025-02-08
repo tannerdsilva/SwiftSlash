@@ -96,7 +96,14 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained",
 			"SwiftSlashFuture"
 		]
-	)
+	),
+	.target(
+		name:"SwiftSlashIdentifiedList",
+		dependencies:[
+			"__cswiftslash_identified_list",
+			"SwiftSlashContained"
+		]
+	),
 ]
 
 fileprivate let testTarget:Target = .testTarget(
@@ -111,7 +118,8 @@ fileprivate let testTarget:Target = .testTarget(
 		"__cswiftslash_identified_list",
 		"SwiftSlashFuture",
 		"SwiftSlashContained",
-		"SwiftSlashPThread"
+		"SwiftSlashPThread",
+		"SwiftSlashIdentifiedList"
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )

@@ -83,32 +83,35 @@ __cswiftslash_optr_t __cswiftslash_identified_list_remove(
 	const uint64_t __
 );
 
-/// @brief initiates a new iteration sequence over the identified list.
-/// @param _ the instance to invoke the iteration sequence on.
-/// @return a pointer (possibly NULL) to pass to one of numerous iteration functions. you must call your iteration function of choice ONCE with a null pointer to successfully terminate the iteration session.
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_begin3(
+/// iterates through all elements in the atomic list, processing each data pointer with the provided consumer function.
+/// @param _ pointer to the atomic list pair instance.
+/// @param __ function used to process each data pointer in the atomic list.
+/// @param ___ context pointer to be passed into the consumer function.
+/// @param ____ if true, the atomic list will remain locked after the iteration is complete.
+void __cswiftslash_identified_list_iterate(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	const __cswiftslash_identified_list_iterator_f __,
+	const __cswiftslash_optr_t ___,
+	const bool ____
+);
+
+
+/// iterates through all elements in the atomic list, processing each data pointer with the provided consumer function. after each element is processed, the element is removed from the identified list.
+/// @param _ pointer to the atomic list pair instance.
+/// @param __ function used to process each data pointer in the atomic list.
+/// @param ___ context pointer to be passed into the consumer function.
+/// @param ____ if true, the atomic list will remain locked after the iteration is complete.
+void __cswiftslash_identified_list_iterate_consume_zero(
+	const __cswiftslash_identified_list_pair_ptr_t _,
+	const __cswiftslash_identified_list_iterator_f __,
+	const __cswiftslash_optr_t ___,
+	const bool ____
+);
+
+/// @brief iterate functions allow for the session lock to hang outside of the function. when this is called, the session lock is not released, and this function is used to complete the lock.
+/// @param _ pointer to the atomic list pair instance.
+void __cswiftslash_identified_list_iterate_hanginglock_complete(
 	const __cswiftslash_identified_list_pair_ptr_t _
-);
-
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step3(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_identified_list_t *_Nullable __,
-	uint64_t *_Nonnull ___,
-	__cswiftslash_ptr_t *_Nonnull ____
-);
-
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero3(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_identified_list_t *_Nullable __,
-	uint64_t *_Nonnull ___,
-	__cswiftslash_ptr_t *_Nonnull ____
-);
-
-__cswiftslash_identified_list_t *_Nullable __cswiftslash_identified_list_iterate_step_zero_close3(
-	const __cswiftslash_identified_list_pair_ptr_t _,
-	__cswiftslash_identified_list_t *_Nullable __,
-	uint64_t *_Nonnull ___,
-	__cswiftslash_ptr_t *_Nonnull ____
 );
 
 #endif // __CSWIFTSLASH_IDENTIFIED_LIST_H

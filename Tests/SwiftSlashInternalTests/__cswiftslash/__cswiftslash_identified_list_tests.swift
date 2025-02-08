@@ -51,42 +51,36 @@ extension __cswiftslash_tests {
 			}
 			
 			/// inserts a data pointer into the atomic list.
-			@discardableResult fileprivate func insert(_ data:UnsafeMutableRawPointer) async -> UInt64 {
-				return await withUnsafeContinuation { (cont:UnsafeContinuation<UInt64, Never>) in
-					cont.resume(returning:__cswiftslash_identified_list_insert(listPtr, data))
-				}
+			@discardableResult fileprivate func insert(_ data:UnsafeMutableRawPointer) -> UInt64 {
+				__cswiftslash_identified_list_insert(listPtr, data)
 			}
 			
 			/// removes a data pointer from the atomic list by key.
-			fileprivate func remove(key:UInt64) async -> UnsafeMutableRawPointer? {
-				return await withUnsafeContinuation { (cont:UnsafeContinuation<UnsafeMutableRawPointer?, Never>) in
-					cont.resume(returning:__cswiftslash_identified_list_remove(listPtr, key))
-				}
+			fileprivate func remove(key:UInt64) -> UnsafeMutableRawPointer? {
+				__cswiftslash_identified_list_remove(listPtr, key)
 			}
 			
 			/// iterates over the atomic list, processing each element with the provided consumer function.
-			fileprivate func iterate(consumer:@escaping (UInt64, UnsafeMutableRawPointer?) -> Void) async {
+			fileprivate func iterate(hang:Bool = false, _ consumer:@escaping (UInt64, UnsafeMutableRawPointer?) -> Void) {
 				let cc = Unmanaged.passRetained(ConsumerContext(consumer)).toOpaque()
-				await withUnsafeContinuation { (cont:UnsafeContinuation<Void, Never>) in
-					__cswiftslash_identified_list_iterate(listPtr, IdentifiedListHarness.consumerFunction, cc)
-					cont.resume()
-				}
+				__cswiftslash_identified_list_iterate(listPtr, IdentifiedListHarness.consumerFunction, cc, false)
 				_ = Unmanaged<ConsumerContext>.fromOpaque(cc).takeRetainedValue()
+			}
+
+			fileprivate func closeHangingLock() {
+				__cswiftslash_identified_list_iterate_hanginglock_complete(listPtr)
 			}
 			
 			/// closes the atomic list, deallocating any remaining elements.
-			fileprivate func close(consumer:@escaping ((UInt64, UnsafeMutableRawPointer?) -> Void) = { _, _ in }) async {
+			fileprivate func close(consumer:@escaping ((UInt64, UnsafeMutableRawPointer?) -> Void) = { _, _ in }) {
 				let cc = Unmanaged.passRetained(ConsumerContext(consumer)).toOpaque()
-				await withUnsafeContinuation { (cont:UnsafeContinuation<Void, Never>) in
-					__cswiftslash_identified_list_close(listPtr, IdentifiedListHarness.consumerFunction, cc)
-					cont.resume()
-				}
+				__cswiftslash_identified_list_close(listPtr, IdentifiedListHarness.consumerFunction, cc)
 				_ = Unmanaged<ConsumerContext>.fromOpaque(cc).takeRetainedValue()
 			}
 
 			deinit {
-				self.listPtr.deinitialize(count: 1)
-				self.listPtr.deallocate()
+				listPtr.deinitialize(count:1)
+				listPtr.deallocate()
 			}
 			
 			// MARK: - helper structures and functions
@@ -111,24 +105,24 @@ extension __cswiftslash_tests {
 
 		// MARK: - test cases
 		@Test("__cswiftslash_identified_list :: initialization and deallocation", .timeLimit(.minutes(1)))
-		func testAtomicListInitialization() async {
-			await list.close()
+		func testAtomicListInitialization() {
+			list.close()
 		}
 
 		@Test("__cswiftslash_identified_list :: insert and remove single element", .timeLimit(.minutes(1)))
-		func testInsertAndRemoveSingleElement() async {		
+		func testInsertAndRemoveSingleElement() {		
 			let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
-			let key = await list.insert(data)
+			let key = list.insert(data)
 			
-			let removedData = await list.remove(key: key)
+			let removedData = list.remove(key: key)
 			#expect(removedData == data)
 			
 			// ensure the element is no longer in the list
-			let removedDataAgain = await list.remove(key: key)
+			let removedDataAgain = list.remove(key: key)
 			#expect(removedDataAgain == nil)
 			
 			// close the list
-			await list.close()
+			list.close()
 		}
 
 		@Test("__cswiftslash_identified_list :: insert multiple elements", .timeLimit(.minutes(1)))
@@ -139,7 +133,7 @@ extension __cswiftslash_tests {
 
 			// insert elements
 			for data in dataPointers {
-				let key = await list.insert(data)
+				let key = list.insert(data)
 				keys.append(key)
 				#expect(key != 0)
 				keysAndData.append((key, data))
@@ -149,7 +143,7 @@ extension __cswiftslash_tests {
 			#expect(Set(keys).count == keys.count)
 			
 			// close the list and deallocate any remaining elements
-			await list.close { (k, ptr) in
+			list.close { (k, ptr) in
 				#expect(keys.contains(k))
 				#expect(dataPointers.contains(where: { $0 == ptr }))
 				#expect(keysAndData.contains(where: { $0.0 == k && $0.1 == ptr }))
@@ -157,15 +151,15 @@ extension __cswiftslash_tests {
 		}
 		
 		@Test("__cswiftslash_identified_list :: close list with consumer function", .timeLimit(.minutes(1)))
-		func testCloseListWithConsumer() async {		
+		func testCloseListWithConsumer() {		
 			let dataPointers = (1...5).map { UnsafeMutableRawPointer(bitPattern: $0)! }
 			for data in dataPointers {
-				_ = await list.insert(data)
+				_ = list.insert(data)
 			}
 			
 			var collectedKeys:[UInt64] = []
 			var collectedData:[UnsafeMutableRawPointer?] = []
-			await list.close { (key, ptr) in
+			list.close { (key, ptr) in
 				collectedKeys.append(key)
 				collectedData.append(ptr)
 			}
@@ -176,18 +170,18 @@ extension __cswiftslash_tests {
 		}
 		
 		@Test("__cswiftslash_identified_list :: remove non-existent key", .timeLimit(.minutes(1)))
-		func testRemoveNonExistentKey() async {		
+		func testRemoveNonExistentKey() {		
 			let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
-			let key = await list.insert(data)
+			let key = list.insert(data)
 			#expect(key != 0)
 			
 			// attempt to remove a key that doesn't exist
-			let removedData = await list.remove(key: key + 1)
+			let removedData = list.remove(key: key + 1)
 			#expect(removedData == nil)
 			
 			// clean up
-			_ = await list.remove(key: key)
-			await list.close()
+			_ = list.remove(key: key)
+			list.close()
 		}
 
 		@Test("__cswiftslash_identified_list :: concurrent insertions and removals", .timeLimit(.minutes(1)))
@@ -200,14 +194,14 @@ extension __cswiftslash_tests {
 					group.addTask {
 						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 						data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
-						let key = await list.insert(data)
+						let key = list.insert(data)
 						await keyManager.addKey(key)
 					}
 					if i > 100 {
 						let removedKey = await keyManager.removeRandomKey()
 						group.addTask { [rk = removedKey] in
 							if let key = rk {
-								if let data = await list.remove(key: key) {
+								if let data = list.remove(key: key) {
 									data.deallocate()
 								}
 							}
@@ -219,7 +213,7 @@ extension __cswiftslash_tests {
 			
 			// close the list
 			var foundKeys = Set<UInt64>()
-			await list.close(consumer:{ (k, ptr) in
+			list.close(consumer:{ (k, ptr) in
 				foundKeys.insert(k)
 				ptr?.deallocate()
 			})
@@ -240,17 +234,17 @@ extension __cswiftslash_tests {
 					case 0:
 						let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 						data.storeBytes(of: UInt8.random(in: 0...255), as: UInt8.self)
-						let key = await list.insert(data)
+						let key = list.insert(data)
 						await keyManager.addKey(key)
 					case 1:
 						if let key = await keyManager.removeRandomKey() {
-							if let data = await list.remove(key: key) {
+							if let data = list.remove(key: key) {
 								data.deallocate()
 							}
 						}
 					case 2:
 						var foundKeys = Set<UInt64>()
-						await list.iterate { (k, d) in
+						list.iterate { (k, d) in
 							foundKeys.insert(k)
 						}
 						let keys = await keyManager.auditKeys()
@@ -261,12 +255,12 @@ extension __cswiftslash_tests {
 			}
 			
 			// clean up remaining elements
-			await list.iterate { (_, ptr) in
+			list.iterate { (_, ptr) in
 				ptr?.deallocate()
 			}
 			
 			// close the list
-			await list.close()
+			list.close()
 		}
 		
 		@Test("__cswiftslash_identified_list :: iterate over elements", .timeLimit(.minutes(1)))
@@ -276,7 +270,7 @@ extension __cswiftslash_tests {
 			
 			// insert elements
 			for data in dataPointers {
-				let key = await list.insert(data)
+				let key = list.insert(data)
 				keys.append(key)
 				#expect(key != 0)
 			}
@@ -285,7 +279,7 @@ extension __cswiftslash_tests {
 			var iteratedKeys:[UInt64] = []
 			var iteratedData:[UnsafeMutableRawPointer?] = []
 			
-			await list.iterate { (key, ptr) in
+			list.iterate(hang:true) { (key, ptr) in
 				iteratedKeys.append(key)
 				iteratedData.append(ptr)
 			}
@@ -294,8 +288,28 @@ extension __cswiftslash_tests {
 			#expect(Set(keys) == Set(iteratedKeys))
 			#expect(Set(dataPointers) == Set(iteratedData.compactMap { $0 }))
 			
+			// close the hanging lock
+			list.closeHangingLock()
+
+			// iterate again without the hanging lock
+			var iteratedKeys2:[UInt64] = []
+			var iteratedData2:[UnsafeMutableRawPointer?] = []
+			list.iterate(hang:false) { (key, ptr) in
+				iteratedKeys2.append(key)
+				iteratedData2.append(ptr)
+			}
+
+			// insert something to prove there is not a hanging lock
+			let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
+			let key = list.insert(data)
+			#expect(key != 0)
+
+			// verify all elements were iterated over
+			#expect(Set(keys) == Set(iteratedKeys2))
+			#expect(Set(dataPointers) == Set(iteratedData2.compactMap { $0 }))
+
 			// clean up
-			await list.close()
+			list.close()
 		}
 
 		@Test("__cswiftslash_identified_list :: stress test with large number of elements", .timeLimit(.minutes(1)))
@@ -306,14 +320,14 @@ extension __cswiftslash_tests {
 			for i in 0..<numberOfElements {
 				let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 				data.storeBytes(of: UInt8(i % 256), as: UInt8.self)
-				let key = await list.insert(data)
+				let key = list.insert(data)
 				keys.append(key)
 				#expect(key != 0)
 			}
 
 			// verify that all the keys have been inserted
 			var foundKeys:Set<UInt64> = []
-			await list.iterate { (k, _) in
+			list.iterate { (k, _) in
 				foundKeys.insert(k)
 			}
 			#expect(Set(keys) == foundKeys)
@@ -322,7 +336,7 @@ extension __cswiftslash_tests {
 			let keysToRemove = keys[0..<numberOfElements/10]
 			var removedKeys:Set<UInt64> = []
 			for key in keysToRemove {
-				if let data = await list.remove(key: key) {
+				if let data = list.remove(key: key) {
 					data.deallocate()
 					removedKeys.insert(key)
 				}
@@ -331,7 +345,7 @@ extension __cswiftslash_tests {
 			
 			// verify that all the keys have been removed
 			var remainingKeys:Set<UInt64> = []
-			await list.iterate { (k, _) in
+			list.iterate { (k, _) in
 				remainingKeys.insert(k)
 			}
 			#expect(remainingKeys.isDisjoint(with: removedKeys))
@@ -340,7 +354,7 @@ extension __cswiftslash_tests {
 			// remove the remaining elements
 			var removedKeys2:Set<UInt64> = []
 			for key in remainingKeys {
-				if let data = await list.remove(key: key) {
+				if let data = list.remove(key: key) {
 					data.deallocate()
 					removedKeys2.insert(key)
 				}
@@ -349,30 +363,30 @@ extension __cswiftslash_tests {
 
 			// verify that all the keys have been removed
 			var finalKeys:Set<UInt64> = []
-			await list.iterate { (k, _) in
+			list.iterate { (k, _) in
 				finalKeys.insert(k)
 			}
 			#expect(finalKeys.isEmpty)
 			
 			// close the list
-			await list.close()
+			list.close()
 		}
 
 		@Test("__cswiftslash_identified_list :: insert and remove same element multiple times", .timeLimit(.minutes(1)))
-		func testInsertRemoveSameElementMultipleTimes() async {
+		func testInsertRemoveSameElementMultipleTimes() {
 			let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 			data.storeBytes(of: UInt8(42), as: UInt8.self)
 			
 			for _ in 0..<100 {
-				let key = await list.insert(data)
+				let key = list.insert(data)
 				#expect(key != 0)
-				let removedData = await list.remove(key: key)
+				let removedData = list.remove(key: key)
 				#expect(removedData == data)
 			}
 			
 			// clean up
 			data.deallocate()
-			await list.close()
+			list.close()
 		}
 	}
 }
