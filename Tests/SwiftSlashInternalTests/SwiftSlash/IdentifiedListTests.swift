@@ -7,30 +7,28 @@ extension SwiftSlashTests {
 	)
 	internal struct SwiftSlashIdentifiedListTests {
 		@Test("SwiftSlashIdentifiedList :: test memory lifecycle", .timeLimit(.minutes(1)))
-		func testIdentifiedListMemoryLifecycle() {
+		func testIdentifiedListMemoryLifecycle() async {
 			var il:IdentifiedList<WhenDeinitTool<Int>>? = IdentifiedList<WhenDeinitTool<Int>>()
-			var diCount = 0
-			func didDeinit() {
-				diCount += 1
-			}
-			let k1 = il!.insert(WhenDeinitTool(10, deinitClosure:didDeinit))
-			let k2 = il!.insert(WhenDeinitTool(20, deinitClosure:didDeinit))
-			let k3 = il!.insert(WhenDeinitTool(30, deinitClosure:didDeinit))
-			var result:[UInt64:Int] = [:]
-			il!.forEach { k, value in
-				result[k] = value.value
-			}
-			#expect(result == [k1:10, k2:20, k3:30])
-			let removedValue = il!.remove(k2)?.value
-			#expect(removedValue == 20)
-			result = [:]
-			il!.forEach { k, value in
-				result[k] = value.value
-			}
-			#expect(result == [k1:10, k3:30])
-			#expect(diCount == 1)
-			il = nil
-			#expect(diCount == 3)
+			await confirmation("confirm that memory basics are correctly implemented in the identified list", expectedCount:2, { outerConfirm in
+				let k1 = il!.insert(WhenDeinitTool(10, outerConfirm))
+				let k3 = il!.insert(WhenDeinitTool(30, outerConfirm))
+				var result:[UInt64:Int] = [:]
+				await confirmation("confirm that memory basics are correctly implemented in the identified list", expectedCount:1, { innerConfirm in
+					let k2 = il!.insert(WhenDeinitTool(20, innerConfirm))
+					il!.forEach { k, value in
+						result[k] = value.value
+					}
+					#expect(result == [k1:10, k2:20, k3:30])
+					let removedValue = il!.remove(k2)?.value
+					#expect(removedValue == 20)
+					result = [:]
+				})
+				il!.forEach { k, value in
+					result[k] = value.value
+				}
+				#expect(result == [k1:10, k3:30])
+				il = nil
+			})
 		}
 
 		@Test("SwiftSlashIdentifiedList :: test remove non-existing key", .timeLimit(.minutes(1)))
@@ -44,7 +42,7 @@ extension SwiftSlashTests {
 		func testIdentifiedListConcurrentInsertAndRemove() async {
 			let il = IdentifiedList<Int>()
 			let keptItems = await withTaskGroup(of:Optional<(UInt64, Int)>.self, returning:[UInt64:Int].self) { tg in
-				for index in 0..<100 {
+				for index in 0..<10000 {
 					tg.addTask {
 						let key = il.insert(index)
 						if index % 2 == 0 {

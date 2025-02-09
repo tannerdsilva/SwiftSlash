@@ -1,13 +1,15 @@
+import Testing
+
 internal final class WhenDeinitTool<T> {
-	private var deinitClosure: (() -> Void)?
+	private let conf:Confirmation
 	internal var value:T
-	internal init(_ value:T, deinitClosure: @escaping () -> Void) {
-		self.deinitClosure = deinitClosure
+	internal init(_ value:T, _ conf: Confirmation) {
+		self.conf = conf
 		self.value = value
 	}
 	
 	deinit {
-		deinitClosure?()
+		conf.confirm()
 	}
 }
 
