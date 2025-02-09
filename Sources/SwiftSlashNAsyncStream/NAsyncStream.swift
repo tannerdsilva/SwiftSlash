@@ -8,25 +8,25 @@ public struct NAsyncStream<Element, Failure>:Sendable {
 	
 	public func makeAsyncConsumer() -> AsyncConsumer {
 		// each new consumer gets their own dedicated FIFO instance. that instance is initialized here.
-		return AsyncConsumer(al:al, fifo:FIFO<Element, Failure>())
+		return AsyncConsumer(il:il, fifo:FIFO<Element, Failure>())
 	}
 
 	// this stores all of the consumers of the stream. each consumer has their own FIFO instance. this atomic list is used to access and manage the lifecycle of these consumers.
-	private let al = IdentifiedList<FIFO<Element, Failure>>()
+	private let il = IdentifiedList<FIFO<Element, Failure>>()
 
 	/// initialize a new NAsyncStream instance.
 	public init() {}
 
 	/// pass data to all registered consumers of the stream.
 	public borrowing func yield(_ data:consuming Element) {
-		al.forEach({ [d = data] (_, fifo:FIFO<Element, Failure>) in
+		il.forEach({ [d = data] (_, fifo:FIFO<Element, Failure>) in
 			fifo.yield(d)
 		})
 	}
 
 	/// finish the stream. all consumers will be notified that the stream has finished.
 	public borrowing func finish() {
-		al.forEach({ _, fifo in
+		il.forEach({ _, fifo in
 			fifo.finish()
 		})
 	}
@@ -35,7 +35,7 @@ public struct NAsyncStream<Element, Failure>:Sendable {
 extension NAsyncStream where Failure == Swift.Error {
 	/// finish the stream with an error. all consumers will be notified that the stream has finished.
 	public borrowing func finish(throwing err:consuming Swift.Error) {
-		al.forEach({ [e = err] (_, fifo:FIFO<Element, Failure>) in
+		il.forEach({ [e = err] (_, fifo:FIFO<Element, Failure>) in
 			fifo.finish(throwing:e)
 		})
 	}
@@ -49,14 +49,14 @@ extension NAsyncStream {
 	public final class AsyncConsumer {
 		private let key:UInt64
 		private var fifoC:FIFO<Element, Failure>.AsyncConsumer
-		private let al:IdentifiedList<FIFO<Element, Failure>>
-		internal init(al:IdentifiedList<FIFO<Element, Failure>>, fifo:FIFO<Element, Failure>) {
-			self.key = al.insert(fifo)
+		private let il:IdentifiedList<FIFO<Element, Failure>>
+		internal init(il:IdentifiedList<FIFO<Element, Failure>>, fifo:FIFO<Element, Failure>) {
+			self.key = il.insert(fifo)
 			self.fifoC = fifo.makeAsyncConsumer()
-			self.al = al
+			self.il = il
 		}
 		deinit {
-			_ = al.remove(key)
+			_ = il.remove(key)
 		}
 	}
 }

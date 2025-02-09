@@ -71,24 +71,6 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	// .testTarget(
-	// 	name:"SwiftSlashFutureTests",
-	// 	dependencies:[
-	// 		"SwiftSlashFuture",
-	// 		"__cswiftslash_auint8",
-	// 	],
-	// 	path:"Tests/SwiftSlashFutureTests"
-	// ),
-	/*.testTarget(
-		name:"SwiftSlashPThreadTests",
-		dependencies:[
-			"SwiftSlashFuture",
-			"SwiftSlashContained",
-			"__cswiftslash_threads",
-			"SwiftSlashPThread"
-		],
-		path:"Tests/SwiftSlashPThreadTests"
-	),*/
 	.target(
 		name:"SwiftSlashPThread",
 		dependencies:[
@@ -111,6 +93,13 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
+	.target(
+		name:"SwiftSlashNAsyncStream",
+		dependencies:[
+			"SwiftSlashFIFO",
+			"SwiftSlashIdentifiedList"
+		]
+	),
 ]
 
 fileprivate let testTarget:Target = .testTarget(
@@ -127,7 +116,8 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashContained",
 		"SwiftSlashPThread",
 		"SwiftSlashIdentifiedList",
-		"SwiftSlashFIFO"
+		"SwiftSlashFIFO",
+		"SwiftSlashNAsyncStream",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )

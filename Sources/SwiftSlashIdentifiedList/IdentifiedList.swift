@@ -10,11 +10,11 @@ public final class IdentifiedList<T>:@unchecked Sendable {
 		var allPtrs = [UnsafeMutableRawPointer]()
 		withUnsafeMutablePointer(to: &allPtrs) { allPtrsPtr in
 			__cswiftslash_identified_list_close(list_store_ptr, { key, ptr, ctx in
-				ctx.assumingMemoryBound(to: [UnsafeMutableRawPointer].self).pointee.append(ptr)
+				ctx.assumingMemoryBound(to:[UnsafeMutableRawPointer].self).pointee.append(ptr)
 			}, allPtrsPtr)
 		}
 		for ptr in allPtrs {
-			Unmanaged<Contained<T>>.fromOpaque(ptr).takeRetainedValue()
+			_ = Unmanaged<Contained<T>>.fromOpaque(ptr).takeRetainedValue()
 		}
 		list_store_ptr.deallocate()
 	}

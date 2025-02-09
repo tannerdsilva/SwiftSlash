@@ -23,21 +23,13 @@ extension SwiftSlashTests {
 			#expect(result == [k1:10, k2:20, k3:30])
 			let removedValue = il!.remove(k2)?.value
 			#expect(removedValue == 20)
-
-			// check if the removed element is no longer present
 			result = [:]
 			il!.forEach { k, value in
 				result[k] = value.value
 			}
 			#expect(result == [k1:10, k3:30])
-
-			// check if the deinit closure is called
 			#expect(diCount == 1)
-
-			// deinitialize the atomic list
 			il = nil
-
-			// check if the deinit closure is called for the remaining elements
 			#expect(diCount == 3)
 		}
 
