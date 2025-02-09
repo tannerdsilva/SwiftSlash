@@ -68,7 +68,7 @@ typedef struct __cswiftslash_fifo_linkpair {
 	/// atomic counter representing the number of elements stored in the chain.
 	_Atomic size_t ____ec;
 
-	/// atomic boolean flag indicating whether thread blocking is enabled on the chain object.
+	/// atomic boolean flag indicating whether the fifo is capped.
 	_Atomic bool ____ic;
 	
 	/// atomic pointer to the cap pointer, which is the final element in the chain.
@@ -82,7 +82,7 @@ typedef struct __cswiftslash_fifo_linkpair {
 
 	// mutex used to signal to waiting threads when a result is available again. one may argue that there are better pthread primitives to use for this, but the swift runtime only wants to operate with mutexes.
 	/// atomic boolean flag indicating whether the chain is currently locked by a waiting thread.
-	_Atomic bool ____iwl;
+	_Atomic bool ____iwlk;
 	/// mutex used to signal to waiting threads when a result is available again.
 	pthread_mutex_t ____wm;
 
@@ -96,8 +96,8 @@ typedef struct __cswiftslash_fifo_linkpair {
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.
 typedef __cswiftslash_fifo_linkpair_t*_Nonnull __cswiftslash_fifo_linkpair_ptr_t;
 
-/// initializes a new fifo pair. can be used with or without its own mutex for synchronization.
-/// @param _ boolean value indicating if the fifo should be initialized with its own private mutex for synchronization. false can be passed here when the fifo is used in a single-threaded context.
+/// initializes a new fifo pair. can be initialized with or without an internal mutex for state synchronization.
+/// @param _ boolean value indicating if the fifo should be initialized with its own internal mutex for synchronization. `FALSE` can be passed here when the fifo is used in a single-threaded context.
 /// @return a heap pointer to a newly initialized `_cswiftslash_fifo_linkpair_t`. NOTE: this pointer must be closed with `__cswiftslash_fifo_close` to free all associated memory.
 __cswiftslash_fifo_linkpair_ptr_t __cswiftslash_fifo_init(
 	const bool _
@@ -114,13 +114,15 @@ bool __cswiftslash_fifo_set_max_elements(
 
 /// deinitializes a fifo instance, freeing all associated memory and resources.
 /// @param _ pointer to the fifo to be deinitialized.
-/// @param __ function used for deallocating the unconsumed elements in the chain. NULL if no deallocator is needed.
+/// @param __ function used for deallocating the unconsumed elements in the chain.
 /// @param ___ the context pointer to be passed to the deallocator consume function.
-/// @return the cap pointer if the chain was capped (the capped pointer may be NULL); else, NULL is returned due to the chain not having a capped value. the caller is responsible for freeing this returned pointer from memory.
-__cswiftslash_optr_t __cswiftslash_fifo_close(
+/// @param ____ a pointer to the memory space where the capped pointer can be stored, if the chain was capped.
+/// @return boolean value indicating if the fifo was capped.
+bool __cswiftslash_fifo_close(
 	const __cswiftslash_fifo_linkpair_ptr_t _,
-	const __cswiftslash_fifo_link_ptr_consume_f _Nullable __,
-	const __cswiftslash_optr_t ___
+	const __cswiftslash_fifo_link_ptr_consume_f _Nonnull __,
+	const __cswiftslash_optr_t ___,
+	__cswiftslash_optr_t *_Nonnull ____
 );
 
 /// cap off the fifo with a final element. any elements passed into the chain after capping it off will be stored and handled by the deallocator when this instance is closed (they will not be passed to a consumer, nor will they be forever leaked into memory).
