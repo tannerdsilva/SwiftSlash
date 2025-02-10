@@ -86,16 +86,21 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 
 	deinit {
 		var items = [UnsafeMutableRawPointer]()
-		let capPointer = withUnsafeMutablePointer(to:&items) { itemsPointer in
-			return __cswiftslash_fifo_close(datachain_primitive_ptr, { pointer, ctx in
+		let capPointer:(Bool, UnsafeMutableRawPointer?) = withUnsafeMutablePointer(to:&items) { itemsPointer in
+			var capPtr:UnsafeMutableRawPointer? = nil
+			if (__cswiftslash_fifo_close(datachain_primitive_ptr, { pointer, ctx in
 				ctx!.assumingMemoryBound(to:[UnsafeMutableRawPointer].self).pointee.append(pointer)
-			}, itemsPointer)
+			}, itemsPointer, &capPtr) == true) {
+				return (true, capPtr)
+			} else {
+				return (false, nil)
+			}
 		}
 		for item in items {
 			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue()
 		}
-		if capPointer != nil {
-			_ = Unmanaged<Contained<Result<Void, Swift.Error>>>.fromOpaque(capPointer!).takeRetainedValue()
+		if capPointer.0 == true && capPointer.1 != nil {
+			_ = Unmanaged<Contained<Result<Void, Swift.Error>>>.fromOpaque(capPointer.1!).takeRetainedValue()
 		}
 	}
 }
@@ -148,7 +153,7 @@ extension FIFO {
 }
 
 extension FIFO.Consumer where Failure == Swift.Error {
-	public borrowing func next() throws -> Element? {
+	public func next() throws -> Element? {
 		var pointer:__cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -192,7 +197,7 @@ extension FIFO.Consumer where Failure == Swift.Error {
 }
 
 extension FIFO.Consumer where Failure == Never {
-	public borrowing func next() -> Element? {
+	public func next() -> Element? {
 		var pointer:__cswiftslash_ptr_t? = nil
 		switch shouldBlock {
 			case true:
@@ -236,10 +241,10 @@ extension FIFO.Consumer where Failure == Never {
 }
 
 extension FIFO.AsyncConsumer where Failure == Never {
-	public borrowing func next() async -> Element? {
+	public func next() async -> Element? {
 		return await next(whenTaskCancelled:.noAction)
 	}
-	public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async -> Element? {
+	public func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async -> Element? {
 		switch cancelAction {
 			case .noAction:
 				return await _next()
@@ -276,10 +281,10 @@ extension FIFO.AsyncConsumer where Failure == Never {
 }
 
 extension FIFO.AsyncConsumer where Failure == Swift.Error {
-	public borrowing func next() async throws -> Element? {
+	public func next() async throws -> Element? {
 		return try await next(whenTaskCancelled:.noAction)
 	}
-	public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async throws -> Element? {
+	public func next(whenTaskCancelled cancelAction:consuming FIFO.WhenConsumingTaskCancelled) async throws -> Element? {
 		switch cancelAction {
 			case .noAction:
 				return try await _next()
@@ -291,7 +296,7 @@ extension FIFO.AsyncConsumer where Failure == Swift.Error {
 				})
 		}
 	}
-	fileprivate borrowing func _next() async throws -> Element? {
+	fileprivate func _next() async throws -> Element? {
 		return try await withUnsafeThrowingContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			var pointer:__cswiftslash_ptr_t? = nil
 			switch __cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {

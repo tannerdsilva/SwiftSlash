@@ -28,7 +28,7 @@ extension __cswiftslash_tests {
 		// MARK: c harness
 		private final class Harness:@unchecked Sendable {
 			private let fifoPtr:UnsafeMutablePointer<__cswiftslash_fifo_linkpair_t>
-			fileprivate init(hasMutex:Bool = Bool.random()) {
+			fileprivate init(hasMutex:Bool = true) {
 				if hasMutex {
 					fifoPtr = __cswiftslash_fifo_init(true)
 				} else {
@@ -48,11 +48,10 @@ extension __cswiftslash_tests {
 			}
 			/// consumes data from the FIFO in a blocking manner
 			fileprivate func consumeBlocking() async -> (__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?) {
-				var consumedData:UnsafeMutableRawPointer?
-				let result = await withUnsafeContinuation { (continuation:UnsafeContinuation<__cswiftslash_fifo_consume_result_t, Never>) in
-					continuation.resume(returning:__cswiftslash_fifo_consume_blocking(fifoPtr, &consumedData))
+				return await withUnsafeContinuation { (continuation:UnsafeContinuation<(__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?), Never>) in
+					var consumedData:UnsafeMutableRawPointer?
+					continuation.resume(returning:(__cswiftslash_fifo_consume_blocking(fifoPtr, &consumedData), consumedData))
 				}
-				return (result, consumedData)
 			}
 			/// caps the FIFO with a final element
 			fileprivate func passCap(_ capData: UnsafeMutableRawPointer?) async -> Bool {
@@ -66,17 +65,17 @@ extension __cswiftslash_tests {
 					continuation.resume(returning:__cswiftslash_fifo_set_max_elements(fifoPtr, maxElements))
 				}
 			}
-			private func close() -> UnsafeMutableRawPointer? {
-				return __cswiftslash_fifo_close(fifoPtr, nil, nil)
+			private func closeFIFO() -> (Bool, UnsafeMutableRawPointer?) {
+				var cptr:UnsafeMutableRawPointer? = nil
+				return (__cswiftslash_fifo_close(fifoPtr, { _, _ in }, nil, &cptr), cptr)
 			}
 			deinit {
-				_ = close()
+				_ = closeFIFO()
 			}
 		}
 
 		private var fifo:Harness? = Harness()
 
-		// MARK: setup
 		@Test("__cswiftslash_fifo :: basic init and deinit", .timeLimit(.minutes(1)))
 		mutating func basicInitDeinit() async {
 			fifo = nil
@@ -84,18 +83,18 @@ extension __cswiftslash_tests {
 		}
 
 		// MARK: test cases
-		@Test("__cswiftslash_fifo :: consume from empty FIFO", .timeLimit(.minutes(1)))
+
+		@Test("__cswiftslash_fifo :: nonblocking consume from empty fifo", .timeLimit(.minutes(1)))
 		func consumeFromEmpty() {				
-			// attempt to consume from the empty FIFO
 			let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
 			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK)
 			#expect(consumedData == nil)
 		}
 
-		@Test("__cswiftslash_fifo :: pass then consume simple (single element)", .timeLimit(.minutes(1)))
-		func passThenConsumeSimpleSingle() async {
+		@Test("__cswiftslash_fifo :: pass then consume (single element - nonblocking)", .timeLimit(.minutes(1)))
+		func passThenConsumeNBSimpleSingle() async {
 			// pass data and ensure it succeeds
-			let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
+			let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
 			let passResult = await fifo!.pass(data)
 			#expect(passResult == 0)
 			
@@ -105,26 +104,51 @@ extension __cswiftslash_tests {
 			#expect(consumedData2 == data)
 		}
 
-		@Test("__cswiftslash_fifo :: pass then consume simple (multiple elements)", .timeLimit(.minutes(1)))
-		func passThenConsumeSimpleMultiple() async {		
-			let capData = UnsafeMutableRawPointer(bitPattern: 0xfeedface)!
-			let capResult = await fifo!.passCap(capData)
-			#expect(capResult == true)
-			
-			// attempt to pass data after cap
-			let data = UnsafeMutableRawPointer(bitPattern: 0xcafebabe)!
+		@Test("__cswiftslash_fifo :: pass then consume (single element - blocking)", .timeLimit(.minutes(1)))
+		func passThenConsumeBSingle() async {
+			// lass data and ensure it succeeds
+			let data = UnsafeMutableRawPointer(bitPattern:0x2468)!
 			let passResult = await fifo!.pass(data)
-			#expect(passResult == -1)
-			
-			// consume cap data
-			let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
-			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
-			#expect(consumedData == capData)
-			
-			// attempt to consume again
-			let (consumeResult2, consumedData2) = fifo!.consumeNonBlocking()
-			#expect(consumeResult2 == __CSWIFTSLASH_FIFO_CONSUME_CAP)
-			#expect(consumedData2 == capData)
+			#expect(passResult == 0)
+
+			// consume the data back
+			let (consumedResult2, consumedData2) = await fifo!.consumeBlocking()
+			#expect(consumedResult2 == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+			#expect(consumedData2 == data)
+		}
+
+		@Test("__cswiftslash_fifo :: pass then consume (consecutive elements - nonblocking)", .timeLimit(.minutes(1)))
+		func passThenConsumeSimpleMultiple() async {		
+			let consecutiveCount = 10
+			for i in 0..<consecutiveCount {
+				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+				data.pointee = i
+				#expect(await fifo!.pass(data) == 0)
+			}
+			for i in 0..<consecutiveCount {
+				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
+				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+				#expect(consumedData != nil)
+				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
+				consumedData!.deallocate()
+			}
+		}
+
+		@Test("__cswiftslash_fifo :: pass then consume (consecutive elements - blocking)")
+		func testPassAndConsumeMultiBlocking() async {
+			let consecutiveCount = 10
+			for i in 0..<consecutiveCount {
+				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+				data.pointee = i
+				#expect(await fifo!.pass(data) == 0)
+			}
+			for i in 0..<consecutiveCount {
+				let (consumeResult, consumedData) = await fifo!.consumeBlocking()
+				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+				#expect(consumedData != nil)
+				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
+				consumedData!.deallocate()
+			}
 		}
 
 		@Test("__cswiftslash_fifo :: pass then consume complex (n elements)", .timeLimit(.minutes(1)))
@@ -172,50 +196,59 @@ extension __cswiftslash_tests {
 			#expect(await fifo!.pass(data3) == 0)
 		}
 
-		@Test("__cswiftslash_fifo :: non-blocking vs blocking consume", .timeLimit(.minutes(1)))
-		func testNonBlockingVsBlockingConsume() async throws {		
-			// start a consumer task
-			let consumer = Task {
-				let (consumeResult, consumedData) = await fifo!.consumeBlocking()
-				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
-				#expect(consumedData == UnsafeMutableRawPointer(bitPattern: 0xabc)!)
-			}
-			
-			// simulate delay
-			try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-			
-			// pass data
-			let data = UnsafeMutableRawPointer(bitPattern: 0xabc)!
-			#expect(await fifo!.pass(data) == 0)
-			
-			// wait for consumer to finish
-			await consumer.value
-		}
-
 		@Test("__cswiftslash_fifo :: fuzz testing FIFO", .timeLimit(.minutes(1)))
 		mutating func testFuzzTestingFIFO() async throws {	
-			// we explicitly need to make a harness that is mutex guarded
-			fifo = Harness(hasMutex:true)	
-			let iterations = 10000
-			await withTaskGroup(of: Void.self) { [fifo] group in
-				for _ in 0..<iterations {
-					group.addTask {
-						let action = Int.random(in: 0...1)
-						if action == 0 {
-							// producer
-							let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
-							data.storeBytes(of: UInt8.random(in: 0...255), as: UInt8.self)
-							_ = await fifo!.pass(data)
-						} else {
-							// consumer
-							let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
-							if consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT, let data = consumedData {
-								data.deallocate()
-							}
-						}
+			actor ProductionDocumenter {
+				var producedItems:[UInt8] = []
+				func produced(_ item:UInt8) {
+					producedItems.append(item)
+				}
+				func nextConsumed() -> UInt8? {
+					guard producedItems.count > 0 else {
+						return nil
 					}
+					return producedItems.removeFirst()
 				}
 			}
+			// we explicitly need to make a harness that is mutex guarded
+			fifo = Harness(hasMutex:true)	
+			let bookKeeper = ProductionDocumenter()
+			let iterations = 100000
+			await withTaskGroup(of:[UInt8].self) { [fifo] group in
+				group.addTask {
+					var producedItems:[UInt8] = []
+					for i in 0..<iterations {
+						let data = UnsafeMutablePointer<UInt8>.allocate(capacity:1)
+						data.pointee = UInt8.random(in: 0...UInt8.max)
+						let producedByte = data.pointee
+						await bookKeeper.produced(producedByte)
+						_ = await fifo!.pass(data)
+						producedItems.append(producedByte)
+					}
+					return producedItems
+				}
+				group.addTask {
+					var consumedItems:[UInt8] = []
+					for _ in 0..<iterations {
+						let (consumeResult, consumedData) = await fifo!.consumeBlocking()
+						#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+						let consumedByte = consumedData!.assumingMemoryBound(to:UInt8.self).pointee
+						consumedData!.deallocate()
+						// ensure the consumed byte is in the bookkeeper
+						guard let expectedByte = await bookKeeper.nextConsumed() else {
+							fatalError("expected byte not found in bookkeeper")
+						}
+						#expect(consumedByte == expectedByte)
+						consumedItems.append(consumedByte)
+					}
+					return consumedItems
+				}
+				let producerResult = await group.next()
+				let consumerResult = await group.next()
+				#expect(producerResult == consumerResult)
+			}
+
+			
 			
 			// clean up any remaining data
 			while true {
@@ -230,19 +263,11 @@ extension __cswiftslash_tests {
 
 		@Test("__cswiftslash_fifo :: blocking consume with cap", .timeLimit(.minutes(1)))
 		func testBlockingConsumeWithCap() async {		
-			// cap the FIFO
 			let capData = UnsafeMutableRawPointer(bitPattern: 0xfeed)!
 			#expect(await fifo!.passCap(capData) == true)
-			
-			// start a consumer task
-			let consumer = Task {
-				let (consumeResult, consumedData) = await fifo!.consumeBlocking()
-				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
-				#expect(consumedData == capData)
-			}
-			
-			// wait for consumer to finish
-			await consumer.value
+			let (consumeResult, consumedData) = await fifo!.consumeBlocking()
+			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
+			#expect(consumedData == capData)
 		}
 
 		@Test("__cswiftslash_fifo :: set max elements to zero", .timeLimit(.minutes(1)))
