@@ -16,26 +16,27 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 	// underlying c implementation
 	private let datachain_primitive_ptr:UnsafeMutablePointer<__cswiftslash_fifo_linkpair_t>
 	
-	/// initialize a new FIFO. an optional maximumElementCount may be passed to limit the number of elements that may be held in the FIFO at any given time
+	/// initialize a new FIFO with a specified maximum element count.
 	/// - parameters:
-	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time. if this value is nil, the FIFO will hold uint64.max elements
-	public init(maximumElementCount:size_t? = nil) {
+	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time.
+	public init(maximumElementCount:size_t) {
 		// memory setup
-		// var newMutex = __cswiftslash_fifo_mutex_new()
 		let newPointer = __cswiftslash_fifo_init(true)
 
 		// set the maximum element count if it was passed
-		if maximumElementCount != nil {
-			guard __cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount!) == true else {
-				fatalError("swiftslash - failed to set maximum element count - \(#file):\(#line)")
-			}
+		guard __cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount) == true else {
+			fatalError("swiftslash - failed to set maximum element count - \(#file):\(#line)")
 		}
-
 		datachain_primitive_ptr = newPointer
 	}
 
+	/// initialize a new FIFO with no maximum element count.
+	public init() {
+		datachain_primitive_ptr = __cswiftslash_fifo_init(false)
+	}
+
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
-	@discardableResult public borrowing func yield(_ element:consuming Element) -> YieldResult {
+	@discardableResult public func yield(_ element:consuming Element) -> YieldResult {
 		let um = Unmanaged.passRetained(Contained(element))
 		
 		#if DEBUG
@@ -76,7 +77,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public borrowing func finish() {
+	public func finish() {
 		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Swift.Error>>(.success(())))
 		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()
@@ -88,13 +89,9 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 		var items = [UnsafeMutableRawPointer]()
 		let capPointer:(Bool, UnsafeMutableRawPointer?) = withUnsafeMutablePointer(to:&items) { itemsPointer in
 			var capPtr:UnsafeMutableRawPointer? = nil
-			if (__cswiftslash_fifo_close(datachain_primitive_ptr, { pointer, ctx in
+			return (__cswiftslash_fifo_close(datachain_primitive_ptr, { pointer, ctx in
 				ctx!.assumingMemoryBound(to:[UnsafeMutableRawPointer].self).pointee.append(pointer)
-			}, itemsPointer, &capPtr) == true) {
-				return (true, capPtr)
-			} else {
-				return (false, nil)
-			}
+			}, itemsPointer, &capPtr), capPtr)
 		}
 		for item in items {
 			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue()
@@ -107,7 +104,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable {
 
 extension FIFO where Failure == Swift.Error {
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public borrowing func finish(throwing finishingError:consuming Swift.Error) {
+	public func finish(throwing finishingError:consuming Swift.Error) {
 		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Swift.Error>>(.failure(finishingError)))
 		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()
@@ -256,7 +253,7 @@ extension FIFO.AsyncConsumer where Failure == Never {
 				})
 		}
 	}
-	fileprivate borrowing func _next() async -> Element? {
+	fileprivate func _next() async -> Element? {
 		return await withUnsafeContinuation { (continuation:UnsafeContinuation<Element?, Failure>) in
 			var pointer:__cswiftslash_ptr_t? = nil
 			switch __cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {

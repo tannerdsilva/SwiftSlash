@@ -1,102 +1,122 @@
-import Testing
-@testable import SwiftSlashFIFO
+// import Testing
+// @testable import SwiftSlashFIFO
 
-extension SwiftSlashTests {
-	@Suite("SwiftSlashFIFO", .serialized)
-	struct FIFOTests {
-		@Test("SwiftSlashFIFO :: basic usage with deinitialization checks", .timeLimit(.minutes(1)))
-		func testFIFOWithDeinitTool() async {
-			let fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
-			var deinitCount = 0
-			func didDeinit() {
-				deinitCount += 1
-			}
+// extension SwiftSlashTests {
+// 	@Suite("SwiftSlashFIFO", .serialized)
+// 	struct FIFOTests {
+// 		@Test("SwiftSlashFIFO :: basic usage with deinitialization checks", .timeLimit(.minutes(1)))
+// 		func testFIFOWithDeinitTool() async {
+// 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+// 			fifo = nil
+// 			#expect(fifo == nil)
+// 		}
 
-			/*let foundElements = await withTaskGroup(of:[Int].self, returning:[Int].self) { tg in
-				tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
-					var buildInts = [Int]()
-					var nextElement:WhenDeinitTool<Int>? = await asc.next()
-					while nextElement != nil {
-						buildInts.append(nextElement!.value)
-						nextElement = await asc.next()
-					}
-					return buildInts
-				}
-				fifo!.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(2, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
-				fifo!.finish()
-				return await tg.next()!
-			}
-			#expect(foundElements == [1, 2, 3, 4, 5])
+// 		@Test("SwiftSlashFIFO :: basic usage for no consumption", .timeLimit(.minutes(1)))
+// 		func testNoConsumption() async {
+// 			// now test the same scenario without any consumption. ensure that the references are deinitialized properly when the fifo is deinitialized.
+// 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+// 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:5) { deinitExp in
+// 				fifo!.yield(WhenDeinitTool(1, deinitExp))
+// 				fifo!.yield(WhenDeinitTool(2, deinitExp))
+// 				fifo!.yield(WhenDeinitTool(3, deinitExp))
+// 				fifo!.yield(WhenDeinitTool(4, deinitExp))
+// 				fifo!.yield(WhenDeinitTool(5, deinitExp))
+// 				fifo = nil
+// 			}
+// 		}
+// 		@Test("SwiftSlashFIFO :: memory management in partial consumption scenario", .timeLimit(.minutes(1)))
+// 		func testPartialConsumption() async {
+// 			// test a partial consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
+// 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+// 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:2) { deinitOuter in
+// 				await withTaskGroup(of:[Int].self) { tg in
+// 					await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:3) { deinitInner in
+// 						tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
+// 							var buildInts = [Int]()
+// 							var nextElement:WhenDeinitTool<Int>? = await asc.next()
+// 							while nextElement != nil {
+// 								buildInts.append(nextElement!.value)
+// 								if buildInts.count == 3 {
+// 									break
+// 								} else {
+// 									nextElement = await asc.next()
+// 								}
+// 							}
+// 							return buildInts
+// 						}
+// 						fifo!.yield(WhenDeinitTool(1, deinitInner))
+// 						fifo!.yield(WhenDeinitTool(2, deinitInner))
+// 						fifo!.yield(WhenDeinitTool(3, deinitInner))
+// 						fifo!.yield(WhenDeinitTool(4, deinitOuter))
+// 						fifo!.yield(WhenDeinitTool(5, deinitOuter))
+// 						fifo!.finish()
+// 						await tg.waitForAll()
+// 					}
+// 				}
+// 				fifo = nil
+// 			}
+// 		}
 
-			// ensure all elements were deinitialized properly
-			#expect(deinitCount == 5)*/
-		}
+// 		@Test("SwiftSlashFIFO :: testing large number of elements", .timeLimit(.minutes(1)))
+// 		func testFullConsumption() async {
+// 			let elementCount = 10000
+// 			// test a full consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
+// 			let fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+// 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:elementCount) { deinitOuter in
+// 				await withTaskGroup(of:[Int].self) { tg in
+// 					tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
+// 						var buildInts = [Int]()
+// 						var nextElement:WhenDeinitTool<Int>? = await asc.next()
+// 						while nextElement != nil {
+// 							buildInts.append(nextElement!.value)
+// 							nextElement = await asc.next()
+// 						}
+// 						return buildInts
+// 					}
+// 					var written = [Int]()
+// 					for i in 0..<elementCount {
+// 						fifo!.yield(WhenDeinitTool(i, deinitOuter))
+// 						written.append(i)
+// 					}
+// 					fifo!.finish()
+// 					#expect(await tg.next() == written)
+// 				}
+// 			}
+// 		}
 
-		/*@Test("SwiftSlashFIFO :: basic usage for no consumption", .timeLimit(.minutes(1)))
-		func testNoConsumption() async {
-			// now test the same scenario without any consumption. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
-			var deinitCount = 0
-			func didDeinit() {
-				deinitCount += 1
-			}
-
-			fifo!.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
-			fifo!.yield(WhenDeinitTool(2, deinitClosure:didDeinit))
-			fifo!.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
-			fifo!.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
-			fifo!.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
-
-			// Deinitialize the fifo
-			fifo = nil
-
-			// Ensure all elements were deinitialized properly
-			#expect(deinitCount == 5)
-		}*/
-		/*@Test("SwiftSlashFIFO :: memory management in partial consumption scenario", .timeLimit(.minutes(1)))
-		func testPartialConsumption() async {
-			// test a partial consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
-			var deinitCount = 0
-			func didDeinit() {
-				deinitCount += 1
-			}
-			
-			await withTaskGroup(of:[Int].self) { tg in
-				tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
-					var buildInts = [Int]()
-					var nextElement:WhenDeinitTool<Int>? = await asc.next()
-					while nextElement != nil {
-						buildInts.append(nextElement!.value)
-						if buildInts.count == 3 {
-							break
-						} else {
-							nextElement = await asc.next()
-						}
-					}
-					return buildInts
-				}
-				fifo!.yield(WhenDeinitTool(1, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(2, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(3, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(4, deinitClosure: didDeinit))
-				fifo!.yield(WhenDeinitTool(5, deinitClosure: didDeinit))
-				fifo!.finish()
-				await tg.waitForAll()
-			}
-
-			#expect(deinitCount == 3)
-
-			// Deinitialize the fifo
-			fifo = nil
-			// fifoIterator = nil
-
-			// Ensure all elements were deinitialized properly
-			#expect(deinitCount == 5)
-		}*/
-	}
-}
+// 		@Test("SwiftSlashFIFO :: intentional overflow of maximum element count", .timeLimit(.minutes(1)))
+// 		func testMaxElementOverflow() async {
+// 			let writeCount = 10000
+// 			let maxCount = 10
+// 			// test a full consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
+// 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>(maximumElementCount:maxCount)
+// 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:writeCount) { deinitThing in
+// 				await withTaskGroup(of:[Int].self) { tg in
+// 					tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
+// 						var buildInts = [Int]()
+// 						var nextElement:WhenDeinitTool<Int>? = await asc.next()
+// 						while nextElement != nil {
+// 							buildInts.append(nextElement!.value)
+// 							nextElement = await asc.next()
+// 						}
+// 						return buildInts
+// 					}
+// 					var written = [Int]()
+// 					for i in 0..<writeCount {
+// 						if i <= maxCount {
+// 							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .success)
+// 						} else {
+// 							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .fifoFull)
+// 						}
+// 						written.append(i)
+// 					}
+// 					fifo!.finish()
+// 					let expected = Array(written.suffix(10))
+// 					let foundItem = await tg.next()!
+// 					// #expect(expected == foundItem, "\(foundItem) != \(expected)")
+// 					fifo = nil
+// 				}
+// 			}
+// 		}
+// 	}
+// }

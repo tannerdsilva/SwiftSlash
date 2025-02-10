@@ -207,10 +207,10 @@ void __cswiftslash_identified_list_close(
         pthread_mutex_lock(&_->____m);
         __cswiftslash_identified_list_ptr_t __0 = _->____o;
         while (__0 != NULL) {
-                __(__0->____k, __0->____d, ___);
-                __cswiftslash_identified_list_ptr_t __1 = __0;
-                __0 = __0->____n;
-                free(__1);
+			__(__0->____k, __0->____d, ___);
+			__cswiftslash_identified_list_ptr_t __1 = __0;
+			__0 = __0->____n;
+			free(__1);
         }
         free(_->____ht);
         pthread_mutex_unlock(&_->____m);

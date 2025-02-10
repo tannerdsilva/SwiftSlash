@@ -246,5 +246,73 @@ extension __cswiftslash_tests {
 			let passResult = await fifo!.pass(data)
 			#expect(passResult == -2) // max elements reached
 		}
+
+		@Test("__cswiftslash_fifo :: set max elements to 1", .timeLimit(.minutes(1)))
+		func testSetMaxElementsToOne() async {
+			#expect(await fifo!.setMaxElements(1) == true)
+			
+			// pass data
+			let data1 = UnsafeMutableRawPointer(bitPattern: 0x1)!
+			let passResult1 = await fifo!.pass(data1)
+			#expect(passResult1 == 0)
+			
+			// attempt to pass a second element
+			let data2 = UnsafeMutableRawPointer(bitPattern: 0x2)!
+			let passResult2 = await fifo!.pass(data2)
+			#expect(passResult2 == -2) // max elements reached
+			
+			// consume the first element
+			let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
+			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+			#expect(consumedData == data1)
+			
+			// nothing left to consume
+			let (consumeResult2, consumedData2) = fifo!.consumeNonBlocking()
+			#expect(consumeResult2 == __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK)
+			#expect(consumedData2 == nil)
+		}
+
+		@Test("__cswiftslash_fifo :: set max elements to n, while passing n*2 elements", .timeLimit(.minutes(1)))
+		func testSetMaxElementsToNWhilePassingN2() async {
+			let maxElements = 5
+			#expect(await fifo!.setMaxElements(maxElements) == true)
+			
+			// pass 2n elements
+			for i in 0..<(maxElements*2) {
+				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+				data.pointee = i
+				if i < maxElements {
+					#expect(await fifo!.pass(data) == 0)
+				} else {
+					#expect(await fifo!.pass(data) == -2)
+					data.deallocate()
+				}
+			}
+			
+			// consume n elements
+			for i in 0..<maxElements {
+				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
+				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+				#expect(consumedData != nil)
+				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
+				consumedData!.deallocate()
+			}
+			
+			// pass n elements
+			for i in 0..<maxElements {
+				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+				data.pointee = i
+				#expect(await fifo!.pass(data) == 0)
+			}
+			
+			// consume n elements
+			for i in 0..<maxElements {
+				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
+				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
+				#expect(consumedData != nil)
+				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
+				consumedData!.deallocate()
+			}
+		}
 	}
 }
