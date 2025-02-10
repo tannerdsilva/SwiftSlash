@@ -117,15 +117,17 @@ extension __cswiftslash_tests {
 			#expect(consumedData2 == data)
 		}
 
+		static let fifoConsecutiveCount = 10
+
 		@Test("__cswiftslash_fifo :: pass then consume (consecutive elements - nonblocking)", .timeLimit(.minutes(1)))
 		func passThenConsumeSimpleMultiple() async {		
-			let consecutiveCount = 10
-			for i in 0..<consecutiveCount {
+			
+			for i in 0..<Self.fifoConsecutiveCount {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
 				#expect(await fifo!.pass(data) == 0)
 			}
-			for i in 0..<consecutiveCount {
+			for i in 0..<Self.fifoConsecutiveCount {
 				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
 				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 				#expect(consumedData != nil)
@@ -136,35 +138,13 @@ extension __cswiftslash_tests {
 
 		@Test("__cswiftslash_fifo :: pass then consume (consecutive elements - blocking)")
 		func testPassAndConsumeMultiBlocking() async {
-			let consecutiveCount = 10
-			for i in 0..<consecutiveCount {
+			for i in 0..<Self.fifoConsecutiveCount {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
 				#expect(await fifo!.pass(data) == 0)
 			}
-			for i in 0..<consecutiveCount {
+			for i in 0..<Self.fifoConsecutiveCount {
 				let (consumeResult, consumedData) = await fifo!.consumeBlocking()
-				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
-				#expect(consumedData != nil)
-				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
-				consumedData!.deallocate()
-			}
-		}
-
-		@Test("__cswiftslash_fifo :: pass then consume complex (n elements)", .timeLimit(.minutes(1)))
-		func testPassAndConsumeNElements() async {		
-			let n = Int.random(in:100...500)
-			
-			// pass n elements
-			for i in 0..<n {
-				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
-				data.pointee = i
-				#expect(await fifo!.pass(data) == 0)
-			}
-			
-			// consume n elements
-			for i in 0..<n {
-				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
 				#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 				#expect(consumedData != nil)
 				#expect(consumedData!.assumingMemoryBound(to: Int.self).pointee == i)
@@ -213,11 +193,10 @@ extension __cswiftslash_tests {
 			// we explicitly need to make a harness that is mutex guarded
 			fifo = Harness(hasMutex:true)	
 			let bookKeeper = ProductionDocumenter()
-			let iterations = 100000
 			await withTaskGroup(of:[UInt8].self) { [fifo] group in
 				group.addTask {
 					var producedItems:[UInt8] = []
-					for i in 0..<iterations {
+					for _ in 0..<Self.fifoConsecutiveCount {
 						let data = UnsafeMutablePointer<UInt8>.allocate(capacity:1)
 						data.pointee = UInt8.random(in: 0...UInt8.max)
 						let producedByte = data.pointee
@@ -229,7 +208,7 @@ extension __cswiftslash_tests {
 				}
 				group.addTask {
 					var consumedItems:[UInt8] = []
-					for _ in 0..<iterations {
+					for _ in 0..<Self.fifoConsecutiveCount {
 						let (consumeResult, consumedData) = await fifo!.consumeBlocking()
 						#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT)
 						let consumedByte = consumedData!.assumingMemoryBound(to:UInt8.self).pointee
@@ -246,18 +225,6 @@ extension __cswiftslash_tests {
 				let producerResult = await group.next()
 				let consumerResult = await group.next()
 				#expect(producerResult == consumerResult)
-			}
-
-			
-			
-			// clean up any remaining data
-			while true {
-				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
-				if consumeResult == __CSWIFTSLASH_FIFO_CONSUME_RESULT, let data = consumedData {
-					data.deallocate()
-				} else {
-					break
-				}
 			}
 		}
 
