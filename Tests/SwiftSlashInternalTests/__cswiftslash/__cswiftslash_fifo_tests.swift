@@ -35,10 +35,8 @@ extension __cswiftslash_tests {
 					fifoPtr = __cswiftslash_fifo_init(false)
 				}
 			}
-			fileprivate func pass(_ data: UnsafeMutableRawPointer) async -> Int8 {
-				await withUnsafeContinuation { (continuation:UnsafeContinuation<Int8, Never>) in
-					continuation.resume(returning:__cswiftslash_fifo_pass(fifoPtr, data))
-				}
+			fileprivate func pass(_ data: UnsafeMutableRawPointer) -> Int8 {
+				return __cswiftslash_fifo_pass(fifoPtr, data)
 			}
 			/// consumes data from the FIFO in a non-blocking manner
 			fileprivate func consumeNonBlocking() -> (__cswiftslash_fifo_consume_result_t, UnsafeMutableRawPointer?) {
@@ -54,16 +52,12 @@ extension __cswiftslash_tests {
 				}
 			}
 			/// caps the FIFO with a final element
-			fileprivate func passCap(_ capData: UnsafeMutableRawPointer?) async -> Bool {
-				return await withUnsafeContinuation { (continuation:UnsafeContinuation<Bool, Never>) in
-					continuation.resume(returning:__cswiftslash_fifo_pass_cap(fifoPtr, capData))
-				}
+			fileprivate func passCap(_ capData: UnsafeMutableRawPointer?) -> Bool {
+				return __cswiftslash_fifo_pass_cap(fifoPtr, capData)
 			}
 			/// sets the maximum number of elements in the FIFO
-			fileprivate func setMaxElements(_ maxElements: size_t) async -> Bool {
-				return await withUnsafeContinuation { (continuation:UnsafeContinuation<Bool, Never>) in
-					continuation.resume(returning:__cswiftslash_fifo_set_max_elements(fifoPtr, maxElements))
-				}
+			fileprivate func setMaxElements(_ maxElements: size_t) -> Bool {
+				return __cswiftslash_fifo_set_max_elements(fifoPtr, maxElements)
 			}
 			private func closeFIFO() -> (Bool, UnsafeMutableRawPointer?) {
 				var cptr:UnsafeMutableRawPointer? = nil
@@ -74,10 +68,15 @@ extension __cswiftslash_tests {
 			}
 		}
 
-		private var fifo:Harness? = Harness()
+		private var fifo:Harness? = Harness(hasMutex:true)
 
 		@Test("__cswiftslash_fifo :: basic init and deinit", .timeLimit(.minutes(1)))
 		mutating func basicInitDeinit() async {
+			#expect(fifo != nil)
+			fifo = nil
+			#expect(fifo == nil)
+			fifo = Harness(hasMutex:false)
+			#expect(fifo != nil)
 			fifo = nil
 			#expect(fifo == nil)
 		}
@@ -85,7 +84,7 @@ extension __cswiftslash_tests {
 		// MARK: test cases
 
 		@Test("__cswiftslash_fifo :: nonblocking consume from empty fifo", .timeLimit(.minutes(1)))
-		func consumeFromEmpty() {				
+		func consumeFromEmpty() {
 			let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
 			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK)
 			#expect(consumedData == nil)
@@ -95,7 +94,7 @@ extension __cswiftslash_tests {
 		func passThenConsumeNBSimpleSingle() async {
 			// pass data and ensure it succeeds
 			let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
-			let passResult = await fifo!.pass(data)
+			let passResult = fifo!.pass(data)
 			#expect(passResult == 0)
 			
 			// consume the data back
@@ -108,7 +107,7 @@ extension __cswiftslash_tests {
 		func passThenConsumeBSingle() async {
 			// lass data and ensure it succeeds
 			let data = UnsafeMutableRawPointer(bitPattern:0x2468)!
-			let passResult = await fifo!.pass(data)
+			let passResult = fifo!.pass(data)
 			#expect(passResult == 0)
 
 			// consume the data back
@@ -125,7 +124,7 @@ extension __cswiftslash_tests {
 			for i in 0..<Self.fifoConsecutiveCount {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
-				#expect(await fifo!.pass(data) == 0)
+				#expect(fifo!.pass(data) == 0)
 			}
 			for i in 0..<Self.fifoConsecutiveCount {
 				let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
@@ -141,7 +140,7 @@ extension __cswiftslash_tests {
 			for i in 0..<Self.fifoConsecutiveCount {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
-				#expect(await fifo!.pass(data) == 0)
+				#expect(fifo!.pass(data) == 0)
 			}
 			for i in 0..<Self.fifoConsecutiveCount {
 				let (consumeResult, consumedData) = await fifo!.consumeBlocking()
@@ -154,18 +153,18 @@ extension __cswiftslash_tests {
 
 		@Test("__cswiftslash_fifo :: set max elements", .timeLimit(.minutes(1)))
 		func testSetMaxElements() async {		
-			let setResult = await fifo!.setMaxElements(2)
+			let setResult = fifo!.setMaxElements(2)
 			#expect(setResult == true)
 			
 			// pass two elements
 			let data1 = UnsafeMutableRawPointer(bitPattern: 0x1)!
 			let data2 = UnsafeMutableRawPointer(bitPattern: 0x2)!
-			#expect(await fifo!.pass(data1) == 0)
-			#expect(await fifo!.pass(data2) == 0)
+			#expect(fifo!.pass(data1) == 0)
+			#expect(fifo!.pass(data2) == 0)
 			
 			// attempt to pass a third element
 			let data3 = UnsafeMutableRawPointer(bitPattern: 0x3)!
-			#expect(await fifo!.pass(data3) == -2)
+			#expect(fifo!.pass(data3) == -2)
 			
 			// consume one element
 			let (consumeResult, consumedData) = fifo!.consumeNonBlocking()
@@ -173,11 +172,12 @@ extension __cswiftslash_tests {
 			#expect(consumedData == data1)
 			
 			// now passing should succeed
-			#expect(await fifo!.pass(data3) == 0)
+			#expect(fifo!.pass(data3) == 0)
 		}
 
 		@Test("__cswiftslash_fifo :: fuzz testing FIFO", .timeLimit(.minutes(1)))
-		mutating func testFuzzTestingFIFO() async throws {	
+		mutating func testFuzzTestingFIFO() async throws {
+			// reference tool used to document which elements are going into the FIFO in which order.
 			actor ProductionDocumenter {
 				var producedItems:[UInt8] = []
 				func produced(_ item:UInt8) {
@@ -190,7 +190,7 @@ extension __cswiftslash_tests {
 					return producedItems.removeFirst()
 				}
 			}
-			// we explicitly need to make a harness that is mutex guarded
+			
 			fifo = Harness(hasMutex:true)	
 			let bookKeeper = ProductionDocumenter()
 			await withTaskGroup(of:[UInt8].self) { [fifo] group in
@@ -201,7 +201,7 @@ extension __cswiftslash_tests {
 						data.pointee = UInt8.random(in: 0...UInt8.max)
 						let producedByte = data.pointee
 						await bookKeeper.produced(producedByte)
-						_ = await fifo!.pass(data)
+						_ = fifo!.pass(data)
 						producedItems.append(producedByte)
 					}
 					return producedItems
@@ -231,7 +231,7 @@ extension __cswiftslash_tests {
 		@Test("__cswiftslash_fifo :: blocking consume with cap", .timeLimit(.minutes(1)))
 		func testBlockingConsumeWithCap() async {		
 			let capData = UnsafeMutableRawPointer(bitPattern: 0xfeed)!
-			#expect(await fifo!.passCap(capData) == true)
+			#expect(fifo!.passCap(capData) == true)
 			let (consumeResult, consumedData) = await fifo!.consumeBlocking()
 			#expect(consumeResult == __CSWIFTSLASH_FIFO_CONSUME_CAP)
 			#expect(consumedData == capData)
@@ -239,26 +239,26 @@ extension __cswiftslash_tests {
 
 		@Test("__cswiftslash_fifo :: set max elements to zero", .timeLimit(.minutes(1)))
 		func testSetMaxElementsToZero() async {
-			#expect(await fifo!.setMaxElements(0) == true)
+			#expect(fifo!.setMaxElements(0) == true)
 			
 			// attempt to pass data
 			let data = UnsafeMutableRawPointer(bitPattern: 0x1)!
-			let passResult = await fifo!.pass(data)
+			let passResult = fifo!.pass(data)
 			#expect(passResult == -2) // max elements reached
 		}
 
 		@Test("__cswiftslash_fifo :: set max elements to 1", .timeLimit(.minutes(1)))
 		func testSetMaxElementsToOne() async {
-			#expect(await fifo!.setMaxElements(1) == true)
+			#expect(fifo!.setMaxElements(1) == true)
 			
 			// pass data
 			let data1 = UnsafeMutableRawPointer(bitPattern: 0x1)!
-			let passResult1 = await fifo!.pass(data1)
+			let passResult1 = fifo!.pass(data1)
 			#expect(passResult1 == 0)
 			
 			// attempt to pass a second element
 			let data2 = UnsafeMutableRawPointer(bitPattern: 0x2)!
-			let passResult2 = await fifo!.pass(data2)
+			let passResult2 = fifo!.pass(data2)
 			#expect(passResult2 == -2) // max elements reached
 			
 			// consume the first element
@@ -275,16 +275,16 @@ extension __cswiftslash_tests {
 		@Test("__cswiftslash_fifo :: set max elements to n, while passing n*2 elements", .timeLimit(.minutes(1)))
 		func testSetMaxElementsToNWhilePassingN2() async {
 			let maxElements = 5
-			#expect(await fifo!.setMaxElements(maxElements) == true)
+			#expect(fifo!.setMaxElements(maxElements) == true)
 			
 			// pass 2n elements
 			for i in 0..<(maxElements*2) {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
 				if i < maxElements {
-					#expect(await fifo!.pass(data) == 0)
+					#expect(fifo!.pass(data) == 0)
 				} else {
-					#expect(await fifo!.pass(data) == -2)
+					#expect(fifo!.pass(data) == -2)
 					data.deallocate()
 				}
 			}
@@ -302,7 +302,7 @@ extension __cswiftslash_tests {
 			for i in 0..<maxElements {
 				let data = UnsafeMutablePointer<Int>.allocate(capacity: 1)
 				data.pointee = i
-				#expect(await fifo!.pass(data) == 0)
+				#expect(fifo!.pass(data) == 0)
 			}
 			
 			// consume n elements
