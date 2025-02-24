@@ -84,7 +84,7 @@ extension SwiftSlashTests {
 			}
 		}
 
-		/*@Test("SwiftSlashFIFO :: intentional overflow of maximum element count", .timeLimit(.minutes(1)))
+		@Test("SwiftSlashFIFO :: intentional overflow of maximum element count", .timeLimit(.minutes(1)))
 		func testMaxElementOverflow() async {
 			let writeCount = 10000
 			let maxCount = 10
@@ -92,6 +92,16 @@ extension SwiftSlashTests {
 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>(maximumElementCount:maxCount)
 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:writeCount) { deinitThing in
 				await withTaskGroup(of:[Int].self) { tg in
+					var written = [Int]()
+					for i in 0..<writeCount {
+						if i < maxCount {
+							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .success)
+						} else {
+							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .fifoFull)
+						}
+						written.append(i)
+					}
+					fifo!.finish()
 					tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
 						var buildInts = [Int]()
 						var nextElement:WhenDeinitTool<Int>? = await asc.next()
@@ -101,22 +111,12 @@ extension SwiftSlashTests {
 						}
 						return buildInts
 					}
-					var written = [Int]()
-					for i in 0..<writeCount {
-						if i <= maxCount {
-							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .success)
-						} else {
-							#expect(fifo!.yield(WhenDeinitTool(i, deinitThing)) == .fifoFull)
-						}
-						written.append(i)
-					}
-					fifo!.finish()
-					let expected = Array(written.suffix(10))
+					let expected = Array(written.prefix(10))
 					let foundItem = await tg.next()!
-					// #expect(expected == foundItem, "\(foundItem) != \(expected)")
+					#expect(expected == foundItem, "\(foundItem) != \(expected)")
 					fifo = nil
 				}
 			}
-		}*/
+		}
 	}
 }
