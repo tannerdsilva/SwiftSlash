@@ -112,6 +112,11 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 }
 
 extension FIFO {
+	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
+	public func makeAsyncConsumer() -> Consumer {
+		return Consumer(self)
+	}
+
 	/// the primary structure for consuming elements from the FIFO.
 	public struct Consumer {
 		/// specifies the action to take when a task is cancelled while consuming the FIFO.

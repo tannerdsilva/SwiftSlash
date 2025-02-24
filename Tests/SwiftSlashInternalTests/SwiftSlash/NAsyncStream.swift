@@ -1,5 +1,5 @@
 import Testing
-@testable import SwiftSlashNAsyncStream
+// @testable import SwiftSlashNAsyncStream
 
 extension SwiftSlashTests {
 	@Suite("SwiftSlashNAsyncStream", .serialized)
