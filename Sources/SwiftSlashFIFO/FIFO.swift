@@ -134,24 +134,24 @@ extension FIFO {
 		internal init(_ fifoIn:consuming FIFO) {
 			fifo = fifoIn
 		}
+
+		/// wait asyncronously for the next element to consume from the FIFO.
+		public func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
+			switch cancelAction {
+				case .noAction:
+					return try await _next().get()
+				case .finish:
+					return try await withTaskCancellationHandler(operation: {
+						await _next()
+					}, onCancel: { [f = fifo] in
+						f.finish()
+					}).get()
+			}
+		}
 	}
 }
 
 extension FIFO.Consumer {
-	/// wait asyncronously for the next element to consume from the FIFO.
-	public func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
-		switch cancelAction {
-			case .noAction:
-				return try await _next().get()
-			case .finish:
-				return try await withTaskCancellationHandler(operation: {
-					await _next()
-				}, onCancel: { [f = fifo] in
-					f.finish()
-				}).get()
-		}
-	}
-
 	fileprivate func _next() async -> Result<Element?, Failure> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
