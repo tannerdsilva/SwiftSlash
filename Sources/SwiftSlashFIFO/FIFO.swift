@@ -152,7 +152,7 @@ extension FIFO {
 }
 
 extension FIFO.Consumer {
-	fileprivate func _next() async -> Result<Element?, Failure> {
+	fileprivate borrowing func _next() async -> Result<Element?, Failure> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
 			switch __cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {

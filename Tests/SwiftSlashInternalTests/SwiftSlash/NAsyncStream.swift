@@ -1,10 +1,10 @@
 import Testing
-// @testable import SwiftSlashNAsyncStream
+@testable import SwiftSlashNAsyncStream
 
 extension SwiftSlashTests {
 	@Suite("SwiftSlashNAsyncStream", .serialized)
 	struct NAsyncStreamTests {
-		/*@Test("SwiftSlashNAsyncStream :: basic usage and memory management")
+		@Test("SwiftSlashNAsyncStream :: basic usage and memory management")
 		func testNAsyncStreamMemoryManagement() async {
 			let stream = NAsyncStream<WhenDeinitTool<Int>, Never>()
 			await confirmation("confirm correct memory management throughout lifecycle", expectedCount:3) { deinitConf in
@@ -23,6 +23,6 @@ extension SwiftSlashTests {
 					await tg.waitForAll()
 				}
 			}
-		}*/
+		}
 	}
 }

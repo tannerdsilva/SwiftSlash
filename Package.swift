@@ -93,13 +93,13 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	/*.target(
+	.target(
 		name:"SwiftSlashNAsyncStream",
 		dependencies:[
 			"SwiftSlashFIFO",
 			"SwiftSlashIdentifiedList"
 		]
-	),*/
+	),
 ]
 
 fileprivate let testTarget:Target = .testTarget(
@@ -117,7 +117,7 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashPThread",
 		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
-		// "SwiftSlashNAsyncStream",
+		"SwiftSlashNAsyncStream",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
