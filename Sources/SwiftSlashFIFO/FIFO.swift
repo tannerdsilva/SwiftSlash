@@ -37,41 +37,28 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
 	@discardableResult public func yield(_ element:consuming Element) -> YieldResult {
-		let um = Unmanaged.passRetained(Contained(element))
-		
-		#if DEBUG
-		var i:UInt8 = 0
-		#endif
-		
-		repeat {
-			#if DEBUG
-			defer {
-				i += 1
-			}
-			guard i < 255 else {
-				fatalError("swiftslash - yield infinite loop - \(#file):\(#line)")
-			}
-			#endif
-			switch __cswiftslash_fifo_pass(datachain_primitive_ptr, um.toOpaque()) {
+		let um = Unmanaged.passRetained(Contained(element)).toOpaque()
+		passLoop: repeat {
+			logicSwitch: switch __cswiftslash_fifo_pass(datachain_primitive_ptr, um) {
+				// try again
+				case 1:
+					break logicSwitch
+
 				// success return
 				case 0:
 					return .success
 
 				// the FIFO is closed
 				case -1:
-					_ = um.takeRetainedValue()
+					_ = Unmanaged<Contained<Element>>.fromOpaque(um).takeRetainedValue()
 					return .fifoClosed
 
 				// the FIFO is full
 				case -2:
-					_ = um.takeRetainedValue()
+					_ = Unmanaged<Contained<Element>>.fromOpaque(um).takeRetainedValue()
 					return .fifoFull
-
-				// try again
-				case 1:
-				continue
 				default:
-					fatalError("swiftslash - unexpected return value from _cwskit_dc_pass - \(#file):\(#line)")
+					fatalError("swiftslash - unexpected return value from __cswiftslash_fifo_pass - \(#file):\(#line)")
 			}
 		} while true
 	}
