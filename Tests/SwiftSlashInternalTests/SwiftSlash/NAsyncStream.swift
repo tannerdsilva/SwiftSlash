@@ -1,8 +1,26 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import Testing
 @testable import SwiftSlashNAsyncStream
 
+extension Tag {
+	@Tag internal static var swiftSlashNAsyncStream:Self
+}
+
 extension SwiftSlashTests {
-	@Suite("SwiftSlashNAsyncStream", .serialized)
+	@Suite("SwiftSlashNAsyncStream",
+		.serialized,
+		.tags(.swiftSlashNAsyncStream)
+	)
 	struct NAsyncStreamTests {
 		@Test("SwiftSlashNAsyncStream :: basic usage and memory management")
 		func testNAsyncStreamMemoryManagement() async {

@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /

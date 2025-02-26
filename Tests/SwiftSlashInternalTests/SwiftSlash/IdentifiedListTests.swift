@@ -1,9 +1,25 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import Testing
 @testable import SwiftSlashIdentifiedList
 
+extension Tag {
+	@Tag internal static var swiftSlashIdentifiedList:Self
+}
+
 extension SwiftSlashTests {
 	@Suite("SwiftSlashIdentifiedListTests",
-		.serialized
+		.serialized,
+		.tags(.swiftSlashIdentifiedList)
 	)
 	internal struct SwiftSlashIdentifiedListTests {
 		@Test("SwiftSlashIdentifiedList :: test memory lifecycle", .timeLimit(.minutes(1)))

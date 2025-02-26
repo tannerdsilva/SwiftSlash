@@ -10,8 +10,7 @@ copyright (c) tanner silva 2024. all rights reserved.
 */
 
 import Testing
-
-import __cswiftslash_identified_list
+@testable import __cswiftslash_identified_list
 
 extension Tag {
 	@Tag internal static var __cswiftslash_identified_list:Self

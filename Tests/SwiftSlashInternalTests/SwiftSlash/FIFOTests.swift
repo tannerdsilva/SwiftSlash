@@ -1,8 +1,26 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import Testing
 @testable import SwiftSlashFIFO
 
+extension Tag {
+	@Tag internal static var swiftSlashFIFO:Self
+}
+
 extension SwiftSlashTests {
-	@Suite("SwiftSlashFIFO", .serialized)
+	@Suite("SwiftSlashFIFO", 
+		.serialized,
+		.tags(.swiftSlashFIFO)
+	)
 	struct FIFOTests {
 		@Test("SwiftSlashFIFO :: basic usage with deinitialization checks", .timeLimit(.minutes(1)))
 		func testFIFOWithDeinitTool() async {
@@ -101,7 +119,6 @@ extension SwiftSlashTests {
 						}
 						written.append(i)
 					}
-					fifo!.finish()
 					tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
 						var buildInts = [Int]()
 						var nextElement:WhenDeinitTool<Int>? = await asc.next()
@@ -111,6 +128,7 @@ extension SwiftSlashTests {
 						}
 						return buildInts
 					}
+					fifo!.finish()
 					let expected = Array(written.prefix(10))
 					let foundItem = await tg.next()!
 					#expect(expected == foundItem, "\(foundItem) != \(expected)")

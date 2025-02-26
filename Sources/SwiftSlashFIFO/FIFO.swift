@@ -1,3 +1,13 @@
+/* LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import __cswiftslash_fifo
 import SwiftSlashContained
 
@@ -30,13 +40,13 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 		datachain_primitive_ptr = newPointer
 	}
 
-	/// initialize a new FIFO with no maximum element count.
+	/// initialize a new FIFO with no maximum element count. yielded elements will be retained indefinitely until they are consumed or the FIFO is deinitialized.
 	public init() {
 		datachain_primitive_ptr = __cswiftslash_fifo_init(true)
 	}
 
 	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
-	@discardableResult public func yield(_ element:consuming Element) -> YieldResult {
+	@discardableResult public borrowing func yield(_ element:consuming Element) -> YieldResult {
 		let um = Unmanaged.passRetained(Contained(element)).toOpaque()
 		passLoop: repeat {
 			logicSwitch: switch __cswiftslash_fifo_pass(datachain_primitive_ptr, um) {
@@ -64,7 +74,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public func finish() {
+	public borrowing func finish() {
 		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Failure>>(.success(())))
 		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()
@@ -73,7 +83,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public func finish(throwing finishingError:Failure) {
+	public borrowing func finish(throwing finishingError:Failure) {
 		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Failure>>(.failure(finishingError)))
 		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()
@@ -82,6 +92,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	}
 
 	deinit {
+		// close the fifo and capture the various pointers that are being held and returned by this function.
 		var items = [UnsafeMutableRawPointer]()
 		let capPointer:(Bool, UnsafeMutableRawPointer?) = withUnsafeMutablePointer(to:&items) { itemsPointer in
 			var capPtr:UnsafeMutableRawPointer? = nil
@@ -89,9 +100,11 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 				ctx!.assumingMemoryBound(to:[UnsafeMutableRawPointer].self).pointee.append(pointer)
 			}, itemsPointer, &capPtr), capPtr)
 		}
+		// consume a reference to each of the items that were being held by the FIFO
 		for item in items {
 			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue()
 		}
+		// consume the cap pointer if it was returned
 		if capPointer.0 == true && capPointer.1 != nil {
 			_ = Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(capPointer.1!).takeRetainedValue()
 		}
@@ -105,7 +118,7 @@ extension FIFO {
 	}
 
 	/// the primary structure for consuming elements from the FIFO.
-	public struct Consumer {
+	public struct Consumer:~Copyable {
 		/// specifies the action to take when a task is cancelled while consuming the FIFO.
 		public enum WhenConsumingTaskCancelled {
 			/// when the current task is cancelled, the FIFO will not be affected. no actions will be taken.
@@ -123,7 +136,7 @@ extension FIFO {
 		}
 
 		/// wait asyncronously for the next element to consume from the FIFO.
-		public func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
+		public borrowing func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
 			switch cancelAction {
 				case .noAction:
 					return try await _next().get()

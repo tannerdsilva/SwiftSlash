@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -110,7 +110,6 @@ void __cswiftslash_identified_list_iterate(
 	const bool ____
 );
 
-
 /// iterates through all elements in the atomic list, processing each data pointer with the provided consumer function. after each element is processed, the element is removed from the identified list.
 /// @param _ pointer to the atomic list pair instance.
 /// @param __ function used to process each data pointer in the atomic list.
@@ -123,7 +122,7 @@ void __cswiftslash_identified_list_iterate_consume_zero(
 	const bool ____
 );
 
-/// @brief iterate functions allow for the session lock to hang outside of the function. when this is called, the session lock is not released, and this function is used to complete the lock.
+/// iterate functions allow for the session lock to hang outside of the function. when this is called, the session lock is not released, and this function is used to complete the lock.
 /// @param _ pointer to the atomic list pair instance.
 void __cswiftslash_identified_list_iterate_hanginglock_complete(
 	const __cswiftslash_identified_list_pair_ptr_t _

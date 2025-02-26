@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -121,15 +121,14 @@ extension __cswiftslash_tests {
 		
 			fileprivate func joinThread() async -> [HandlerCall] {
 				await withUnsafeContinuation { (continuation:UnsafeContinuation<Void, Never>) in
-					pthread_join(self.thread!, nil)
+					pthread_join(thread!, nil)
 					continuation.resume()
 				}
-				let cont = await withUnsafeContinuation { (continuation:UnsafeContinuation<[HandlerCall], Never>) in
+				return await withUnsafeContinuation { (continuation:UnsafeContinuation<[HandlerCall], Never>) in
 					handlerCallsLock.lock()
 					continuation.resume(returning:handlerCalls.pointee)
 					handlerCallsLock.unlock()
 				}
-				return cont
 			}
 
 			deinit {
@@ -221,7 +220,7 @@ extension __cswiftslash_tests {
 			harness.startThread()
 		
 			// ensure main function has time to complete
-			usleep(1_100_000) // 1s + 100ms
+			usleep(2_000_000) // 2s
 			harness.cancelThread()
 			let calls = await harness.joinThread()
 		

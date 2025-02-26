@@ -1,10 +1,24 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import Testing
-
 @testable import SwiftSlashPThread
-import __cswiftslash_threads
-@testable import SwiftSlashFuture
 
+import __cswiftslash_threads
+import SwiftSlashFuture
 import func Foundation.sleep
+
+extension Tag {
+	@Tag internal static var swiftSlashPThread:Self
+}
 
 // a declaration of the pthread worker that will be used to test the pthreads.
 fileprivate struct SimpleReturnWorker<A:Sendable>:PThreadWork {
@@ -30,7 +44,8 @@ fileprivate struct SimpleReturnWorker<A:Sendable>:PThreadWork {
 
 extension SwiftSlashTests {
 	@Suite("SwiftSlashPThreadTests",
-		.serialized
+		.serialized,
+		.tags(.swiftSlashPThread)
 	)
 	internal struct PThreadTests {
 		@Test("SwiftSlashPThread :: return values from pthreads", .timeLimit(.minutes(1)))

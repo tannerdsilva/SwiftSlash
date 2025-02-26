@@ -1,5 +1,5 @@
 /* LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -16,8 +16,8 @@ public final class Contained<ContainedType> {
 
 	/// initialize a new instance of Contained, storing the given value.
 	/// - parameter arg: the value to store.
-	public init(_ arg:ContainedType) {
-		self.val = arg
+	public init(_ arg:consuming ContainedType) {
+		val = arg
 	}
 
 	/// retrieve the stored value from this instance.

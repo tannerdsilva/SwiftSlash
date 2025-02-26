@@ -1,7 +1,23 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import Testing
 @testable import SwiftSlashFuture
+
 import __cswiftslash_future
 import SwiftSlashContained
+
+extension Tag {
+	@Tag internal static var swiftSlashFuture:Self
+}
 
 extension Future {
 	/// blocking wait for the result of the future. this is used only for unit testing.
@@ -38,7 +54,7 @@ extension SwiftSlashTests {
 			let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 			return String((0..<length).map{ _ in letters.randomElement()! })
 		}
-		final class IntHeap:Equatable {
+		private final class IntHeap:Equatable {
 			private var value:Int
 			private var conf:Confirmation?
 			init(_ initialValue:Int, c:Confirmation) {

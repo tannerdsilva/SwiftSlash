@@ -15,13 +15,15 @@ fileprivate let cswiftslashTargets:[Target] = [
 	// fifo
 	.target(
 		name:"__cswiftslash_fifo",
-		dependencies:["__cswiftslash_types"],
+		dependencies: [
+			"__cswiftslash_types"
+		],
 		publicHeadersPath:"."
 	),
 	// future
 	.target(
 		name:"__cswiftslash_future",
-		dependencies:[
+		dependencies: [
 			"__cswiftslash_identified_list",
 			"__cswiftslash_types"
 		],
@@ -30,7 +32,9 @@ fileprivate let cswiftslashTargets:[Target] = [
 	// threading
 	.target(
 		name:"__cswiftslash_threads",
-		dependencies:["__cswiftslash_types"],
+		dependencies: [
+			"__cswiftslash_types"
+		],
 		publicHeadersPath:"."
 	),
 	// posix helpers
@@ -41,23 +45,11 @@ fileprivate let cswiftslashTargets:[Target] = [
 	// identified list
 	.target(
 		name:"__cswiftslash_identified_list",
-		dependencies:["__cswiftslash_types"],
+		dependencies: [
+			"__cswiftslash_types"
+		],
 		publicHeadersPath:"."
 	),
-	// unit tests for all c targets
-	// .testTarget(
-	// 	name:"__cswiftslash_tests",
-	// 	dependencies:[
-	// 		"__cswiftslash_auint8",
-	// 		"__cswiftslash_fifo",
-	// 		"__cswiftslash_future",
-	// 		"__cswiftslash_types",
-	// 		"__cswiftslash_threads",
-	// 		"__cswiftslash_eventtrigger",
-	// 		"__cswiftslash_identified_list"
-	// 	],
-	// 	path: "Tests/__cswiftslash"
-	// )
 ]
 
 fileprivate let swiftTargets:[Target] = [
@@ -105,7 +97,6 @@ fileprivate let swiftTargets:[Target] = [
 fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
-		// "__cswiftslash_auint8",
 		"__cswiftslash_fifo",
 		"__cswiftslash_future",
 		"__cswiftslash_types",

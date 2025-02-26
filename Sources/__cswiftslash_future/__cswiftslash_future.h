@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -156,7 +156,7 @@ void __cswiftslash_future_t_wait_sync_block(
 	const __cswiftslash_ptr_t __
 );
 
-/// @brief cancel a synchronous waiter for a future.
+/// cancel a synchronous waiter for a future.
 /// @param _ the future to cancel the waiter for.
 /// @param __ the unique waiter pointer to cancel.
 bool __cswiftslash_future_wait_sync_invalidate(

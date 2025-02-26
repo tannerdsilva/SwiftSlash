@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -10,7 +10,6 @@ copyright (c) tanner silva 2024. all rights reserved.
 */
 
 import Testing
-
 @testable import __cswiftslash_future
 
 import Synchronization
@@ -99,7 +98,7 @@ extension __cswiftslash_tests {
 				private var istate = pthread_mutex_t()
 
 				private var mutex:pthread_mutex_t = pthread_mutex_t()
-				private var isMutexLocked:UnsafeMutablePointer<Atomic<Bool>>
+				private let isMutexLocked:UnsafeMutablePointer<Atomic<Bool>>
 				
 				private var resultHandler:Optional<(UInt8, UnsafeMutableRawPointer?) -> Void>
 				private var errorHandler:Optional<(UInt8, UnsafeMutableRawPointer?) -> Void>
