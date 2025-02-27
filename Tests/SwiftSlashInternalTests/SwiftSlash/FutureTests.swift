@@ -21,7 +21,7 @@ extension Tag {
 
 extension Future {
 	/// blocking wait for the result of the future. this is used only for unit testing.
-	internal borrowing func blockingResult() -> Result<R, F>? {
+	internal borrowing func blockingResult() -> Result<Produced, Failure>? {
 		var getResult = SyncResult()
 		withUnsafeMutablePointer(to:&getResult) { rptr in
 			var memory = __cswiftslash_future_wait_t_init_struct()
@@ -33,9 +33,9 @@ extension Future {
 		}
 		switch getResult.consumeResult()! {
 			case .success(_, let res):
-				return .success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value())
+				return .success(Unmanaged<Contained<Produced>>.fromOpaque(res!).takeUnretainedValue().value())
 			case .failure(_, let res):
-				return .failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value())
+				return .failure(Unmanaged<Contained<Failure>>.fromOpaque(res!).takeUnretainedValue().value())
 			case .cancel:
 				return nil
 		}
@@ -44,7 +44,8 @@ extension Future {
 
 extension SwiftSlashTests {
 	@Suite("SwiftSlashFutureTests",
-		.serialized
+		.serialized,
+		.tags(.swiftSlashFuture)
 	)
 	internal struct FutureTests {
 		internal static func randomInt() -> Int {
@@ -52,42 +53,42 @@ extension SwiftSlashTests {
 		}
 		internal static func randomString(length:Int) -> String {
 			let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-			return String((0..<length).map{ _ in letters.randomElement()! })
+			return String((0..<length).map({ _ in letters.randomElement()! }))
 		}
 		private final class IntHeap:Equatable {
 			private var value:Int
 			private var conf:Confirmation?
-			init(_ initialValue:Int, c:Confirmation) {
+			internal init(_ initialValue:Int, c:Confirmation) {
 				value = initialValue
 				conf = c
 			}
-			func getValue() -> Int {
+			internal func getValue() -> Int {
 				return value
 			}
-			func replaceConfirmation(_ newConf:Confirmation?) {
+			internal func replaceConfirmation(_ newConf:Confirmation?) {
 				conf = newConf
 			}
-			static func == (lhs:IntHeap, rhs:IntHeap) -> Bool {
+			internal static func == (lhs:IntHeap, rhs:IntHeap) -> Bool {
 				return lhs.value == rhs.value
 			}
 			deinit {
 				conf?.confirm()
 			}
 		}
-		final class RandomTestError:@unchecked Sendable, Swift.Error, Equatable {
-			let c:Int
-			let m:String
+		private final class RandomTestError:@unchecked Sendable, Swift.Error, Equatable {
+			private let c:Int
+			private let m:String
 			private let conf:UnsafeMutablePointer<Confirmation?>
-			init(code:Int, message:String, confirmation:Confirmation?) {
+			internal init(code:Int, message:String, confirmation:Confirmation?) {
 				c = code
 				m = message
 				conf = UnsafeMutablePointer<Confirmation?>.allocate(capacity:1)
 				conf.initialize(to:confirmation)
 			}
-			func replaceConfirmation(_ newConf:Confirmation?) {
+			internal func replaceConfirmation(_ newConf:Confirmation?) {
 				conf.pointee = newConf
 			}
-			static func == (lhs:RandomTestError, rhs:RandomTestError) -> Bool {
+			internal static func == (lhs:RandomTestError, rhs:RandomTestError) -> Bool {
 				return lhs.c == rhs.c && lhs.m == rhs.m
 			}
 			deinit {
@@ -96,6 +97,7 @@ extension SwiftSlashTests {
 				conf.deallocate()
 			}
 		}
+
 		private var future:Future<Int, Swift.Error> = Future<Int, Swift.Error>()
 
 		@Test("SwiftSlashFuture :: test successful assignment with memory checks (random integer value)", .timeLimit(.minutes(1)))

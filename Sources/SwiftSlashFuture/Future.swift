@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2024. all rights reserved.
+copyright (c) tanner silva 2025. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -17,10 +17,10 @@ import Synchronization
 public struct InvalidStateError:Swift.Error {}
 
 /// a reference type that represents a result that will be available in the future.
-public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
+public final class Future<Produced, Failure>:@unchecked Sendable where Failure:Swift.Error {
 
 	/// the type that is contained within the future.
-	public typealias SuccessfulResultDeallocator = (R) -> Void
+	public typealias SuccessfulResultDeallocator = (Produced) -> Void
 
 	/// the underlying c primitive that this future wraps.
 	internal let prim:UnsafeMutablePointer<__cswiftslash_future_t>
@@ -49,13 +49,13 @@ public final class Future<R, F>:@unchecked Sendable where F:Swift.Error {
 		let extractedResult = deallocResult.consumeResult()
 		switch extractedResult {
 			case .success(_, let ptr):
-				let rv = Unmanaged<Contained<R>>.fromOpaque(ptr!).takeRetainedValue()
+				let rv = Unmanaged<Contained<Produced>>.fromOpaque(ptr!).takeRetainedValue()
 				if successDeallocator != nil {
 					// the retained value must be passed to the success deallocator
 					successDeallocator!(rv.value())
 				}
 			case .failure(_, let ptr):
-				_ = Unmanaged<Contained<F>>.fromOpaque(ptr!).takeRetainedValue()
+				_ = Unmanaged<Contained<Failure>>.fromOpaque(ptr!).takeRetainedValue()
 			case .cancel:
 				fatalError("future was canceled within deallocation block. this is an internal error. \(#file) \(#line)")
 			case .none:
@@ -70,10 +70,10 @@ extension Future {
 	/// - parameters:
 	/// 	- result: the result to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setSuccess(_ result:consuming R) throws(InvalidStateError) {
+	public func setSuccess(_ result:consuming Produced) throws(InvalidStateError) {
 		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
-			_ = Unmanaged<Contained<R>>.fromOpaque(op).takeRetainedValue()
+			_ = Unmanaged<Contained<Produced>>.fromOpaque(op).takeRetainedValue()
 			throw InvalidStateError()
 		}
 	}
@@ -82,10 +82,10 @@ extension Future {
 	/// - parameters:
 	/// 	- error: the error to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setFailure(_ error:consuming F) throws(InvalidStateError) {
+	public func setFailure(_ error:consuming Failure) throws(InvalidStateError) {
 		let op = Unmanaged.passRetained(Contained(error)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
-			_ = Unmanaged<Contained<F>>.fromOpaque(op).takeRetainedValue()
+			_ = Unmanaged<Contained<Failure>>.fromOpaque(op).takeRetainedValue()
 			throw InvalidStateError()
 		}
 	}
@@ -107,7 +107,7 @@ extension Future {
 	/// 	- taskCancellationError: an autoclosure that returns an error to throw when the current task is canceled. the closure is not called if the task is not canceled.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
 	/// - throws: this function will run the @autoclosure argument from `taskCancellationError` and throw the corresponding result if the current task was canceled while waiting for the result.
-	public func result<E>(throwingOnCurrentTaskCancellation taskThrowType:E.Type, taskCancellationError:@autoclosure () -> E) async throws(E) -> Result<R, F>? where E:Swift.Error {
+	public func result<ErrorOnTaskCancel>(throwingOnCurrentTaskCancellation taskThrowType:ErrorOnTaskCancel.Type, taskCancellationError:@autoclosure () -> ErrorOnTaskCancel) async throws(ErrorOnTaskCancel) -> Result<Produced, Failure>? where ErrorOnTaskCancel:Swift.Error {
 		var syncResult = SyncResult()
 		var memory = __cswiftslash_future_wait_t_init_struct()
 		return try await _result_main(throwing:taskThrowType, onCurrentTaskCancellation:taskCancellationError(), memory:&memory, syncResult:&syncResult)
@@ -116,7 +116,7 @@ extension Future {
 	/// wait for the result of the future. this function will not throw if the current task is canceled.
 	/// - throws: this function does NOT throw.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
-	public func result(throwingOnCurrentTaskCancellation taskThrowType:Never.Type = Never.self) async -> Result<R, F>? {
+	public func result(throwingOnCurrentTaskCancellation taskThrowType:Never.Type = Never.self) async -> Result<Produced, Failure>? {
 		var syncResult = SyncResult()
 		var memory = __cswiftslash_future_wait_t_init_struct()
 		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file) \(#line)"), memory:&memory, syncResult:&syncResult)
@@ -126,14 +126,14 @@ extension Future {
 	/// - parameters:
 	/// 	- callback: the function to call when the result is known. this function will be passed nil if the future was canceled.
 	/// - returns: the id of the waiter that was created. this id can be used to cancel the waiter. nil is returned if the callback was fired immediately from the current thread.
-	@discardableResult public func whenResult(_ callback:consuming @escaping @Sendable (Result<R, F>?) -> Void) -> UInt64? {
+	@discardableResult public func whenResult(_ callback:consuming @escaping @Sendable (Result<Produced, Failure>?) -> Void) -> UInt64? {
 		// define the async result here so that it will remain in memory for at least the duration of the function call.
 		let asr = AsyncResult(handle: { [cb = callback] res in
 			switch res {
 				case .success(_, let res):
-					cb(.success(Unmanaged<Contained<R>>.fromOpaque(res!).takeUnretainedValue().value()))
+					cb(.success(Unmanaged<Contained<Produced>>.fromOpaque(res!).takeUnretainedValue().value()))
 				case .failure(_, let res):
-					cb(.failure(Unmanaged<Contained<F>>.fromOpaque(res!).takeUnretainedValue().value()))
+					cb(.failure(Unmanaged<Contained<Failure>>.fromOpaque(res!).takeUnretainedValue().value()))
 				case .cancel:
 					cb(nil)
 			}
@@ -161,15 +161,15 @@ extension Future {
 }
 
 extension Future {
-	fileprivate borrowing func _result_main<E>(throwing _:E.Type, onCurrentTaskCancellation throwOnTaskCancellation:@autoclosure () -> E, memory:UnsafeMutablePointer<__cswiftslash_future_wait_t>, syncResult sPtr:UnsafeMutablePointer<SyncResult>) async throws(E) -> Result<R, F>? where E:Swift.Error {
-		return try await sPtr.pointee.withWaiterPrimitiveAccess { wptr throws(E) -> Result<R, F>? in
+	fileprivate borrowing func _result_main<E>(throwing _:E.Type, onCurrentTaskCancellation throwOnTaskCancellation:@autoclosure () -> E, memory:UnsafeMutablePointer<__cswiftslash_future_wait_t>, syncResult sPtr:UnsafeMutablePointer<SyncResult>) async throws(E) -> Result<Produced, Failure>? where E:Swift.Error {
+		return try await sPtr.pointee.withWaiterPrimitiveAccess { wptr throws(E) -> Result<Produced, Failure>? in
 			let waiterPtr = __cswiftslash_future_t_wait_sync_register(prim, sPtr, futureSyncResultHandler, futureSyncErrorHandler, futureSyncCancelHandler, memory)
 			if waiterPtr == nil {
 				switch sPtr.pointee.consumeResult() {
 					case .success(_, let ptr):
-						return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						return .success(Unmanaged<Contained<Produced>>.fromOpaque(ptr!).takeUnretainedValue().value())
 					case .failure(_, let ptr):
-						return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+						return .failure(Unmanaged<Contained<Failure>>.fromOpaque(ptr!).takeUnretainedValue().value())
 					case .cancel:
 						return nil
 					case .none:
@@ -185,9 +185,9 @@ extension Future {
 
 					switch sPtr.pointee.consumeResult() {
 						case .success(_, let ptr):
-							return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+							return .success(Unmanaged<Contained<Produced>>.fromOpaque(ptr!).takeUnretainedValue().value())
 						case .failure(_, let ptr):
-							return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+							return .failure(Unmanaged<Contained<Failure>>.fromOpaque(ptr!).takeUnretainedValue().value())
 						case .cancel:
 							return nil
 						case .none:
@@ -211,9 +211,9 @@ extension Future {
 
 					switch sPtr.pointee.consumeResult() {
 						case .success(_, let ptr):
-							return .success(Unmanaged<Contained<R>>.fromOpaque(ptr!).takeUnretainedValue().value())
+							return .success(Unmanaged<Contained<Produced>>.fromOpaque(ptr!).takeUnretainedValue().value())
 						case .failure(_, let ptr):
-							return .failure(Unmanaged<Contained<F>>.fromOpaque(ptr!).takeUnretainedValue().value())
+							return .failure(Unmanaged<Contained<Failure>>.fromOpaque(ptr!).takeUnretainedValue().value())
 						case .cancel:
 							if didCallCancellationHandler.load(ordering:.acquiring) {
 								throw throwOnTaskCancellation()
