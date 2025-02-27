@@ -1,21 +1,33 @@
-// this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone. the file consists of mostly private and fileprivate functions, with only a small handful of public/internal entrypoints being provided.
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
 
 import __cswiftslash_threads
 import SwiftSlashFuture
 import SwiftSlashContained
 
-/// runs any given arbitrary function on a pthread.
-public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(LaunchFailure) -> Result<R, Swift.Error>? where R:Sendable {
+// this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone. the file consists of mostly private and fileprivate functions, with only a small handful of public/internal entrypoints being provided.
+
+/// runs any given arbitrary function on a newly created pthread.
+public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Result<R, Swift.Error>? where R:Sendable {
 	let launchedThread = try await GenericPThread.launch(work)
 	return await launchedThread.workResult()
 }
 
-public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(LaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
+/// launch a pthread with a given function and return the running pthread.
+public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
 	return try await GenericPThread.launch(work)
 }
 
 extension PThreadWork {
-	public static func launch(_ arg:consuming Argument) async throws(LaunchFailure) -> Running<Self> {
+	public static func launch(_ arg:consuming Argument) async throws(PThreadLaunchFailure) -> Running<Self> {
 		return try await launchPThread(work:Self.self, argument:arg)
 	}
 	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, ThrowType>? {
@@ -178,7 +190,7 @@ public final class Running<W> where W:PThreadWork {
 /// - parameter argument: the argument that is being passed into the work function.
 /// - returns: the running pthread that is being launched.
 /// - throws: a LaunchFailure error if the pthread fails to launch.
-fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async throws(LaunchFailure) -> Running<W> where W:PThreadWork, W.Argument == A {
+fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async throws(PThreadLaunchFailure) -> Running<W> where W:PThreadWork, W.Argument == A {
 	// this is the future that represents a successful launch and configuration of a pthread. pthreads must be configured for proper handling of cancellation in order to not leak memory.
 	let configureFuture = Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
 		// free the retained future from memory.
@@ -209,7 +221,7 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) async thr
 		// balance the retained value that was passed into the pthread setup but not used due to the pthread launch failure.
 		_ = Unmanaged<Contained<A>>.fromOpaque(launchStructure.pointee.containedArg).takeRetainedValue()
 		// throw a launch failure error.
-		throw LaunchFailure()
+		throw PThreadLaunchFailure()
 	}
 
 	// wait for the pthread to be configured and ready to be canceled.

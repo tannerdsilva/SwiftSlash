@@ -14,7 +14,7 @@ import SwiftSlashContained
 import Synchronization
 
 /// thrown when a result is set on a future that is already set.
-public struct InvalidStateError:Swift.Error {}
+public struct InvalidFutureStateError:Swift.Error {}
 
 /// a reference type that represents a result that will be available in the future.
 public final class Future<Produced, Failure>:@unchecked Sendable where Failure:Swift.Error {
@@ -70,11 +70,11 @@ extension Future {
 	/// - parameters:
 	/// 	- result: the result to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setSuccess(_ result:consuming Produced) throws(InvalidStateError) {
+	public func setSuccess(_ result:consuming Produced) throws(InvalidFutureStateError) {
 		let op = Unmanaged.passRetained(Contained(result)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_val(prim, 1, op) else {
 			_ = Unmanaged<Contained<Produced>>.fromOpaque(op).takeRetainedValue()
-			throw InvalidStateError()
+			throw InvalidFutureStateError()
 		}
 	}
 
@@ -82,19 +82,19 @@ extension Future {
 	/// - parameters:
 	/// 	- error: the error to assign to the future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func setFailure(_ error:consuming Failure) throws(InvalidStateError) {
+	public func setFailure(_ error:consuming Failure) throws(InvalidFutureStateError) {
 		let op = Unmanaged.passRetained(Contained(error)).toOpaque()
 		guard __cswiftslash_future_t_broadcast_res_throw(prim, 1, op) else {
 			_ = Unmanaged<Contained<Failure>>.fromOpaque(op).takeRetainedValue()
-			throw InvalidStateError()
+			throw InvalidFutureStateError()
 		}
 	}
 
 	/// cancel an active future.
 	/// - throws: InvalidStateError if the future is already set with a result or error.
-	public func cancel() throws(InvalidStateError) {
+	public func cancel() throws(InvalidFutureStateError) {
 		guard __cswiftslash_future_t_broadcast_cancel(prim) else {
-			throw InvalidStateError()
+			throw InvalidFutureStateError()
 		}
 	}
 }
@@ -119,7 +119,7 @@ extension Future {
 	public func result(throwingOnCurrentTaskCancellation taskThrowType:Never.Type = Never.self) async -> Result<Produced, Failure>? {
 		var syncResult = SyncResult()
 		var memory = __cswiftslash_future_wait_t_init_struct()
-		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file) \(#line)"), memory:&memory, syncResult:&syncResult)
+		return await _result_main(throwing:Never.self, onCurrentTaskCancellation:fatalError("SwiftSlashFuture :: caught trying to create an error to throw within Never type. this is an internal error. \(#file):\(#line)"), memory:&memory, syncResult:&syncResult)
 	}
 
 	/// assign a function to be called when the result of the future is known. this function may be fired immediately on the current thread or on a different thread at a later time. 

@@ -1,3 +1,14 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import __cswiftslash_future
 import Synchronization
 import SwiftSlashContained
@@ -6,7 +17,6 @@ import SwiftSlashContained
 /// - NOTE: this type is designed with the HARD REQUIREMENT that with each initialization, a corresponding result must be set into each instance before complete dereferencing.
 internal final class AsyncResult:@unchecked Sendable {
 	internal typealias UniHandler = @Sendable (SuccessFailureCancel) -> Void
-
 	private struct Memory:~Copyable {
 		// used as a guard to ensure that the result is only set once.
 		internal let hasResult:Atomic<Bool> = .init(false)
