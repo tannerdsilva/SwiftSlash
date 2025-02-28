@@ -1,9 +1,21 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
+import __cswiftslash_posix_helpers
 import SwiftSlashNAsyncStream
 
 /// the part of the line parser that handles the byte buffer logistics. helps reduce data copying and excessive memory allocation.
 fileprivate struct BufferLogistics:~Copyable {
 	/// the size of buffer to allocate on initialization.
-	private static let defaultBufferSize:size_t = 256
+	private static let defaultBufferSize:size_t = 1024
 	/// the intake buffer for the data.
 	private var intakebuff:UnsafeMutableBufferPointer<UInt8> = UnsafeMutableBufferPointer<UInt8>.allocate(capacity:defaultBufferSize)
 	/// the space in the buffer that is occupied.
@@ -25,7 +37,7 @@ fileprivate struct BufferLogistics:~Copyable {
 		#if DEBUG
 		if stride != nil {
 			guard stride! <= occupied else {
-				fatalError("this should never happen")
+				fatalError("this should never happen '\(#file):\(#line)' :: \(stride!) <= \(occupied)")
 			}
 		}
 		#endif
@@ -47,7 +59,7 @@ fileprivate struct BufferLogistics:~Copyable {
 		#if DEBUG
 		// this should never happen but throwing this in here for good measure
 		guard occupied + newByteAddition <= intakebuff.count else {
-			fatalError("intake buffer overflow. \(occupied) + \(newByteAddition) > \(intakebuff.count)")
+			fatalError("intake buffer overflow. '\(#file):\(#line)' :: \(occupied) + \(newByteAddition) > \(intakebuff.count)")
 		}
 		#endif
 
@@ -59,7 +71,7 @@ fileprivate struct BufferLogistics:~Copyable {
 		#if DEBUG
 		// this should never happen but its here to check things when in debug mode for good measure.
 		guard accomodate > 0 else {
-			fatalError("cannot resize intake buffer to accomodate zero bytes.")
+			fatalError("cannot resize intake buffer to accomodate zero bytes. '\(#file):\(#line)'")
 		}
 		#endif
 
@@ -109,7 +121,7 @@ public struct LineParser:~Copyable {
 			
 			#if DEBUG
 			guard match.count > 0 else {
-				fatalError("this should never happen")
+				fatalError("this should never happen. '\(#file):\(#line)'")
 			}
 			#endif
 			
