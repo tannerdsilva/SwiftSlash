@@ -6,7 +6,7 @@ public struct Path {
 
 	/// initialize a path with a string.
 	public init<S>(_ p:consuming S) where S:StringProtocol, S.SubSequence == Substring {
-		self.components = p.split(separator: "/", omittingEmptySubsequences:true).map(String.init)
+		components = p.split(separator: "/", omittingEmptySubsequences:true).map(String.init)
 	}
 	
 	/// appends a component to the path.

@@ -1,4 +1,14 @@
-import __cswiftslash
+/* LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
+import __cswiftslash_posix_helpers
 
 /// represents the low level system construct that enables inter-process communication.
 public struct PosixPipe:Hashable, Equatable {
@@ -31,16 +41,16 @@ public struct PosixPipe:Hashable, Equatable {
 				case 0:
 					return (fdsPtr.pointee.0, fdsPtr.pointee.1)
 				default:
-					throw SystemErrno(_cswiftslash_get_errno())
+					throw SystemErrno(__cswiftslash_get_errno())
 			}
 		}
 		if (nonblockingReads == true) {
-			guard _cswiftslash_fcntl_setfl(reading, O_NONBLOCK) == 0 else {
+			guard __cswiftslash_fcntl_setfl(reading, O_NONBLOCK) == 0 else {
 				throw FileHandleError.fcntlError
 			}
 		}
 		if (nonblockingWrites == true) {
-			guard _cswiftslash_fcntl_setfl(writing, O_NONBLOCK) == 0 else {
+			guard __cswiftslash_fcntl_setfl(writing, O_NONBLOCK) == 0 else {
 				throw FileHandleError.fcntlError
 			}
 		}
@@ -54,10 +64,10 @@ public struct PosixPipe:Hashable, Equatable {
 	
 	/// creates a "pseudo pipe" that reads and writes directly to /dev/null.
 	public static func createNull() throws -> PosixPipe {
-		let read = _cswiftslash_open_nomode("/dev/null", O_RDONLY)
-		let write = _cswiftslash_open_nomode("/dev/null", O_WRONLY)
-		_ = _cswiftslash_fcntl_setfl(read, O_NONBLOCK)
-		_ = _cswiftslash_fcntl_setfl(write, O_NONBLOCK)
+		let read = __cswiftslash_open_nomode("/dev/null", O_RDONLY)
+		let write = __cswiftslash_open_nomode("/dev/null", O_WRONLY)
+		_ = __cswiftslash_fcntl_setfl(read, O_NONBLOCK)
+		_ = __cswiftslash_fcntl_setfl(write, O_NONBLOCK)
 		guard read != -1 && write != -1 else {
 			throw FileHandleError.pipeOpenError
 		}

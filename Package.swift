@@ -99,6 +99,12 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashNAsyncStream"	
 		]
 	),
+	.target(
+		name:"SwiftSlashFHHelpers",
+		dependencies:[
+			"__cswiftslash_posix_helpers"
+		]
+	)
 ]
 
 fileprivate let testTarget:Target = .testTarget(
@@ -116,6 +122,7 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
 		"SwiftSlashNAsyncStream",
+		"SwiftSlashLineParser"
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
