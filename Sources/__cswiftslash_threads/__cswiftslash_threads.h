@@ -15,7 +15,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 #include "__cswiftslash_types.h"
 #include <pthread.h>
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
 typedef pthread_t _Nonnull __cswiftslash_threads_t_type;
 #else
 typedef pthread_t __cswiftslash_threads_t_type;
