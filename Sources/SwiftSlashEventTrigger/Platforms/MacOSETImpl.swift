@@ -1,28 +1,29 @@
 #if os(macOS)
-import __cswiftslash
+import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashPThread
 
 internal final class MacOSImpl:EventTriggerEngine {
-	
-	internal typealias Argument = Setup
+    typealias RuntimeErrors = Never
+
+	internal typealias Argument = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = kevent
 
 	/// the event trigger primitive
-	internal let prim:EventTriggerHandle
+	internal let prim:EventTriggerHandlePrimitive
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:FIFO<size_t, Swift.Error>] = [:]
+	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:FIFO<Void, Swift.Error>] = [:]
+	private var writersDataTrigger:[Int32:FIFO<Void, Never>] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<Register, Never>
 	private func extractPendingRegistrations() {
-		let getIterator = registrations.makeSyncConsumer(shouldBlock:false)
+		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let reg):
@@ -57,7 +58,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 		eventBuffer.deallocate()	// no need to deinitialize since the Pointee type is a c struct.
 	}
 
-	internal static func register(_ ev:EventTriggerHandle, reader:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -70,7 +71,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	internal static func register(_ ev:EventTriggerHandle, writer:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -83,7 +84,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	internal static func deregister(_ ev:EventTriggerHandle, reader:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
@@ -96,7 +97,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 		}
 	}
 
-	internal static func deregister(_ ev:EventTriggerHandle, writer:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
@@ -177,7 +178,7 @@ internal final class MacOSImpl:EventTriggerEngine {
 		} while true
 	}
 
-	internal static func newPrimitive() -> EventTriggerHandle {
+	internal static func newHandlePrimitive() -> EventTriggerHandle {
 		return kqueue()
 	}
 

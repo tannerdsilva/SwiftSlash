@@ -1,4 +1,4 @@
-import __cswiftslash
+import __cswiftslash_posix_helpers
 
 #if os(Linux)
 import Glibc

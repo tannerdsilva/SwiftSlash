@@ -112,13 +112,47 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 }
 
 extension FIFO {
+	public func makeSyncConsumerNonBlocking() -> SyncConsumerNonBlocking {
+		return SyncConsumerNonBlocking(self)
+	}
+
+	public struct SyncConsumerNonBlocking:~Copyable {
+		private let fifo:FIFO<Element, Failure>
+		internal init(_ fifoIn:consuming FIFO) {
+			fifo = fifoIn
+		}
+
+		public borrowing func next() throws(Failure) -> Element? {
+			return try _next()?.get()
+		}
+	}
+}
+
+extension FIFO {
+	public func makeSyncConsumerBlocking() -> SyncConsumerBlocking {
+		return SyncConsumerBlocking(self)
+	}
+
+	public struct SyncConsumerBlocking:~Copyable {
+		private let fifo:FIFO<Element, Failure>
+		internal init(_ fifoIn:consuming FIFO) {
+			fifo = fifoIn
+		}
+
+		public borrowing func next() throws(Failure) -> Element? {
+			return try _next().get()
+		}
+	}
+}
+
+extension FIFO {
 	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
-	public func makeAsyncConsumer() -> Consumer {
-		return Consumer(self)
+	public func makeAsyncConsumer() -> AsyncConsumer {
+		return AsyncConsumer(self)
 	}
 
 	/// the primary structure for consuming elements from the FIFO.
-	public struct Consumer:~Copyable {
+	public struct AsyncConsumer:~Copyable {
 		/// specifies the action to take when a task is cancelled while consuming the FIFO.
 		public enum WhenConsumingTaskCancelled {
 			/// when the current task is cancelled, the FIFO will not be affected. no actions will be taken.
@@ -151,27 +185,47 @@ extension FIFO {
 	}
 }
 
-extension FIFO.Consumer {
+extension FIFO.SyncConsumerNonBlocking {
+	fileprivate borrowing func _next() -> Result<Element?, Failure>? {
+		var pointer:__cswiftslash_ptr_t? = nil
+		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
+	}
+}
+
+extension FIFO.SyncConsumerBlocking {
+	fileprivate borrowing func _next() -> Result<Element?, Failure> {
+		var pointer:__cswiftslash_ptr_t? = nil
+		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!
+	}
+}
+
+extension FIFO.AsyncConsumer {
 	fileprivate borrowing func _next() async -> Result<Element?, Failure> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
-			switch __cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer) {
-				case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
-					continuation.resume(returning:.success(Unmanaged<Contained<Element>>.fromOpaque(pointer!).takeRetainedValue().value()))
-				case  __CSWIFTSLASH_FIFO_CONSUME_CAP:
-					switch Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(pointer!).takeUnretainedValue().value() {
-						case .success:
-							continuation.resume(returning:.success(nil))
-						case .failure(let err):
-							continuation.resume(returning:.failure(err))
-					}
-				case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
-					fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-				case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
-					fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-				default:
-					fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-			}
+			continuation.resume(returning:FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!)
 		})
+	}
+}
+
+extension FIFO {
+	fileprivate static func _handleFIFOConsume(_ ret:__cswiftslash_fifo_consume_result_t, _ pointer:__cswiftslash_ptr_t?) -> Result<Element?, Failure>? {
+		switch ret {
+			case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
+				return .success(Unmanaged<Contained<Element>>.fromOpaque(pointer!).takeRetainedValue().value())
+			case  __CSWIFTSLASH_FIFO_CONSUME_CAP:
+				switch Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(pointer!).takeUnretainedValue().value() {
+					case .success:
+						return .success(nil)
+					case .failure(let err):
+						return .failure(err)
+				}
+			case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
+				fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
+			case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
+				fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
+			default:
+				fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
+		}
 	}
 }

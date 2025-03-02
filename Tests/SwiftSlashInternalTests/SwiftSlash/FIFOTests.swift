@@ -42,7 +42,7 @@ extension SwiftSlashTests {
 				fifo = nil
 			}
 		}
-		@Test("SwiftSlashFIFO :: memory management in partial consumption scenario", .timeLimit(.minutes(1)))
+		@Test("SwiftSlashFIFO :: memory management in partial consumption scenario (async)", .timeLimit(.minutes(1)))
 		func testPartialConsumption() async {
 			// test a partial consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
 			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
@@ -75,7 +75,7 @@ extension SwiftSlashTests {
 			}
 		}
 
-		@Test("SwiftSlashFIFO :: testing large number of elements", .timeLimit(.minutes(1)))
+		@Test("SwiftSlashFIFO :: testing large number of elements (async)", .timeLimit(.minutes(1)))
 		func testFullConsumption() async {
 			let elementCount = 10000
 			// test a full consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
@@ -102,7 +102,7 @@ extension SwiftSlashTests {
 			}
 		}
 
-		@Test("SwiftSlashFIFO :: intentional overflow of maximum element count", .timeLimit(.minutes(1)))
+		@Test("SwiftSlashFIFO :: intentional overflow of maximum element count (async)", .timeLimit(.minutes(1)))
 		func testMaxElementOverflow() async {
 			let writeCount = 10000
 			let maxCount = 10

@@ -104,7 +104,27 @@ fileprivate let swiftTargets:[Target] = [
 		dependencies:[
 			"__cswiftslash_posix_helpers"
 		]
-	)
+	),
+	.target(
+		name:"SwiftSlashEventTrigger",
+		dependencies:[
+			"__cswiftslash_eventtrigger",
+			"SwiftSlashPThread",
+			"SwiftSlashFIFO"
+		]
+	),
+	/*.target(
+		name:"SwiftSlash",
+		dependencies:[
+			"SwiftSlashPThread",
+			"SwiftSlashFuture",
+			"SwiftSlashFIFO",
+			"SwiftSlashIdentifiedList",
+			"SwiftSlashNAsyncStream",
+			"SwiftSlashFHHelpers",
+			"SwiftSlashLineParser",
+		]
+	),*/
 ]
 
 fileprivate let testTarget:Target = .testTarget(

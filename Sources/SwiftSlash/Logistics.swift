@@ -1,4 +1,4 @@
-import __cswiftslash
+import __cswiftslash_posix_helpers
 import SwiftSlashNAsyncStream
 import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger

@@ -57,7 +57,7 @@ extension NAsyncStream {
 	/// aside from being an internal mechanism for identifying each consumer (thereby allowing NAsyncStream a vehicle to facilitate guaranteed delivery of each yield to each individual consumer), there is no practical frontend use for the AsyncIterator.
 	public struct Consumer:~Copyable {
 		private let key:UInt64
-		private let fifoC:FIFO<Element, Failure>.Consumer
+		private let fifoC:FIFO<Element, Failure>.AsyncConsumer
 		private let il:IdentifiedList<FIFO<Element, Failure>>
 		internal init(il ilArg:IdentifiedList<FIFO<Element, Failure>>, fifo:FIFO<Element, Failure>) {
 			key = ilArg.insert(fifo)
@@ -66,7 +66,7 @@ extension NAsyncStream {
 		}
 		/// get the next element from the stream. this is a blocking call. if there is no data available, the call will block until data is available.
 		/// - returns: the next element in the stream.
-		public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO<Element, Failure>.Consumer.WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
+		public borrowing func next(whenTaskCancelled cancelAction:consuming FIFO<Element, Failure>.AsyncConsumer.WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
 			return try await fifoC.next(whenTaskCancelled:cancelAction)
 		}
 		deinit {

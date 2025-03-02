@@ -21,6 +21,12 @@ copyright (c) tanner silva 2025. all rights reserved.
 /// @param sizeptr the resulting value of the fionread request.
 /// @return 0 if the fionread request returns a value as expected. a non-zero value will be returned if an unexpected error is encountered.
 int __cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr);
-#endif
+#endif // __linux__
+
+#ifdef __APPLE__
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
+#endif // __APPLE__
 
 #endif // __CSWIFTSLASH_EVENTTRIGGER_H
