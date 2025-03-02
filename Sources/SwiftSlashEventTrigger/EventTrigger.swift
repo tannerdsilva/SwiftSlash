@@ -1,13 +1,17 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
+import __cswiftslash_eventtrigger
 import SwiftSlashPThread
 import SwiftSlashFIFO
-
-#if os(Linux)
-import Glibc
-internal let currentPlatformET = LinuxET.self
-#elseif os(macOS)
-import Darwin
-internal let currentPlatformET = MacOSImpl.self
-#endif
 
 /// used to monitor file handles for activity.
 public struct EventTrigger:~Copyable {
@@ -15,7 +19,7 @@ public struct EventTrigger:~Copyable {
 	#if os(Linux)
 	internal typealias PlatformSpecificETImplementation = LinuxET
 	#elseif os(macOS)
-	internal typealias PlatformSpecificETImplementation = MacOSImpl
+	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
 	#endif
 
 	/// the type of registration that is being made to the event trigger.
@@ -35,30 +39,30 @@ public struct EventTrigger:~Copyable {
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	public init() async throws {
-		(self.prim, self.launchedThread, self.regStream) = try await currentPlatformET.bootstrapEventTriggerService()
+		(self.prim, self.launchedThread, self.regStream) = try await PlatformSpecificETImplementation.bootstrapEventTriggerService()
 	}
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	public borrowing func register(reader:Int32, _ fifo:ReaderFIFO) throws {
 		regStream.yield(.reader(reader, fifo))
-		try currentPlatformET.register(prim!, reader:reader)
+		try PlatformSpecificETImplementation.register(prim!, reader:reader)
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
 	public borrowing func register(writer:Int32, _ fifo:WriterFIFO) throws {
 		regStream.yield(.writer(writer, fifo))
-		try currentPlatformET.register(prim!, writer:writer)
+		try PlatformSpecificETImplementation.register(prim!, writer:writer)
 	}
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
 	public borrowing func deregister(reader:Int32) throws {
-		try currentPlatformET.deregister(prim!, reader:reader)
+		try PlatformSpecificETImplementation.deregister(prim!, reader:reader)
 		regStream.yield(.reader(reader, nil))
 	}
 
 	/// deregisters a file handle. the handle must be of writer variant. if the handle is not of writer variant, behavior is undefined.
 	public borrowing func deregister(writer:Int32) throws {
-		try currentPlatformET.deregister(prim!, writer:writer)
+		try PlatformSpecificETImplementation.deregister(prim!, writer:writer)
 		regStream.yield(.writer(writer, nil))
 	}
 }
