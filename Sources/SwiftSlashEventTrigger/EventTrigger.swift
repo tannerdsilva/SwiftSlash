@@ -29,7 +29,7 @@ public struct EventTrigger:~Copyable {
 	public typealias WriterFIFO = FIFO<Void, Never>
 
 	/// the primitive that is used to handle the event trigger.
-	private let prim:PlatformSpecificETImplementation.EventTriggerHandlePrimitive?
+	private let prim:Int32?
 
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
@@ -40,10 +40,11 @@ public struct EventTrigger:~Copyable {
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	public init() async throws {
 		regStream = FIFO<Register, Never>()
-		prim = PlatformSpecificETImplementation.newHandlePrimitive()
+		let p = PlatformSpecificETImplementation.newHandlePrimitive()
+		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
 		do {
-			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:prim, registersIn:regStream))
+			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream))
 		} catch let error {
 			PlatformSpecificETImplementation.closePrimitive(p)
 			throw error

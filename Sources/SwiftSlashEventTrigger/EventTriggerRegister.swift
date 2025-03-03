@@ -15,9 +15,8 @@ import SwiftSlashFIFO
 internal enum Register:Equatable, Hashable {
 
 	/// register a reader.
-	/// - parameters:
-	/// 	- Int32: the file handle to register.
-	/// 	- FIFO<Array<[UInt8]>: the fifo to write data to after it is captured from the file handle.
+	/// - parameter 1: the file handle to register.
+	/// - parameter 2: the fifo to signal when there is data to read from the file handle.
 	case reader(Int32, FIFO<size_t, Never>?)
 
 

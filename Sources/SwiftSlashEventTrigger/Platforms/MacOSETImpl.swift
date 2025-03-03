@@ -45,7 +45,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 							writersDataTrigger[i] = f
 					}
 				case .none:
-					break infiniteLoop
+					return
 			}
 		} while true
 	}
