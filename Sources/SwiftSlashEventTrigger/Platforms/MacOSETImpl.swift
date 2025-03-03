@@ -15,7 +15,7 @@ import SwiftSlashFIFO
 import SwiftSlashPThread
 
 internal final class MacOSEventTrigger:EventTriggerEngine {
-    typealias RuntimeErrors = Never
+	internal typealias RuntimeErrors = Never
 
 	internal typealias Argument = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
@@ -57,7 +57,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 
 	/// event buffer that allows us to process events. this buffer is passed directly to the system call and is the first place returned events are stored.
 	private var eventBufferSize:Int32 = 32
-	private var eventBuffer:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)	// no need to initialize this since the Pointee type is a c struct.
+	private var eventBuffer:UnsafeMutablePointer<EventType> = UnsafeMutablePointer<EventType>.allocate(capacity:32)
 	private func reallocate(size:Int32) {
 		eventBuffer.deallocate()
 		eventBufferSize = size
@@ -65,8 +65,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 	}
 
 	deinit {
-		close(prim)
-		eventBuffer.deallocate()	// no need to deinitialize since the Pointee type is a c struct.
+		eventBuffer.deallocate()
 	}
 
 	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws {

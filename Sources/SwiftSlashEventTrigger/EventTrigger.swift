@@ -29,7 +29,7 @@ public struct EventTrigger:~Copyable {
 	public typealias WriterFIFO = FIFO<Void, Never>
 
 	/// the primitive that is used to handle the event trigger.
-	private let prim:Int32?
+	private let prim:PlatformSpecificETImplementation.EventTriggerHandlePrimitive?
 
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
@@ -39,7 +39,16 @@ public struct EventTrigger:~Copyable {
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	public init() async throws {
-		(self.prim, self.launchedThread, self.regStream) = try await PlatformSpecificETImplementation.bootstrapEventTriggerService()
+		regStream = FIFO<Register, Never>()
+		prim = PlatformSpecificETImplementation.newHandlePrimitive()
+		let lt:Running<PlatformSpecificETImplementation>
+		do {
+			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:prim, registersIn:regStream))
+		} catch let error {
+			PlatformSpecificETImplementation.closePrimitive(p)
+			throw error
+		}
+		launchedThread = lt
 	}
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
@@ -95,22 +104,4 @@ public protocol EventTriggerEngine:PThreadWork where Argument == EventTriggerSet
 
 	/// closes the primitive for the event trigger.
 	static func closePrimitive(_ prim:consuming EventTriggerHandlePrimitive)
-}
-
-extension EventTriggerEngine {
-	/// launches a new event trigger service.
-	/// - async: waits for the event trigger service to be launched and running on a dedicated pthread before yielding back to the calling task.
-	/// - returns: the event trigger handle, the running pthread, and the FIFO that is used to register new file handles.
-	internal static func bootstrapEventTriggerService() async throws -> (Self.EventTriggerHandlePrimitive, Running<Self>, FIFO<Register, Never>) {
-		let newP = Self.newHandlePrimitive()
-		let regStream = FIFO<Register, Never>()
-		let launchedThread:Running<Self>
-		do {
-			launchedThread = try await Self.launch(EventTriggerSetup(handle:newP, registersIn:regStream))
-		} catch let error {
-			Self.closePrimitive(newP)
-			throw error
-		}
-		return (newP, launchedThread, regStream)
-	}
 }
