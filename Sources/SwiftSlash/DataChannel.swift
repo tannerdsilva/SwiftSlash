@@ -70,7 +70,7 @@ public struct DataChannel {
 			fifo.finish()
 		}
 
-		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void>?), Never>.AsyncConsumer {
+		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, Never>?), Never>.AsyncConsumer {
 			return fifo.makeAsyncConsumer()
 		}
 	}
