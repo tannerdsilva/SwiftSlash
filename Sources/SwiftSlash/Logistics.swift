@@ -70,7 +70,7 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:borrowing EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
 		return try withUnsafeMutablePointer(to:&package) { packagePtr in
 			// pipes that will be used to 
 			var writePipes = [Int32:PosixPipe]()
@@ -292,14 +292,25 @@ internal struct ProcessLogistics {
 		case fhCleanupCloseFailure = 0xDB
 		/// describes a failure to close the system's directory of file handles.
 		case fhCleanupDirCloseFailure = 0xDC
+		/// describes a failure to create the internal posix pipe that is used to facilitate the logistics between the parent and child process
+		case posixPipeCreateFailure = 0xEA
+		/// describes an internal failure of the spawn function
+		case internalFailure = 0xFA
+		/// describes a failure of the fork function
+		case forkFailure = 0xFB
 	}
 
 	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:consuming [String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(SpawnError) -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
-		let internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
+		let internalNotify:PosixPipe
+		do {
+			internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
+		} catch {
+			throw SpawnError.posixPipeCreateFailure
+		}
 
 		// fork the current process.
-		let forkResult = _cswiftslash_fork()
+		let forkResult = __cswiftslash_fork()
 
 
 		// BEGIN FORK PROCESS FUNC
@@ -313,26 +324,26 @@ internal struct ProcessLogistics {
 			// change the working directory.
 			guard chdir(wd) == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([SpawnError.chdirFailure.rawValue])
+				_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.chdirFailure.rawValue)
 				internalNotify.writing.closeFileHandle()
-				exit(SpawnError.chdirFailure.rawValue)
+				exit(Int32(SpawnError.chdirFailure.rawValue))
 			}
 
 			// clear the environment variables inherited from the parent process.
 			guard CurrentProcess.clearEnvironmentVariables() == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([SpawnError.envClearFailure.rawValue])
+				_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.envClearFailure.rawValue)
 				internalNotify.writing.closeFileHandle()
-				exit(SpawnError.envClearFailure.correspondingExitCode)
+				exit(Int32(SpawnError.envClearFailure.rawValue))
 			}
 
 			// assign the new environment variables.
 			envVarsLoop: for (key, value) in env {
 				guard setenv(key, value, 1) == 0 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([SpawnError.envSetFailure.rawValue])
+					_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.envSetFailure.rawValue)
 					internalNotify.writing.closeFileHandle()
-					exit(SpawnError.envSetFailure.rawValue)
+					exit(Int32(SpawnError.envSetFailure.rawValue))
 				}
 			}
 
@@ -340,9 +351,9 @@ internal struct ProcessLogistics {
 			readerPipesLoop: for reader in readPipes {
 				guard dup2(reader.value.reading, reader.key) != -1 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([SpawnError.dup2ReaderFailure.rawValue])
+					_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.dup2ReaderFailure.rawValue)
 					internalNotify.writing.closeFileHandle()
-					exit(SpawnError.dup2ReaderFailure.rawValue)
+					exit(Int32(SpawnError.dup2ReaderFailure.rawValue))
 				}
 				close(reader.value.reading)
 				close(reader.value.writing)
@@ -352,9 +363,9 @@ internal struct ProcessLogistics {
 			writerPipesLoop: for writer in writePipes {
 				guard dup2(writer.value.writing, writer.key) != -1 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH([SpawnError.dup2WriterFailure.rawValue])
+					_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.dup2WriterFailure.rawValue)
 					internalNotify.writing.closeFileHandle()
-					exit(SpawnError.dup2WriterFailure.rawValue)
+					exit(Int32(SpawnError.dup2WriterFailure.rawValue))
 				}
 				close(writer.value.reading)
 				close(writer.value.writing)
@@ -371,9 +382,9 @@ internal struct ProcessLogistics {
 			#endif
 			guard let openFileHandlesPointer = opendir(fdPath) else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupDirOpenFailure.rawValue])
+				_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.fhCleanupDirOpenFailure.rawValue)
 				internalNotify.writing.closeFileHandle()
-				exit(SpawnError.fhCleanupDirOpenFailure.rawValue)
+				exit(Int32(SpawnError.fhCleanupDirOpenFailure.rawValue))
 			}
 			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
 				withUnsafePointer(to:&curPointer.pointee.d_name) { newPointer in
@@ -383,9 +394,9 @@ internal struct ProcessLogistics {
 						if writePipes[curFh] == nil && readPipes[curFh] == nil {
 							guard close(curFh) == 0 else {
 								// pass the error condition to the parent process.
-								_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupCloseFailure.rawValue])
+								_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.fhCleanupCloseFailure.rawValue)
 								internalNotify.writing.closeFileHandle()
-								exit(SpawnError.fhCleanupCloseFailure.rawValue)
+								exit(Int32(SpawnError.fhCleanupCloseFailure.rawValue))
 							}
 						}
 					}
@@ -393,12 +404,12 @@ internal struct ProcessLogistics {
 			}
 			guard closedir(openFileHandlesPointer) == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH([SpawnError.fhCleanupDirCloseFailure.rawValue])
+				_ = try? internalNotify.writing.writeFH(singleByte:SpawnError.fhCleanupDirCloseFailure.rawValue)
 				internalNotify.writing.closeFileHandle()
-				exit(SpawnError.fhCleanupDirCloseFailure.rawValue)
+				exit(Int32(SpawnError.fhCleanupDirCloseFailure.rawValue))
 			}
 			internalNotify.writing.closeFileHandle()
-			_cswiftslash_execvp(path, arguments)
+			__cswiftslash_execvp(path, arguments)
 			exit(0)
 		}
 
@@ -408,7 +419,7 @@ internal struct ProcessLogistics {
 
 		switch forkResult {
 			case -1:
-				throw SystemErrno(_cswiftslash_get_errno())
+				throw SpawnError.forkFailure
 			case 0:
 				// in child: successful fork
 				prepareLaunch()
@@ -419,18 +430,20 @@ internal struct ProcessLogistics {
 				defer {
 					internalNotify.reading.closeFileHandle()
 				}
-
+				
 				// wait for the child process to signal that it is ready to be configured.
-				var byte:UInt8 = 255
-				switch try internalNotify.reading.readFH(into:&byte, size:1) {
-					case 0:
-						break;
-					case 1:
-						guard byte == 0xFF else {
-							throw InternalLaunchError()
-						}
-					default:
-						fatalError("swiftslash - internal error \(#file) \(#line)")
+				do {
+					var byte:UInt8 = 255
+					switch try internalNotify.reading.readFH(into:&byte, size:1) {
+						case 0:
+							break;
+						case 1:
+							throw SpawnError(rawValue:byte)!
+						default:
+							fatalError("swiftslash - internal error \(#file) \(#line)")
+					}
+				} catch {
+					throw SpawnError.internalFailure
 				}
 				
 				return forkResult

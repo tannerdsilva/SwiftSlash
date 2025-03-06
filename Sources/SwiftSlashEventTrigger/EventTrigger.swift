@@ -83,16 +83,16 @@ public protocol EventTriggerEngine:PThreadWork where Argument == EventTriggerSet
 	associatedtype RuntimeErrors:Swift.Error
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
-	static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws
+	static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws
+	static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
-	static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws
+	static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
 
 	/// deregisters a file handle. the handle must be of writer variant. if the handle is not of writer variant, behavior is undefined.
-	static func deregister(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws
+	static func deregister(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
 	
 	/// the type of primitive that this particular event trigger uses.
 	associatedtype EventTriggerHandlePrimitive

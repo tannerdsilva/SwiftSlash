@@ -1,4 +1,4 @@
-import __cswiftslash
+import __cswiftslash_posix_helpers
 
 /// check if a path is a file and is accessible for execution.
 fileprivate func executeCheck(_ p:consuming Path) -> Bool {

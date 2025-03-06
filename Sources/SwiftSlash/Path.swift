@@ -1,5 +1,5 @@
 /// represents a path on the hosts filesystem.
-public struct Path {
+public struct Path:Sendable {
 
 	/// the individual components of the path. these are assumed to be separated by their platform specific path separator.
 	private var components:[String]

@@ -10,7 +10,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 /// various errors that may be thrown by the EventTrigger subsystem
-internal enum EventTriggerErrors:Swift.Error {
+public enum EventTriggerErrors:Swift.Error {
 	
 	/// thrown when a given file handle (for reading) is not able to register with an event trigger. this is considered an internal error that should never be thrown under any circumstances 
 	case readerRegistrationFailure(Int32, Int32)

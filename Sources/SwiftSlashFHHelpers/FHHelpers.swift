@@ -55,6 +55,12 @@ extension Int32 {
 		return try writeFH(from:dataToWrite.baseAddress!, size: dataToWrite.count)
 	}
 
+	public func writeFH(singleByte:consuming UInt8) throws(FileHandleError) -> size_t {
+		return try withUnsafePointer(to:&singleByte) { (bytePtr:UnsafePointer<UInt8>) throws(FileHandleError) -> size_t in
+			return try writeFH(UnsafeBufferPointer<UInt8>(start:bytePtr, count:1))
+		}
+	}
+
 	fileprivate func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws(FileHandleError) -> size_t {
 		repeat {
 			// write the data to the file handle.

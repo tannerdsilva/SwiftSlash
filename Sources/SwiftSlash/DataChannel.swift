@@ -21,10 +21,10 @@ public struct DataChannel {
 		// the underlying nasyncstream that this struct wraps
 		internal let nasync:NAsyncStream<[UInt8], Never>
 
-		public struct AsyncIterator:AsyncIteratorProtocol {
-			private let nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer
+		public struct AsyncIterator:~Copyable {
+			private let nasync:NAsyncStream<[UInt8], Never>.Consumer
 
-			internal init(nasync:NAsyncStream<[UInt8], Never>.AsyncConsumer) {
+			internal init(nasync:consuming NAsyncStream<[UInt8], Never>.Consumer) {
 				self.nasync = nasync
 			}
 
@@ -33,7 +33,7 @@ public struct DataChannel {
 			}
 		}
 
-		public borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.AsyncConsumer {
+		public borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.Consumer {
 			return nasync.makeAsyncConsumer()
 		}
 
@@ -58,10 +58,10 @@ public struct DataChannel {
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		private let fifo:FIFO<([UInt8], Future<Void>?), Never>
+		private let fifo:FIFO<([UInt8], Future<Void, Never>?), Never>
 
 		// create a new outbound data channel
-		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void>?) {
+		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, Never>?) {
 			fifo.yield((element, future))
 		}
 

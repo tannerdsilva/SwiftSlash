@@ -68,7 +68,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		eventBuffer.deallocate()
 	}
 
-	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -81,7 +81,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		}
 	}
 
-	internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws {
+	internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -94,7 +94,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		}
 	}
 
-	internal static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)
@@ -107,7 +107,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		}
 	}
 
-	internal static func deregister(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws {
+	internal static func deregister(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR | EV_EOF)

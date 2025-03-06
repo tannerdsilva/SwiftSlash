@@ -113,7 +113,7 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashFIFO"
 		]
 	),
-	/*.target(
+	.target(
 		name:"SwiftSlash",
 		dependencies:[
 			"SwiftSlashPThread",
@@ -123,8 +123,9 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
 			"SwiftSlashLineParser",
+			"SwiftSlashEventTrigger"
 		]
-	),*/
+	),
 ]
 
 fileprivate let testTarget:Target = .testTarget(

@@ -1,4 +1,4 @@
-import __cswiftslash
+import __cswiftslash_posix_helpers
 import SwiftSlashFuture
 
 /// helps to manage the state of a write operation. a write buffer may take an unknown amount of data when written to, while the amount of data we are holding are received as they are. this struct helps the two substates to work together.
@@ -21,10 +21,10 @@ internal struct WriteStepper:~Copyable {
 	private var offset:size_t = 0
 
 	/// an optional future that will be set as finished when the write operation is complete.
-	internal let completeFuture:Future<Void>?
+	internal let completeFuture:Future<Void, Never>?
 
 	/// creates a new instance of WriteStepper.
-	internal init(_ dataIn:consuming [UInt8], writeFuture:consuming Future<Void>?) {
+	internal init(_ dataIn:consuming [UInt8], writeFuture:consuming Future<Void, Never>?) {
 		data = dataIn
 		completeFuture = writeFuture
 	}
