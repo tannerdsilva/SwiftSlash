@@ -70,7 +70,7 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:borrowing EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
 		return try withUnsafeMutablePointer(to:&package) { packagePtr in
 			// pipes that will be used to 
 			var writePipes = [Int32:PosixPipe]()
@@ -117,7 +117,7 @@ internal struct ProcessLogistics {
 									userDataStream.finish()
 								}
 								// main system event loop for the file handle.
-								systemEventLoop: while try await writeConsumer.next(whenTaskCancelled:.finish) != nil {
+								systemEventLoop: while await writeConsumer.next(whenTaskCancelled:.finish) != nil {
 									do {
 										// system is indicating that the file handle is ready to be written to.
 
@@ -128,7 +128,7 @@ internal struct ProcessLogistics {
 											if currentStep.pointee == nil {
 
 												// does not have any data to write. wait for the user to provide some data to write.
-												if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
+												if let (newUserDataToWrite, writeCompleteFuture) = try await userDataConsume.next(whenTaskCancelled:.finish) {
 													// apply this as the data we will step through in one or more writes.
 													currentStep.pointee = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
 												} else {
@@ -153,7 +153,7 @@ internal struct ProcessLogistics {
 							}
 
 							// the user data stream may be holding futures that need to be closed. these are the futures that a dev can use to wait for a chunk of data to be written before  this function will handle remaining futures from the user data stream.
-							func flushRemainingFuturesFromUserStream(failure error:Swift.Error) async {
+							func flushRemainingFuturesFromUserStream(failure error:WrittenDataChannelClosureError) async {
 								// implied task already cancelled.
 								while let (_, future) = await userDataConsume.next(whenTaskCancelled:.noAction) {
 									// if this chunk of data had a future associated with it, the future will be handled
@@ -170,15 +170,15 @@ internal struct ProcessLogistics {
 
 								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
 								if currentStep != nil {
-									try? currentStep!.completeFuture?.setFailure(DataChannelClosedError())
+									try? currentStep!.completeFuture?.setFailure(WrittenDataChannelClosureError.dataChannelClosed)
 								}
 							} catch let error {
 								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
 								if currentStep != nil {
-									try? currentStep!.completeFuture?.setFailure(error)
+									try? currentStep!.completeFuture?.setFailure(WrittenDataChannelClosureError.systemWriteErrorThrown(error))
 								}
 							}
-							await flushRemainingFuturesFromUserStream(failure:DataChannelClosedError())
+							await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
 						}
 					case .nullPipe:
 						let newPipe = try PosixPipe.createNull()

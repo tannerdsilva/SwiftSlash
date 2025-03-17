@@ -58,10 +58,10 @@ public struct DataChannel {
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		private let fifo:FIFO<([UInt8], Future<Void, Never>?), Never>
+		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>
 
 		// create a new outbound data channel
-		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, Never>?) {
+		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {
 			fifo.yield((element, future))
 		}
 
@@ -70,7 +70,7 @@ public struct DataChannel {
 			fifo.finish()
 		}
 
-		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, Never>?), Never>.AsyncConsumer {
+		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumer {
 			return fifo.makeAsyncConsumer()
 		}
 	}

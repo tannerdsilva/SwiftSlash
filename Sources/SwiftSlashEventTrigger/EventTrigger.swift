@@ -14,7 +14,7 @@ import SwiftSlashPThread
 import SwiftSlashFIFO
 
 /// used to monitor file handles for activity.
-public struct EventTrigger:~Copyable {
+public final class EventTrigger:Sendable {
 
 	#if os(Linux)
 	internal typealias PlatformSpecificETImplementation = LinuxET
