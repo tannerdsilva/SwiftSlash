@@ -128,7 +128,7 @@ internal struct ProcessLogistics {
 											if currentStep.pointee == nil {
 
 												// does not have any data to write. wait for the user to provide some data to write.
-												if let (newUserDataToWrite, writeCompleteFuture) = try await userDataConsume.next(whenTaskCancelled:.finish) {
+												if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
 													// apply this as the data we will step through in one or more writes.
 													currentStep.pointee = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
 												} else {
@@ -300,7 +300,7 @@ internal struct ProcessLogistics {
 		case forkFailure = 0xFB
 	}
 
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:consuming [String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(SpawnError) -> pid_t {
+	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(SpawnError) -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify:PosixPipe
 		do {

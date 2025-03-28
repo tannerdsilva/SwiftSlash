@@ -6,7 +6,7 @@ import SwiftSlashFuture
 public struct DataChannel {
 
 	// used for reading data that a running process writes.
-	public struct ChildWriteParentRead {
+	public struct ChildWriteParentRead:Sendable {
 
 		/// specifies a configuration for an inbound data channel.
 		public enum Configuration {
@@ -47,7 +47,7 @@ public struct DataChannel {
 	}
 
 	// used for writing data that a running process reads.
-	public struct ChildReadParentWrite {
+	public struct ChildReadParentWrite:Sendable {
 
 		/// specifies a configuration for an outbound data channel.
 		public enum Configuration {
