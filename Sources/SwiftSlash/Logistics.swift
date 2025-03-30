@@ -110,48 +110,6 @@ internal struct ProcessLogistics {
 
 							let userDataConsume = userDataStream.makeAsyncConsumer()
 
-							// represents the main work that coordinates the written channel with the system file handle
-							func writeStep(_ currentStep:UnsafeMutablePointer<WriteStepper?>) async throws {
-								defer {
-									// the user data stream should not store any more values after the main work returns.
-									userDataStream.finish()
-								}
-								// main system event loop for the file handle.
-								systemEventLoop: while await writeConsumer.next(whenTaskCancelled:.finish) != nil {
-									do {
-										// system is indicating that the file handle is ready to be written to.
-
-										// this inner loop will repeat until a write handle would block.
-										writeAvailLoop: repeat {
-
-											// only take new data from the stream if the current write buffer is empty.
-											if currentStep.pointee == nil {
-
-												// does not have any data to write. wait for the user to provide some data to write.
-												if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
-													// apply this as the data we will step through in one or more writes.
-													currentStep.pointee = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
-												} else {
-													// user is ready for this stream to be closed.
-													break systemEventLoop
-												}
-											}
-
-											// write the data to the file handle.
-											switch try currentStep.pointee!.write(to:wFH) {
-												case .retireMe:
-													currentStep.pointee = nil
-													fallthrough
-												case .holdMe:
-													continue writeAvailLoop
-											}
-										} while true
-									} catch FileHandleError.error_wouldblock {
-										continue systemEventLoop
-									}
-								}
-							}
-
 							// the user data stream may be holding futures that need to be closed. these are the futures that a dev can use to wait for a chunk of data to be written before  this function will handle remaining futures from the user data stream.
 							func flushRemainingFuturesFromUserStream(failure error:WrittenDataChannelClosureError) async {
 								// implied task already cancelled.
@@ -163,19 +121,32 @@ internal struct ProcessLogistics {
 								}
 							}
 
-							var currentStep:WriteStepper? = nil
-							do {
-								// do the main work.
-								try await writeStep(&currentStep)
+							// main system event loop for the file handle.
+							var currentWriteStep:WriteStepper? = nil
+							systemEventLoop: while await writeConsumer.next(whenTaskCancelled:.finish) != nil {
+								do {
+									writeAvailableLoop: repeat {
+										if currentWriteStep == nil {
+											if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
+												// apply this as the data we will step through in one or more writes.
+												currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+											} else {
+												// user is ready for this stream to be closed.
+												break systemEventLoop
+											}
+										}
 
-								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
-								if currentStep != nil {
-									try? currentStep!.completeFuture?.setFailure(WrittenDataChannelClosureError.dataChannelClosed)
-								}
-							} catch let error {
-								// if there is any outbound data remaining in the stepper, we must notify that the data was not written.
-								if currentStep != nil {
-									try? currentStep!.completeFuture?.setFailure(WrittenDataChannelClosureError.systemWriteErrorThrown(error))
+										switch try currentWriteStep!.write(to:wFH) {
+											case .retireMe:
+												currentWriteStep = nil
+												fallthrough
+											case .holdMe:
+												continue writeAvailableLoop
+										}
+									} while true
+								} catch FileHandleError.error_wouldblock {
+									// this is a non-blocking read, so we can ignore this error.
+									continue systemEventLoop
 								}
 							}
 							await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
@@ -219,7 +190,7 @@ internal struct ProcessLogistics {
 								rFH.closeFileHandle()
 							}
 							// wait for the system to indicate that the file handle is ready for reading.
-							readLoop: while let readableSize = try await systemReadEvents.next(whenTaskCancelled:.finish) {
+							readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
 								do {
 									// prepare the lineparser to intake the data.
 									try lineParser.intake(bytes:readableSize) { wptr in
