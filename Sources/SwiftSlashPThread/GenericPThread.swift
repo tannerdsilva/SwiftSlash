@@ -12,10 +12,10 @@ copyright (c) tanner silva 2025. all rights reserved.
 /// represents a pthread worker that takes a function as an argument, runs passed work function, and returns the result. if an error is thrown within the work function, it is returned as a failure.
 public struct GenericPThread<R:Sendable>:PThreadWork {
 	/// function to run.
-	private let funcToRun:Argument
+	private let funcToRun:ArgumentType
 
 	/// the argument type for the function to run.
-	public typealias Argument = @Sendable () throws -> R
+	public typealias ArgumentType = @Sendable () throws -> R
 	
 	/// the return type for the function to run.
 	public typealias ReturnType = R
@@ -23,7 +23,7 @@ public struct GenericPThread<R:Sendable>:PThreadWork {
 	/// creates a new instance of GenericPThread.
 	/// - parameters:
 	/// 	- argument: the function to run.
-	public init(_ argument:@escaping Argument) {
+	public init(_ argument:@escaping ArgumentType) {
 		self.funcToRun = argument
 	}
 

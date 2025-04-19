@@ -44,7 +44,7 @@ public final class EventTrigger:Sendable {
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
 		do {
-			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream))
+			lt = try PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream))
 		} catch let error {
 			PlatformSpecificETImplementation.closePrimitive(p)
 			throw error
@@ -78,7 +78,7 @@ public final class EventTrigger:Sendable {
 }
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
-public protocol EventTriggerEngine:PThreadWork where Argument == EventTriggerSetup<EventTriggerHandlePrimitive>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
+public protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
 	/// the type of runtime error that might be thrown while the eventtrigger process is running. 
 	associatedtype RuntimeErrors:Swift.Error
 

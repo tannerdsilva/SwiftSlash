@@ -28,10 +28,10 @@ public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) throw
 }
 
 extension PThreadWork {
-	public static func launch(_ arg:consuming Argument) throws(PThreadLaunchFailure) -> Running<Self> {
+	public static func launch(_ arg:consuming ArgumentType) throws(PThreadLaunchFailure) -> Running<Self> {
 		return try launchPThread(work:Self.self, argument:arg)
 	}
-	public static func run(_ arg:consuming Argument) async throws -> Result<ReturnType, ThrowType>? {
+	public static func run(_ arg:consuming ArgumentType) async throws -> Result<ReturnType, ThrowType>? {
 		let launched = try Self.launch(arg)
 		return try await launched.workResult(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError:CancellationError())
 	}
@@ -40,7 +40,7 @@ extension PThreadWork {
 extension PThreadWork {
 	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
 	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
-		self = Self(Unmanaged<Contained<Argument>>.fromOpaque(ptr).takeRetainedValue().value())
+		self = Self(Unmanaged<Contained<ArgumentType>>.fromOpaque(ptr).takeRetainedValue().value())
 	}
 	// this is a bridge function that allows the primary work implementation to run and return into the future as it needs to when it is called from the pthread.
 	fileprivate mutating func firePThreadWork(into future:consuming Future<UnsafeMutableRawPointer, Never>) {
@@ -201,7 +201,7 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 /// - parameter argument: the argument that is being passed into the work function.
 /// - returns: the running pthread that is being launched.
 /// - throws: a LaunchFailure error if the pthread fails to launch.
-fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) throws(PThreadLaunchFailure) -> Running<W> where W:PThreadWork, W.Argument == A {
+fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) throws(PThreadLaunchFailure) -> Running<W> where W:PThreadWork, W.ArgumentType == A {
 	// this is the future that represents a successful launch and configuration of a pthread. pthreads must be configured for proper handling of cancellation in order to not leak memory.
 	let configureFuture = Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
 		// free the retained future from memory.
