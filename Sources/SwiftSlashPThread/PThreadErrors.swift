@@ -14,6 +14,9 @@ public struct PThreadLaunchFailure:Swift.Error {}
 
 /// thrown when a pthread is unable to be canceled.
 public enum PThreadCancellationFailure:Swift.Error {
+	case externalSupportFailure(Swift.Error)
 	case alreadyCancelled
 	case systemError
 }
+
+public struct PThreadJoinFailure:Swift.Error {}

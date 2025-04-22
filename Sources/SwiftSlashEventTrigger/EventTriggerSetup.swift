@@ -10,6 +10,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 import SwiftSlashFIFO
+import SwiftSlashFHHelpers
 
 /// utility structure used to set up the event trigger.
 public struct EventTriggerSetup<HP>:Sendable where HP:Sendable {
@@ -17,4 +18,6 @@ public struct EventTriggerSetup<HP>:Sendable where HP:Sendable {
 	internal let handle:HP
 	// the FIFO that is used to pass registrations to the event trigger to the pthread that is handling the event trigger.
 	internal let registersIn:FIFO<Register, Never>
+	// the cancellation pipe that is registered with the event trigger to assist in shutting down the event trigger when it needs to be cancelled.
+	internal let cancelPipe:PosixPipe
 }

@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import __cswiftslash_posix_helpers
 
 /// represents the low level system construct that enables inter-process communication.
-public struct PosixPipe:Hashable, Equatable {
+public struct PosixPipe:Sendable, Hashable, Equatable {
 	
 	// fh that is used for reading from the pipe.
 	public let reading:Int32
@@ -31,7 +31,6 @@ public struct PosixPipe:Hashable, Equatable {
 	public static func forChildReading() throws -> PosixPipe {
 		return try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 	}
-
 	
 	/// create a new pipe with the specified options.
 	public init(nonblockingReads:Bool = false, nonblockingWrites:Bool = false) throws {
@@ -82,6 +81,6 @@ public struct PosixPipe:Hashable, Equatable {
 	
 	// equatable conformance
 	public static func == (lhs:PosixPipe, rhs:PosixPipe) -> Bool {
-		return (lhs.reading == rhs.reading) && (rhs.writing == rhs.writing)
+		return (lhs.reading == rhs.reading) && (lhs.writing == rhs.writing)
 	}
 }

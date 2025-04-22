@@ -12,7 +12,7 @@ public struct DataChannel {
 		public enum Configuration {
 			/// configure the child process to write to this data channel as this running process reads from it.
 			/// - parameters:
-			/// 	1. the 
+			/// 	1. the line separator to use when reading the data from the channel.
 			case active(ChildWriteParentRead, [UInt8])
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it writes will go directly to /dev/null (never touches the parent process). as such, the parent process has no associated work to do in this configuration.
 			case nullPipe

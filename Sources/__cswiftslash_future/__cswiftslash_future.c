@@ -178,6 +178,30 @@ void __cswiftslash_future_t_destroy(
 	free(_);
 }
 
+bool __cswiftslash_future_t_has_result(
+	const __cswiftslash_future_ptr_t _
+) {
+	pthread_mutex_lock(&_->____m);
+	const int8_t __0 = atomic_load_explicit(&_->____s, memory_order_acquire);
+	switch (__0) {
+		case __CSWIFTSLASH_FUTURE_STATUS_PEND:
+			pthread_mutex_unlock(&_->____m);
+			return false;
+		case __CSWIFTSLASH_FUTURE_STATUS_RESULT:
+			pthread_mutex_unlock(&_->____m);
+			return true;
+		case __CSWIFTSLASH_FUTURE_STATUS_THROW:
+			pthread_mutex_unlock(&_->____m);
+			return true;
+		case __CSWIFTSLASH_FUTURE_STATUS_CANCEL:
+			pthread_mutex_unlock(&_->____m);
+			return true;
+		default:
+			printf("swiftslash future internal error: invalid future status\n");
+			abort();
+	}
+}
+
 __cswiftslash_optr_t __cswiftslash_future_t_wait_sync_register(
 	const __cswiftslash_future_ptr_t _,
 	const __cswiftslash_optr_t __,

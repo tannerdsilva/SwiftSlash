@@ -13,6 +13,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashPThread
+import SwiftSlashFHHelpers
 
 internal final class MacOSEventTrigger:EventTriggerEngine {
 	internal typealias RuntimeErrors = Never
@@ -24,6 +25,9 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 
 	/// the event trigger primitive
 	internal let prim:EventTriggerHandlePrimitive
+
+	// the pipe that is used to cancel the event trigger.
+	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
 	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
@@ -53,6 +57,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 	internal init(_ ptSetup:consuming ArgumentType) {
 		registrations = ptSetup.registersIn
 		prim = ptSetup.handle
+		cancelPipe = ptSetup.cancelPipe
 	}
 
 	/// event buffer that allows us to process events. this buffer is passed directly to the system call and is the first place returned events are stored.
@@ -72,7 +77,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		// break by pthread cancel
 		repeat {
 
-			// wait for events
+			// wait for events. this might block.
 			let kqueueResult = kevent(prim, nil, 0, eventBuffer, eventBufferSize, nil)
 
 			switch kqueueResult {
@@ -93,8 +98,17 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 					
 					// process the events against the stored fifo's.
 					resultLoop: for i in 0..<Int(kqueueResult) {
+						// capture the current event for this iteration
 						let currentEvent = eventBuffer[i]
+						// capture the file handle that associates with the event.
 						let curIdent = Int32(currentEvent.ident)
+						// verify that this identifier is not the reading end of the cancel pipe.
+						guard curIdent != cancelPipe.reading else {
+							// skip the cancel identifier because it does not register with the event trigger so there is nothing to pass on.
+							continue resultLoop
+						}
+
+						// logic branch to determine if the event is a read or write event, or if it is an EOF event.
 						if currentEvent.flags & UInt16(EV_EOF) == 0 {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
@@ -121,8 +135,8 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 						}
 					}
 
-					// reallocate the event buffer if the event is getting too large.
-					if kqueueResult*2 > eventBufferSize {
+					// reallocate the event buffer if the number of events returned in the latest iteration is encroaching on the buffer size.
+					if (kqueueResult*2) > eventBufferSize {
 						reallocate(size:eventBufferSize*2)
 					}
 
@@ -138,7 +152,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		return kqueue()
 	}
 
-	internal static func closePrimitive(_ prim:EventTriggerHandle) {
+	internal static func closePrimitive(_ prim:consuming EventTriggerHandle) {
 		close(prim)
 	}
 }

@@ -70,9 +70,14 @@ internal struct ProcessLogistics {
 		}
 	}
 
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, eventTrigger:EventTrigger, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
+	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
+	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger? = nil
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
+		if eventTrigger == nil {
+			eventTrigger = try EventTrigger()
+		}
 		return try withUnsafeMutablePointer(to:&package) { packagePtr in
-			// pipes that will be used to 
+			// pipes that will be used to facilitate io exchange with the child process.
 			var writePipes = [Int32:PosixPipe]()
 			var readPipes = [Int32:PosixPipe]()
 			var nullPipes = Set<PosixPipe>()
@@ -85,13 +90,17 @@ internal struct ProcessLogistics {
 						
 						// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 						let newPipe = try PosixPipe.forChildReading()
+
+						// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
 						let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
-						try eventTrigger.register(writer:newPipe.writing, writerFIFO)
+
+						// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
+						try eventTrigger!.register(writer:newPipe.writing, writerFIFO)
 						
-						// close the reading end of the pipe after fork.
+						// this pipe needs to be further handled after the process fork so we will store it for future reference.
 						writePipes[fh] = newPipe
 						
-						// launch the writing task.
+						// launch the writing handler task.
 						taskGroup.addTask { [ // capture some things from the current scope before escaping into the task.
 							/// the user data stream that will be written to the file handle. this is where we will consume the data the user wants to write. we have an obligation to ensure the user cant pass any futures into this that we cannot fufill. therefore, finishing this and handling any contents before returning is a must.
 							userDataStream = channel,
@@ -101,7 +110,7 @@ internal struct ProcessLogistics {
 							// this is the file handle that we will write to.
 							wFH = newPipe.writing,
 							// this is the event trigger that we will use for register and deregister
-							et = eventTrigger
+							et = eventTrigger!
 						] in
 							defer {
 								try! et.deregister(writer:fh)
@@ -167,7 +176,7 @@ internal struct ProcessLogistics {
 						// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 						let newPipe = try PosixPipe.forChildWriting()
 						let readerFIFO = EventTrigger.ReaderFIFO()
-						try eventTrigger.register(reader:newPipe.reading, readerFIFO)
+						try eventTrigger!.register(reader:newPipe.reading, readerFIFO)
 
 						// close the writing end of the pipe after fork.
 						readPipes[fh] = newPipe
@@ -185,7 +194,7 @@ internal struct ProcessLogistics {
 							var lineParser = LineParser(separator:sep, nasync:userDataStream.nasync)
 							defer {
 								// file handle should not remain registered after this task is complete.
-								try! et.deregister(reader:fh)
+								try! et!.deregister(reader:fh)
 								// this is the only place where action happens with the file handle, 
 								rFH.closeFileHandle()
 							}

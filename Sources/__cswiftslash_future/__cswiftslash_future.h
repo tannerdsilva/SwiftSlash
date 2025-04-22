@@ -123,6 +123,13 @@ void __cswiftslash_future_t_destroy(
 	const _Nonnull __cswiftslash_future_result_err_handler_f ____
 );
 
+/// returns whether or not the future has stored a result.
+/// @param _ the future to check the result status of.
+/// @return `true` if the future has a result or has been cancelled, `false` if the future is still pending
+bool __cswiftslash_future_t_has_result(
+	const __cswiftslash_future_ptr_t _
+);
+
 /// register a synchronous waiter for a future. a synchronous waiter is used to describe the process where a thread is blocked and the result handling functions are called from that same blocking thread. the registration thread and the thread that blocks may be different. NOTE: this function does not block the calling thread, instead, it registers the waiting information without blocking and allows the calling thread to determine when to block and handle the result.
 /// @param _ the future to wait for.
 /// @param __ the context pointer to pass to the result handler.

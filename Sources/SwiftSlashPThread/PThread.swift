@@ -132,13 +132,11 @@ fileprivate struct Setup {
 }
 
 /// a noncopyable structure that safely handles a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
-public final class Running<W>:@unchecked Sendable where W:PThreadWork {
+public struct Running<W>:@unchecked Sendable, ~Copyable where W:PThreadWork {
 	// the pthread primitive
 	fileprivate let ptp:__cswiftslash_threads_t_type
 	// the future that will be set to success when the pthread is launched.
 	fileprivate let returnFuture:Future<UnsafeMutableRawPointer, Never>
-	// the atomic flag that indicates if the pthread is running or not.
-	fileprivate let isRunning:Atomic<Bool> = .init(true)
 
 	fileprivate init(
 		alreadyLaunched pthread:__cswiftslash_threads_t_type,
@@ -146,9 +144,6 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	) {
 		ptp = pthread
 		returnFuture = rf
-		returnFuture.whenResult { [weak self] res in
-			self?.isRunning.store(false, ordering:.releasing)
-		}
 	}
 
 	/// async block for the work to be done on the pthread. throws a designated cancellation error if the task is canceled. the pthread is not cancelled when the task is canceled.
@@ -179,14 +174,40 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 		}
 	}
 
-	deinit {
-		if isRunning.load(ordering:.acquiring) {
-			// set the cancellation flag on the pthread.
-			do {
-				_ = try cancel()
-			} catch {
-				fatalError("SwiftSlashPThread: pthread cancellation failed. this is a critical error. \(#file):\(#line)")
+	@available(*, noasync, message:"this function is not async safe. it is only safe to call this function from the main thread.")
+	public consuming func join() throws(PThreadJoinFailure) {
+		// join the pthread
+		guard pthread_join(ptp, nil) == 0 else {
+			throw PThreadJoinFailure()
+		}
+		// discard self
+	}
+
+	public consuming func join() async throws(PThreadJoinFailure) {
+		switch await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<Void, PThreadJoinFailure>, Never>) in
+			// join the pthread
+			guard pthread_join(ptp, nil) == 0 else {
+				cont.resume(returning:.failure(PThreadJoinFailure()))
+				return
 			}
+			cont.resume(returning:.success(()))
+		}) {
+			case .success:
+				break
+			case .failure(let error):
+				// discard self
+				throw error
+		}
+		
+		// discard self
+	}
+
+	deinit {
+		// set the cancellation flag on the pthread.
+		do {
+			_ = try cancel()
+		} catch {
+			fatalError("SwiftSlashPThread: pthread cancellation failed. this is a critical error. \(#file):\(#line)")
 		}
 
 		// join the pthread
