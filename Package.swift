@@ -110,7 +110,8 @@ fileprivate let swiftTargets:[Target] = [
 		dependencies:[
 			"__cswiftslash_eventtrigger",
 			"SwiftSlashPThread",
-			"SwiftSlashFIFO"
+			"SwiftSlashFIFO",
+			"SwiftSlashFHHelpers"
 		]
 	),
 	.target(
@@ -143,7 +144,8 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
 		"SwiftSlashNAsyncStream",
-		"SwiftSlashLineParser"
+		"SwiftSlashLineParser",
+		"SwiftSlashEventTrigger"
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
