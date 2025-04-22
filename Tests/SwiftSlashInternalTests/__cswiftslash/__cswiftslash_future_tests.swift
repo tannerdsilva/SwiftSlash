@@ -54,6 +54,10 @@ extension __cswiftslash_tests {
 				self.futurePtr = __cswiftslash_future_t_init()
 			}
 
+			fileprivate func hasResult() -> Bool {
+				return __cswiftslash_future_t_has_result(futurePtr)
+			}
+
 			fileprivate func cancel() -> Bool {
 				__cswiftslash_future_t_broadcast_cancel(futurePtr)
 			}
@@ -275,11 +279,15 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
 					tg.addTask {
 						let data = UnsafeMutableRawPointer(bitPattern: 0x1234)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastResultValue(resType: 1, resVal: data) == true)
+						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
-					
+					#expect(future.hasResult() == true)
+
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
 
@@ -302,11 +310,15 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
 					tg.addTask {
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0x4321)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastErrorValue(errType: 2, errVal: errorData) == true)
+						#expect(future.hasResult() == true)
 					}
 
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -329,9 +341,15 @@ extension __cswiftslash_tests {
 			func testSyncWaiterCancellation() async throws {
 				try await withThrowingTaskGroup(of:__cswiftslash_future.Harness.Result?.self) { tg in
 					tg.addTask {
+						#expect(future.hasResult() == false)
+						defer {
+							#expect(future.hasResult() == true)
+						}
 						return try await future.waitSync()
 					}
+					#expect(future.hasResult() == false)
 					#expect(future.cancel() == true)
+					#expect(future.hasResult() == false)
 					var i = 0
 					for try await result in tg {
 						#expect(result == nil)
@@ -355,10 +373,14 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
 					tg.addTask {
 						let data = UnsafeMutableRawPointer(bitPattern: 0x5678)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastResultValue(resType: 3, resVal: data) == true)
+						#expect(future.hasResult() == true)
 					}
 					// wait asynchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitAsync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -382,12 +404,18 @@ extension __cswiftslash_tests {
 			func coreAsyncWaiterInvalidation() async throws {
 				try await withThrowingTaskGroup(of:__cswiftslash_future.Harness.Result?.self) { tg in
 					tg.addTask {
+						#expect(future.hasResult() == false)
+						defer {
+							#expect(future.hasResult() == true)
+						}
 						return try await future.waitAsync()
 					}
 					tg.cancelAll()
 					var i = 0
+					#expect(future.hasResult() == false)
 					for try await result in tg {
 						#expect(result == nil)
+						#expect(future.hasResult() == true)
 						i += 1
 					}
 					#expect(i == 1)
@@ -400,10 +428,14 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
 					tg.addTask {
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0xbeef)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastErrorValue(errType: 4, errVal: errorData) == true)
+						#expect(future.hasResult() == true)
 					}
 					// wait asynchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitAsync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -427,9 +459,13 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
 						try await Task.sleep(nanoseconds:100_000)
+						#expect(future.hasResult() == false)
 						#expect(future.cancel() == true)
+						#expect(future.hasResult() == true)
 					}
+					#expect(future.hasResult() == false)
 					let waitResult = try await future.waitAsync()
+					#expect(future.hasResult() == true)
 					#expect(waitResult == nil)
 				}
 			}
@@ -447,14 +483,20 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
 						let data1 = UnsafeMutableRawPointer(bitPattern: 0x1000)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastResultValue(resType: 1, resVal: data1) == true)
+						#expect(future.hasResult() == true)
 						
 						// attempt to broadcast again
 						let data2 = UnsafeMutableRawPointer(bitPattern: 0x2000)!
+						#expect(future.hasResult() == true)
 						#expect(future.broadcastResultValue(resType: 2, resVal: data2) == false)
+						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -478,14 +520,20 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
 						let data = UnsafeMutableRawPointer(bitPattern: 0x3000)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastResultValue(resType: 5, resVal: data) == true)
-						
+						#expect(future.hasResult() == true)
+
 						// attempt to broadcast an error after the result
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0x4000)!
+						#expect(future.hasResult() == true)
 						#expect(future.broadcastErrorValue(errType: 6, errVal: errorData) == false)
+						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -509,14 +557,20 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
 						let errorData1 = UnsafeMutableRawPointer(bitPattern: 0x5000)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastErrorValue(errType: 7, errVal: errorData1) == true)
+						#expect(future.hasResult() == true)
 						
 						// attempt to broadcast another error
 						let errorData2 = UnsafeMutableRawPointer(bitPattern: 0x6000)!
+						#expect(future.hasResult() == true)
 						#expect(future.broadcastErrorValue(errType: 8, errVal: errorData2) == false)
+						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -540,14 +594,20 @@ extension __cswiftslash_tests {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					tg.addTask {
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0x7000)!
+						#expect(future.hasResult() == false)
 						#expect(future.broadcastErrorValue(errType: 9, errVal: errorData) == true)
+						#expect(future.hasResult() == true)
 						
 						// attempt to broadcast a result after the error
 						let data = UnsafeMutableRawPointer(bitPattern: 0x8000)!
+						#expect(future.hasResult() == true)
 						#expect(future.broadcastResultValue(resType: 10, resVal: data) == false)
+						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
+					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
+					#expect(future.hasResult() == true)
 					
 					var foundType:UInt8? = nil
 					var foundValue:UnsafeMutableRawPointer? = nil
@@ -577,22 +637,30 @@ extension __cswiftslash_tests {
 								let data = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 								let randomByte = UInt8.random(in: 0...255)
 								data.storeBytes(of:randomByte, as: UInt8.self)
+								#expect(future.hasResult() == false)
 								#expect(future.broadcastResultValue(resType: 11, resVal: data) == true)
+								#expect(future.hasResult() == true)
 								return randomByte
 							} else if action <= 20 {
 								// broadcast error
 								let errorData = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 								let randomByte = UInt8.random(in: 0...255)
 								errorData.storeBytes(of:randomByte, as: UInt8.self)
+								#expect(future.hasResult() == false)
 								#expect(future.broadcastErrorValue(errType: 12, errVal: errorData) == true)
+								#expect(future.hasResult() == true)
 								return randomByte
 							} else {
 								// cancel the future
+								#expect(future.hasResult() == false)
 								#expect(future.cancel() == true)
+								#expect(future.hasResult() == true)
 								return nil
 							}
 						}
+						#expect(future.hasResult() == false)
 						let result = try! await future.waitSync()
+						#expect(future.hasResult() == true)
 						switch result {
 							case .success(let valType, let valPtr):
 								#expect(action <= 10)
@@ -636,7 +704,9 @@ extension __cswiftslash_tests {
 					for i in 0..<waiterCount {
 						group.addTask {
 							do {
+								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
+								#expect(future.hasResult() == true)
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -644,9 +714,11 @@ extension __cswiftslash_tests {
 						}
 					}
 					
-					// broadcast a result after some delay
+					// broadcast a result
 					let data = UnsafeMutableRawPointer(bitPattern: 0x9999)!
+					#expect(future.hasResult() == false)
 					#expect(future.broadcastResultValue(resType: 42, resVal: data) == true)
+					#expect(future.hasResult() == true)
 					
 					// collect results from waiters
 					for _ in 0..<waiterCount {
@@ -672,7 +744,9 @@ extension __cswiftslash_tests {
 					for i in 0..<waiterCount {
 						group.addTask {
 							do {
+								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
+								#expect(future.hasResult() == true)
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -682,7 +756,9 @@ extension __cswiftslash_tests {
 					
 					// broadcast an error after some delay
 					let errorData = UnsafeMutableRawPointer(bitPattern: 0xAAAA)!
+					#expect(future.hasResult() == false)
 					#expect(future.broadcastErrorValue(errType: 24, errVal: errorData) == true)
+					#expect(future.hasResult() == true)
 					// collect results from waiters
 					for _ in 0..<waiterCount {
 						let (index, result) = try await group.next()!
@@ -712,7 +788,9 @@ extension __cswiftslash_tests {
 				
 				// broadcast a result immediately
 				let data = UnsafeMutableRawPointer(bitPattern: 0xCCCC)!
+				#expect(future.hasResult() == false)
 				#expect(future.broadcastResultValue(resType: 99, resVal: data) == true)
+				#expect(future.hasResult() == true)
 
 				let waiterCount = 4
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)
@@ -722,7 +800,9 @@ extension __cswiftslash_tests {
 					for i in 0..<waiterCount {
 						group.addTask {
 							do {
+								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
+								#expect(future.hasResult() == true)
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -764,7 +844,9 @@ extension __cswiftslash_tests {
 					for i in 0..<waiterCount {
 						group.addTask {
 							do {
+								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
+								#expect(future.hasResult() == true)
 								return (i, result)
 							} catch {
 								return (i, nil)
@@ -774,6 +856,7 @@ extension __cswiftslash_tests {
 					
 					// simultaneously attempt to broadcast result and error
 					await withTaskGroup(of:Bool.self) { broadcastGroup in
+						#expect(future.hasResult() == false)
 						broadcastGroup.addTask {
 							let data = UnsafeMutableRawPointer(bitPattern: 0xDDDD)!
 							return future.broadcastResultValue(resType: 77, resVal: data)
@@ -799,6 +882,7 @@ extension __cswiftslash_tests {
 						#expect(i == 2)
 						#expect(foundTrue == true)
 						#expect(foundFalse == true)
+						#expect(future.hasResult() == true)
 					}
 					
 					// collect results from waiters
