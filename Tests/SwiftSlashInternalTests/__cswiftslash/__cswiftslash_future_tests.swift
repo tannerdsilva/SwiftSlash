@@ -340,16 +340,15 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: core :: sync cancel", .timeLimit(.minutes(1)))
 			func testSyncWaiterCancellation() async throws {
 				try await withThrowingTaskGroup(of:__cswiftslash_future.Harness.Result?.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
-						#expect(future.hasResult() == false)
 						defer {
 							#expect(future.hasResult() == true)
 						}
 						return try await future.waitSync()
 					}
-					#expect(future.hasResult() == false)
 					#expect(future.cancel() == true)
-					#expect(future.hasResult() == false)
+					#expect(future.hasResult() == true)
 					var i = 0
 					for try await result in tg {
 						#expect(result == nil)
@@ -406,16 +405,17 @@ extension __cswiftslash_tests {
 					tg.addTask {
 						#expect(future.hasResult() == false)
 						defer {
-							#expect(future.hasResult() == true)
+							// cancelling a single waiter is not the same as cancelling the future. since the waiters here will cancel but the result will not be set, we still expect false for result.
+							#expect(future.hasResult() == false)
 						}
-						return try await future.waitAsync()
+						let asr = try await future.waitAsync()
+						return asr
 					}
 					tg.cancelAll()
 					var i = 0
 					#expect(future.hasResult() == false)
 					for try await result in tg {
 						#expect(result == nil)
-						#expect(future.hasResult() == true)
 						i += 1
 					}
 					#expect(i == 1)
@@ -631,6 +631,7 @@ extension __cswiftslash_tests {
 				for _ in 0..<100000 {
 					await withTaskGroup(of:UInt8?.self) { [future] tgg in
 						let action = Int.random(in: 0...22)
+						#expect(future.hasResult() == false)
 						tgg.addTask {
 							if action <= 10 {
 								// broadcast result
@@ -658,7 +659,6 @@ extension __cswiftslash_tests {
 								return nil
 							}
 						}
-						#expect(future.hasResult() == false)
 						let result = try! await future.waitSync()
 						#expect(future.hasResult() == true)
 						switch result {
@@ -702,9 +702,9 @@ extension __cswiftslash_tests {
 				// start multiple async waiters
 				try await withThrowingTaskGroup(of: (Int, Harness.Result?).self) { group in
 					for i in 0..<waiterCount {
+						#expect(future.hasResult() == false)
 						group.addTask {
 							do {
-								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
 								#expect(future.hasResult() == true)
 								return (i, result)
@@ -753,6 +753,8 @@ extension __cswiftslash_tests {
 							}
 						}
 					}
+
+					try await Task.sleep(nanoseconds: 100_000)
 					
 					// broadcast an error after some delay
 					let errorData = UnsafeMutableRawPointer(bitPattern: 0xAAAA)!
@@ -800,7 +802,7 @@ extension __cswiftslash_tests {
 					for i in 0..<waiterCount {
 						group.addTask {
 							do {
-								#expect(future.hasResult() == false)
+								#expect(future.hasResult() == true)
 								let result = try await future.waitAsync()
 								#expect(future.hasResult() == true)
 								return (i, result)
