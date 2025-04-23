@@ -112,15 +112,15 @@ public final class EventTrigger:Sendable {
 		// cancel the thread since it will still be running at this point
 		try? launchedThread.cancel()
 		// signal to the polling infrastructure to unblock
-		_ = try! cancelPipe.writing.writeFH(singleByte:0x01)
-		// cancel pipe has served its purpose so we can close it
-		cancelPipe.writing.closeFileHandle()
+		_ = try! cancelPipe.writing.writeFH(singleByte:0x0)
 		// join the pthread
 		try! launchedThread.joinSync()
 		// deregister the cancel pipe from the event trigger
 		try! PlatformSpecificETImplementation.deregister(prim!, reader:cancelPipe.reading)
 		// close the polling primitive
 		PlatformSpecificETImplementation.closePrimitive(prim!)
+		// cancel pipe has served its purpose so we can close it
+		cancelPipe.writing.closeFileHandle()
 		// close the writing end of the close pipe
 		cancelPipe.reading.closeFileHandle()
 	}
