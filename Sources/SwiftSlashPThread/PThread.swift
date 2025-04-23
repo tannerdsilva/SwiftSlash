@@ -131,12 +131,21 @@ fileprivate struct Setup {
 	}
 }
 
+fileprivate enum CloseOut:UInt8, AtomicRepresentable {
+	case threadRunning = 0
+	case threadCancelled = 1
+	case threadExited = 2
+	case threadJoined = 3
+}
+
 /// a noncopyable structure that safely handles a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
-public struct Running<W>:@unchecked Sendable, ~Copyable where W:PThreadWork {
+public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	// the pthread primitive
-	fileprivate let ptp:__cswiftslash_threads_t_type
+	private let ptp:__cswiftslash_threads_t_type
 	// the future that will be set to success when the pthread is launched.
-	fileprivate let returnFuture:Future<UnsafeMutableRawPointer, Never>
+	private let returnFuture:Future<UnsafeMutableRawPointer, Never>
+	// documents the current state of the running pthread
+	private let state:Atomic<CloseOut> = .init(CloseOut.threadRunning)
 
 	fileprivate init(
 		alreadyLaunched pthread:__cswiftslash_threads_t_type,
@@ -144,10 +153,13 @@ public struct Running<W>:@unchecked Sendable, ~Copyable where W:PThreadWork {
 	) {
 		ptp = pthread
 		returnFuture = rf
+		returnFuture.whenResult { [weak self] resultPtr in
+			_ = self?.state.exchange(CloseOut.threadExited, ordering:.releasing)
+		}
 	}
 
 	/// async block for the work to be done on the pthread. throws a designated cancellation error if the task is canceled. the pthread is not cancelled when the task is canceled.
-	public borrowing func workResult<E>(throwingOnCurrentTaskCancellation throwType:consuming E.Type, taskCancellationError makeError:@autoclosure () -> E) async throws(E) -> Result<W.ReturnType, W.ThrowType>? where E:Swift.Error {
+	public borrowing func workResult<E>(throwingOnCurrentTaskCancellation _:E.Type, taskCancellationError makeError:@autoclosure () -> E) async throws(E) -> Result<W.ReturnType, W.ThrowType>? where E:Swift.Error {
 		let result = try await returnFuture.result(throwingOnCurrentTaskCancellation:E.self, taskCancellationError:makeError())
 		guard result != nil else {
 			return nil
@@ -157,7 +169,7 @@ public struct Running<W>:@unchecked Sendable, ~Copyable where W:PThreadWork {
 	}
 
 	/// async block for the work to be done on the pthread. does not throw any error when the current task is cancelled. the pthread is not cancelled when the task is canceled.
-	public borrowing func workResult(throwingOnCurrentTaskCancellation:Never.Type = Never.self) async -> Result<W.ReturnType, W.ThrowType>? {
+	public borrowing func workResult(throwingOnCurrentTaskCancellation _:Never.Type = Never.self) async -> Result<W.ReturnType, W.ThrowType>? {
 		let result = await returnFuture.result(throwingOnCurrentTaskCancellation:Never.self)
 		guard result != nil else {
 			return nil
@@ -169,50 +181,75 @@ public struct Running<W>:@unchecked Sendable, ~Copyable where W:PThreadWork {
 	/// cancels the running pthread. it will exit when it reaches the next pthread cancellation point.
 	/// - returns: true if the pthread was successfully set to cancelled, false if the pthread was not successfully canceled.
 	public borrowing func cancel() throws(PThreadCancellationFailure) {
-		guard pthread_cancel(ptp) == 0 else {
-			throw PThreadCancellationFailure.systemError
+		switch state.compareExchange(expected:.threadRunning, desired:.threadCancelled, ordering:.acquiringAndReleasing) {
+			case (true, _):
+				guard pthread_cancel(ptp) == 0 else {
+					fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. \(#file):\(#line)")
+				}
+			case (false, .threadExited):
+				return
+			case (false, .threadCancelled):
+				// the thread has already been cancelled.
+				throw PThreadCancellationFailure.alreadyCancelled
+			case (false, .threadJoined):
+				// the thread has already been joined.
+				throw PThreadCancellationFailure.alreadyCancelled
+			case (false, .threadRunning):
+				// the thread is still running. we need to cancel it.
+				// this should never happen because we are using atomic operations to ensure that the thread is not running.
+				fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. \(#file):\(#line)")
 		}
 	}
 
-	@available(*, noasync, message:"this function is not async safe. it is only safe to call this function from the main thread.")
-	public consuming func join() throws(PThreadJoinFailure) {
-		// join the pthread
-		guard pthread_join(ptp, nil) == 0 else {
+	@available(*, noasync, message:"function joinSync() is not async safe. it is only safe to call this function from the main thread.")
+	public borrowing func joinSync() throws(PThreadJoinFailure) {
+		// verify that the pthread has not already been joined
+		guard state.load(ordering:.acquiring) != .threadJoined else {
 			throw PThreadJoinFailure()
 		}
-		// discard self
-	}
-
-	public consuming func join() async throws(PThreadJoinFailure) {
-		switch await withUnsafeContinuation({ (cont:UnsafeContinuation<Result<Void, PThreadJoinFailure>, Never>) in
-			// join the pthread
-			guard pthread_join(ptp, nil) == 0 else {
-				cont.resume(returning:.failure(PThreadJoinFailure()))
-				return
-			}
-			cont.resume(returning:.success(()))
-		}) {
-			case .success:
-				break
-			case .failure(let error):
-				// discard self
-				throw error
-		}
-		
-		// discard self
-	}
-
-	deinit {
-		// set the cancellation flag on the pthread.
-		do {
-			_ = try cancel()
-		} catch {
-			fatalError("SwiftSlashPThread: pthread cancellation failed. this is a critical error. \(#file):\(#line)")
-		}
-
 		// join the pthread
 		guard pthread_join(ptp, nil) == 0 else {
 			fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+		}
+		guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
+			fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+		}
+	}
+
+	public consuming func joinAsync() async throws(PThreadJoinFailure) {
+		guard state.load(ordering:.acquiring) != .threadJoined else {
+			throw PThreadJoinFailure()
+		}
+		await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
+			withUnsafeMutablePointer(to:&self) { selfPtr in
+				// join the pthread
+				guard pthread_join(selfPtr.pointee.ptp, nil) == 0 else {
+					fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+				}
+				guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
+					fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+				}
+				cont.resume()
+			}
+		})
+	}
+
+	deinit {
+		switch state.load(ordering:.acquiring) {
+		case .threadRunning:
+			// the thread is still running. we need to cancel it.
+			try! cancel()
+			// wait for the thread to exit.
+			try! joinSync()
+		case .threadCancelled:
+			// the thread has been cancelled. we need to wait for it to exit.
+			try! joinSync()
+		case .threadExited:
+			// the thread has exited. we need to wait for it to exit.
+			try! joinSync()
+		case .threadJoined:
+			// the thread has already been joined. we need to do nothing.
+			break
 		}
 	}
 }

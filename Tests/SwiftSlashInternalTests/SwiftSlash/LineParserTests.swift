@@ -60,7 +60,7 @@ extension SwiftSlashTests {
 				}
 			})
 			var writeLines = [String]()
-			for i in 0..<numberOfHandles {
+			for _ in 0..<numberOfHandles {
 				let data:[UInt8]
 				switch true {
 					case true:

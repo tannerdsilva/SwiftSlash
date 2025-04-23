@@ -77,7 +77,7 @@ extension SwiftSlashTests {
 					let cancelFuture = Future<Void, Never>()
 					
 					// launch the pthread that will be subject to cancellation testing.
-					let runTask = try await SwiftSlashPThread.launch { [lf = launchFuture, cf = cancelFuture] in
+					let runTask = try SwiftSlashPThread.launch { [lf = launchFuture, cf = cancelFuture] in
 						
 						// declare a memory artifact within the pthread.
 						_ = MyTest(freeConfirm)

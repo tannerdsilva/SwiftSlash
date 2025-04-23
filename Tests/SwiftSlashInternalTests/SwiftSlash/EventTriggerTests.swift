@@ -11,9 +11,12 @@ extension SwiftSlashTests {
 		.tags(.swiftSlashFIFO)
 	)
 	struct EventTriggerTests {
-		@Test("SwiftSlashEventTrigger :: initialization")
+		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))
 		func initializationBasics() throws {
-			/*let et = try EventTrigger()*/
+			var et:EventTrigger? = try EventTrigger()
+			#expect(et != nil)
+			et = nil
+			#expect(et == nil)
 		}
 	}
 }

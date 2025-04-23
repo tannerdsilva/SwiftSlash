@@ -221,7 +221,7 @@ extension FIFO {
 						return .failure(err)
 				}
 			case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
-				fatalError("swiftslash - got FIFO_CONSUME_WOULDBLOCK from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
+				return nil
 			case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
 				fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
 			default:

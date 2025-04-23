@@ -36,6 +36,10 @@ public final class Future<Produced, Failure>:@unchecked Sendable where Failure:S
 		successDeallocator = successfulResultDeallocator
 	}
 
+	public borrowing func hasResult() -> Bool {
+		return __cswiftslash_future_t_has_result(prim)
+	}
+
 	deinit {
 		// initialize the tool that will help extract the result from the future
 		var deallocResult = SyncResult()

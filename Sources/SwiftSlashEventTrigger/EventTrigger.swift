@@ -55,19 +55,15 @@ public final class EventTrigger:Sendable {
 
 	/// the type of registration that is being made to the event trigger for readers.
 	public typealias ReaderFIFO = FIFO<size_t, Never>
-
 	/// the type of registration that is being made to the event trigger for writers.
 	public typealias WriterFIFO = FIFO<Void, Never>
 
 	/// the primitive that is used to handle the event trigger.
 	private let prim:PlatformSpecificETImplementation.EventTriggerHandlePrimitive?
-
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
-
 	/// the stream of registrations that are being made to the event trigger. the system kernel allows for the file handle to be registered on any thread, but the corresponding FIFO must be passed to the pthread that is triggering the events
 	private let regStream:FIFO<Register, Never>
-
 	/// the type of registration that is being made to the event trigger.
 	private let cancelPipe:PosixPipe
 
@@ -110,5 +106,22 @@ public final class EventTrigger:Sendable {
 	public borrowing func deregister(writer:Int32) throws {
 		try PlatformSpecificETImplementation.deregister(prim!, writer:writer)
 		regStream.yield(.writer(writer, nil))
+	}
+
+	deinit {
+		// cancel the thread since it will still be running at this point
+		try? launchedThread.cancel()
+		// signal to the polling infrastructure to unblock
+		_ = try! cancelPipe.writing.writeFH(singleByte:0x01)
+		// cancel pipe has served its purpose so we can close it
+		cancelPipe.writing.closeFileHandle()
+		// join the pthread
+		try! launchedThread.joinSync()
+		// deregister the cancel pipe from the event trigger
+		try! PlatformSpecificETImplementation.deregister(prim!, reader:cancelPipe.reading)
+		// close the polling primitive
+		PlatformSpecificETImplementation.closePrimitive(prim!)
+		// close the writing end of the close pipe
+		cancelPipe.reading.closeFileHandle()
 	}
 }
