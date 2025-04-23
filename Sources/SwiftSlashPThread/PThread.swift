@@ -154,7 +154,20 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 		ptp = pthread
 		returnFuture = rf
 		returnFuture.whenResult { [weak self] resultPtr in
-			_ = self?.state.exchange(CloseOut.threadExited, ordering:.releasing)
+			let loaded = self?.state.load(ordering:.acquiring)
+			switch loaded {
+				case .threadRunning:
+					guard self?.state.compareExchange(expected:.threadRunning, desired:.threadExited, ordering:.acquiringAndReleasing).0 == true else {
+						fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
+					}
+				case .threadCancelled:
+					// the thread has been cancelled. we need to wait for it to exit.
+					guard self?.state.compareExchange(expected:.threadCancelled, desired:.threadExited, ordering:.acquiringAndReleasing).0 == true else {
+						fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
+					}
+				default:
+					fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
+			}
 		}
 	}
 
