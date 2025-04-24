@@ -11,6 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 #if os(macOS)
 import __cswiftslash_eventtrigger
+import __cswiftslash_posix_helpers
 import SwiftSlashFIFO
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
