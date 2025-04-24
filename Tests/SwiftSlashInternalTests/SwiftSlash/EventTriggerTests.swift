@@ -31,6 +31,22 @@ extension SwiftSlashTests {
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
 			let nextItem = await asyncConsumer.next()
 			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(nextItem)")
+			try et.deregister(reader:newPipe.reading)
+			close(newPipe.reading)
+			close(newPipe.writing)
+		}
+		@Test("SwiftSlashEventTrigger :: writing registration", .timeLimit(.minutes(1)))
+		func writingRegistration() async throws {
+			let newPipe = try PosixPipe()
+			let writingFIFO = FIFO<Void, Never>()
+			let asyncConsumer = writingFIFO.makeAsyncConsumer()
+			let et = try EventTrigger()
+			try et.register(writer:newPipe.writing, writingFIFO)
+			let nextItem = await asyncConsumer.next()
+			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")
+			try et.deregister(writer:newPipe.writing)
+			close(newPipe.reading)
+			close(newPipe.writing)
 		}
 	}
 }
