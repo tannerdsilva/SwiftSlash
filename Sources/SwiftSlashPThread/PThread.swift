@@ -133,10 +133,15 @@ fileprivate struct Setup {
 	}
 }
 
+/// the various states that a running pthread can be in as it goes about its lifecycle as a launched thread.
 fileprivate enum CloseOut:UInt8, AtomicRepresentable {
+	/// the pthread is running.
 	case threadRunning = 0
+	/// the pthread is cancelled but not yet exited.
 	case threadCancelled = 1
+	/// the pthread is exited.
 	case threadExited = 2
+	/// the pthread is joined.
 	case threadJoined = 3
 }
 

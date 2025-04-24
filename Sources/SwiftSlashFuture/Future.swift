@@ -166,6 +166,7 @@ extension Future {
 
 extension Future {
 	/// blocking wait for the result of the future. this is used only for unit testing.
+	@available(*, noasync, message:"this function blocks the calling thread until a result is available to return. this breaks the swift async runtime contract, therefore, cannot be called from async functions. please call a different async-conformant result function.")
 	public borrowing func blockingResult() -> Result<Produced, Failure>? {
 		var getResult = SyncResult()
 		withUnsafeMutablePointer(to:&getResult) { rptr in
