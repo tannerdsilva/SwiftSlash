@@ -114,16 +114,14 @@ fileprivate struct Workspace {
 fileprivate struct Setup {
 	// a pointer to the contained argument
 	fileprivate let containedArg:UnsafeMutableRawPointer
-
 	// a pthread takes time to launch and configure itself before we can allow it to be canceled. this future will be set to success when the pthread is ready to be canceled.
 	fileprivate let configureFuture:Future<UnsafeMutableRawPointer, Never>
-
 	// the type of pthread work to execute. this informs the pthread launch what kind of memory and work needs to be done.
 	fileprivate let thread_worktype:any PThreadWork.Type
 
 	// call this from outside the pthread before it is launched. this setup structure will initialize on the heap and passed into the pthread from there.
 	fileprivate init<P>(
-		_ workType:P.Type,
+		_ _:P.Type,
 		containedArgument:UnsafeMutableRawPointer,
 		configureFuture:Future<UnsafeMutableRawPointer, Never>
 	) where P:PThreadWork {
@@ -320,21 +318,22 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) -> Result
 	return .success(Running(alreadyLaunched:pthr, returnFuture:returnFuture))
 }
 
-// allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
+// below are the four "pillar functions" that allow for seamless and tightly integrated pthread tasks.
+/// allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.
 fileprivate let _run_alloc:@convention(c) (__cswiftslash_ptr_t) -> __cswiftslash_ptr_t = { csPtr in
 	let ws = UnsafeMutablePointer<Workspace>.allocate(capacity:1)
 	ws.initialize(to:Workspace(csPtr.assumingMemoryBound(to:Setup.self).pointee))
 	return UnsafeMutableRawPointer(ws)
 }
-// deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
+/// deallocator function. responsible for being as intentional as possible in capturing the current workspace and releasing the reference of it before it returns.
 fileprivate let _run_dealloc:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	wsPtr.assumingMemoryBound(to:Workspace.self).deinitialize(count:1).deallocate()
 }
-// cancel function. responsible for setting the cancellation flag on the contained workspace.
+/// cancel function. responsible for setting the cancellation flag on the contained workspace.
 fileprivate let _run_cancel:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	wsPtr.assumingMemoryBound(to:Workspace.self).pointee.setCancellation()
 }
-// main function. responsible for running the work function and setting the result into the return future.
+/// main function. responsible for running the work function and setting the result into the return future.
 fileprivate let _run_main:@convention(c) (__cswiftslash_ptr_t) -> Void = { wsPtr in
 	// capture the contained workspace (nonretained because of pthread cancellation) so that we can interact with it safely for the work.
 	wsPtr.assumingMemoryBound(to:Workspace.self).pointee.work()
