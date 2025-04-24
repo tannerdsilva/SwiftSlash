@@ -4,9 +4,15 @@ import __cswiftslash_posix_helpers
 fileprivate func executeCheck(_ p:consuming Path) -> Bool {
 	func _ec(_ p:UnsafePointer<UInt8>) -> Bool {
 		var s = stat()
+		#if os(macOS)
 		guard stat(p, &s) == 0, UInt16(s.st_mode) & S_IFMT == S_IFREG else {
 			return false
 		}
+		#elseif os(Linux)
+		guard stat(p, &s) == 0, Int32(s.st_mode) & S_IFMT == S_IFREG else {
+			return false
+		}
+		#endif
 		guard access(p, R_OK | X_OK) == 0 else {
 			return false
 		}
@@ -19,9 +25,15 @@ fileprivate func executeCheck(_ p:consuming Path) -> Bool {
 fileprivate func directoryCheck(_ p:consuming Path) -> Bool {
 	func _dc(_ p:UnsafePointer<UInt8>) -> Bool {
 		var s = stat()
+		#if os(macOS)
 		guard stat(p, &s) == 0, UInt16(s.st_mode) & S_IFMT == S_IFDIR else {
 			return false
 		}
+		#elseif os(Linux)
+		guard stat(p, &s) == 0, Int32(s.st_mode) & S_IFMT == S_IFDIR else {
+			return false
+		}
+		#endif
 		guard access(p, R_OK | X_OK) == 0 else {
 			return false
 		}

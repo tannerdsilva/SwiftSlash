@@ -167,7 +167,7 @@ extension MacOSEventTrigger {
 		newEvent.data = 0
 		newEvent.udata = nil
 		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
-			throw EventTriggerErrors.readerRegistrationFailure(reader, errno)
+			throw EventTriggerErrors.readerRegistrationFailure(reader, __cswiftslash_get_errno())
 		}
 	}
 
@@ -180,7 +180,7 @@ extension MacOSEventTrigger {
 		newEvent.data = 0
 		newEvent.udata = nil
 		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
-			throw EventTriggerErrors.writerRegistrationFailure(writer, errno)
+			throw EventTriggerErrors.writerRegistrationFailure(writer, __cswiftslash_get_errno())
 		}
 	}
 
@@ -193,7 +193,7 @@ extension MacOSEventTrigger {
 		newEvent.data = 0
 		newEvent.udata = nil
 		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
-			throw EventTriggerErrors.readerDeregistrationFailure(reader, errno)
+			throw EventTriggerErrors.readerDeregistrationFailure(reader, __cswiftslash_get_errno())
 		}
 	}
 
@@ -206,7 +206,7 @@ extension MacOSEventTrigger {
 		newEvent.data = 0
 		newEvent.udata = nil
 		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
-			throw EventTriggerErrors.writerDeregistrationFailure(writer, errno)
+			throw EventTriggerErrors.writerDeregistrationFailure(writer, __cswiftslash_get_errno())
 		}
 	}
 }

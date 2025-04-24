@@ -16,9 +16,6 @@ import SwiftSlashFHHelpers
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
 internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
-	/// the type of runtime error that might be thrown while the eventtrigger process is running. 
-	associatedtype RuntimeErrors:Swift.Error
-
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
 
@@ -48,7 +45,7 @@ internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTrig
 public final class EventTrigger:Sendable {
 
 	#if os(Linux)
-	internal typealias PlatformSpecificETImplementation = LinuxET
+	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger
 	#elseif os(macOS)
 	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
 	#endif

@@ -17,6 +17,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 #include <math.h>
