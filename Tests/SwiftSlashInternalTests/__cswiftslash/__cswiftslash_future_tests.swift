@@ -844,9 +844,9 @@ extension __cswiftslash_tests {
 				// start multiple waiters
 				await withTaskGroup(of: (Int, Harness.Result?).self) { group in
 					for i in 0..<waiterCount {
+						#expect(future.hasResult() == false)
 						group.addTask {
 							do {
-								#expect(future.hasResult() == false)
 								let result = try await future.waitAsync()
 								#expect(future.hasResult() == true)
 								return (i, result)

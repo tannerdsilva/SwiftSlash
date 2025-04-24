@@ -122,8 +122,7 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 							guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
 								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
 							}
-							
-							readersDataOut[currentEvent.data.fd]!.yield(Int(currentEvent.data.fd))
+							readersDataOut[currentEvent.data.fd]!.yield(Int(byteCount))
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available

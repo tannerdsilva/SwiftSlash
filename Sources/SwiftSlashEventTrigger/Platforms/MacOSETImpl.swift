@@ -16,8 +16,6 @@ import SwiftSlashPThread
 import SwiftSlashFHHelpers
 
 internal final class MacOSEventTrigger:EventTriggerEngine {
-	internal typealias RuntimeErrors = Never
-
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
