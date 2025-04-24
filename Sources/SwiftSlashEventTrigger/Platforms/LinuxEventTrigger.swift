@@ -101,7 +101,10 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 						// capture the relevant two points for this iteration: file handle and the flags triggered for said handle.
 						let currentEvent = eventBuffer[i]
 						let eventFlags = currentEvent.events
-						
+						guard currentEvent.data.fd != cancelPipe.reading else {
+							// cancel pipe was triggered, we need to exit the loop.
+							continue resultLoop
+						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 
 							// reading handle closed
