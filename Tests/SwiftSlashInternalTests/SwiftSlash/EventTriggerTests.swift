@@ -15,8 +15,8 @@ extension SwiftSlashTests {
 	)
 	struct EventTriggerTests {
 		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))
-		func initializationBasics() throws {
-			var et:EventTrigger? = try EventTrigger()
+		func initializationBasics() async throws {
+			var et:EventTrigger? = try await EventTrigger()
 			#expect(et != nil)
 			et = nil
 			#expect(et == nil)
@@ -26,7 +26,7 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let readingFIFO = FIFO<size_t, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
-			let et = try EventTrigger()
+			let et = try await EventTrigger()
 			try et.register(reader:newPipe.reading, readingFIFO)
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
 			let nextItem = await asyncConsumer.next()
@@ -40,7 +40,7 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let writingFIFO = FIFO<Void, Never>()
 			let asyncConsumer = writingFIFO.makeAsyncConsumer()
-			let et = try EventTrigger()
+			let et = try await EventTrigger()
 			try et.register(writer:newPipe.writing, writingFIFO)
 			let nextItem = await asyncConsumer.next()
 			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")

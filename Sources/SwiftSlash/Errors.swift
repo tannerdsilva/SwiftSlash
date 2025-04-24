@@ -8,3 +8,8 @@ public enum WrittenDataChannelClosureError:Swift.Error {
     /// thrown when the write loop task is cancelled
     case writeLoopTaskCancelled
 }
+
+/// the type of error that is thrown when there is a problem calling waitpid
+public struct WaitPIDError:Swift.Error {
+    public let errnoValue:Int32
+}

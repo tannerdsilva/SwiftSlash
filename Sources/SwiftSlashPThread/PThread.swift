@@ -18,21 +18,23 @@ import Synchronization
 
 /// runs any given arbitrary function on a newly created pthread.
 public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Result<R, Swift.Error>? where R:Sendable {
-	let launchedThread = try GenericPThread.launch(work)
+	let launchedThread = try await GenericPThread.launch(work)
 	return await launchedThread.workResult()
 }
 
 /// launch a pthread with a given function and return the running pthread.
-public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
-	return try GenericPThread.launch(work)
+public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
+	return try await GenericPThread.launch(work)
 }
 
 extension PThreadWork {
-	public static func launch(_ arg:consuming ArgumentType) throws(PThreadLaunchFailure) -> Running<Self> {
-		return try launchPThread(work:Self.self, argument:arg)
+	public static func launch(_ arg:consuming ArgumentType) async throws(PThreadLaunchFailure) -> Running<Self> {
+		return try await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Running<Self>, PThreadLaunchFailure>, Never>) in
+			continuation.resume(returning:launchPThread(work:Self.self, argument:arg))
+		}).get()
 	}
 	public static func run(_ arg:consuming ArgumentType) async throws -> Result<ReturnType, ThrowType>? {
-		let launched = try Self.launch(arg)
+		let launched = try await Self.launch(arg)
 		return try await launched.workResult(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError:CancellationError())
 	}
 }
@@ -272,7 +274,8 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 /// - parameter argument: the argument that is being passed into the work function.
 /// - returns: the running pthread that is being launched.
 /// - throws: a LaunchFailure error if the pthread fails to launch.
-fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) throws(PThreadLaunchFailure) -> Running<W> where W:PThreadWork, W.ArgumentType == A {
+@available(*, noasync, message:"this function launches a pthread and waits for the pthread to begin working. this requires blocking, which is not allowed in swift async code.")
+fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) -> Result<Running<W>, PThreadLaunchFailure> where W:PThreadWork, W.ArgumentType == A {
 	// this is the future that represents a successful launch and configuration of a pthread. pthreads must be configured for proper handling of cancellation in order to not leak memory.
 	let configureFuture = Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
 		// free the retained future from memory.
@@ -303,13 +306,13 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) throws(PT
 		// balance the retained value that was passed into the pthread setup but not used due to the pthread launch failure.
 		_ = Unmanaged<Contained<A>>.fromOpaque(launchStructure.pointee.containedArg).takeRetainedValue()
 		// throw a launch failure error.
-		throw PThreadLaunchFailure()
+		return .failure(PThreadLaunchFailure())
 	}
 
 	// wait for the pthread to be configured and ready to be canceled.
 	let returnFutureOpaque = configureFuture.blockingResult()!.get()
 	let returnFuture = Unmanaged<Future<UnsafeMutableRawPointer, Never>>.fromOpaque(returnFutureOpaque).takeUnretainedValue()
-	return Running(alreadyLaunched:pthr, returnFuture:returnFuture)
+	return .success(Running(alreadyLaunched:pthr, returnFuture:returnFuture))
 }
 
 // allocator function. responsible for initializing the workspace and transferring the crucial memory from the Setup.

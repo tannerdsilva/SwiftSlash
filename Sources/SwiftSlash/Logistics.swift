@@ -1,4 +1,5 @@
 import __cswiftslash_posix_helpers
+import __cswiftslash_eventtrigger
 import SwiftSlashNAsyncStream
 import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
@@ -28,6 +29,24 @@ public actor ProcessInterface {
 	}
 }
 
+extension pid_t {
+	fileprivate func waitPID() async throws(WaitPIDError) {
+		let (returnValue, statusValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(pid_t, Int32), Never>) in
+			var statusCapture:Int32 = 0
+			let wpidReturn = waitpid(self, &statusCapture, 0)
+			continuation.resume(returning:(wpidReturn, statusCapture))
+		})
+		guard returnValue == self else {
+			throw WaitPIDError(errnoValue:__cswiftslash_get_errno())
+		}
+		if __cswiftslash_eventtrigger_wifsignaled(statusValue) != 0 {
+
+		} else if __cswiftslash_eventtrigger_wifexited(statusValue) != 0 {
+			
+		}
+	}
+}
+
 internal struct ProcessLogistics {
 
 	internal struct LaunchPackage {
@@ -49,7 +68,7 @@ internal struct ProcessLogistics {
 		// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
 		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
 
-		internal borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
+		fileprivate borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
 			// declare the base array for the arguments. the last element of the array is nil.
 			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:arguments.count + 1)
 			defer {
@@ -72,9 +91,9 @@ internal struct ProcessLogistics {
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger? = nil
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) throws -> pid_t {
+	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) async throws -> pid_t {
 		if eventTrigger == nil {
-			eventTrigger = try EventTrigger()
+			eventTrigger = try await EventTrigger()
 		}
 		return try withUnsafeMutablePointer(to:&package) { packagePtr in
 			// pipes that will be used to facilitate io exchange with the child process.
@@ -253,7 +272,6 @@ internal struct ProcessLogistics {
 			return launchedPID
 		}
 	}
-
 
 	fileprivate enum SpawnError:UInt8, Swift.Error {
 		/// describes a failure to change the working directory of the child process.
