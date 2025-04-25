@@ -83,7 +83,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	}
 
 	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public borrowing func finish(throwing finishingError:Failure) {
+	public borrowing func finish(throwing finishingError:consuming Failure) {
 		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Failure>>(.failure(finishingError)))
 		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
 			_ = resultElement.takeRetainedValue()

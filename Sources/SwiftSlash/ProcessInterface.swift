@@ -68,17 +68,17 @@ public actor ProcessInterface {
 			case .initialized:
 				break;
 			case .launching:
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 			case .running(_):
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 			case .suspended(_):
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 			case .signaled(_):
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 			case .exited(_):
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 			case .failed(_):
-				throw ProcessError.processAlreadyLaunched
+				throw Error.processAlreadyLaunched
 		}
 		curState = .launching
 	}

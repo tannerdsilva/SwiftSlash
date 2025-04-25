@@ -145,8 +145,13 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 		} while true
 	}
 
-	internal static func newHandlePrimitive() -> EventTriggerHandle {
-		return epoll_create1(0)
+	internal static func newHandlePrimitive() throws(FileHandleError) -> EventTriggerHandle {
+		let epCreate = epoll_create1(0)
+		guard epCreate != -1 else {
+			let errNo = __cswiftslash_get_errno()
+			throw FileHandleError.error_unknown(errNo)
+		}
+		return epCreate
 	}
 
 	internal static func closePrimitive(_ prim:consuming EventTriggerHandle) throws(FileHandleError) {

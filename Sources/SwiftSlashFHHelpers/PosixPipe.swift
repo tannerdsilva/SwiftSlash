@@ -62,12 +62,19 @@ public struct PosixPipe:Sendable, Hashable, Equatable {
 	}
 	
 	/// creates a "pseudo pipe" that reads and writes directly to /dev/null.
-	public static func createNull() throws -> PosixPipe {
+	public static func createNull() throws(FileHandleError) -> PosixPipe {
 		let read = __cswiftslash_open_nomode("/dev/null", O_RDONLY)
+		guard read != -1 else {
+			throw FileHandleError.pipeOpenError
+		}
 		let write = __cswiftslash_open_nomode("/dev/null", O_WRONLY)
-		_ = __cswiftslash_fcntl_setfl(read, O_NONBLOCK)
-		_ = __cswiftslash_fcntl_setfl(write, O_NONBLOCK)
-		guard read != -1 && write != -1 else {
+		guard write != -1 else {
+			throw FileHandleError.pipeOpenError
+		}
+		guard __cswiftslash_fcntl_setfl(read, O_NONBLOCK) != -1 else {
+			throw FileHandleError.pipeOpenError
+		}
+		guard __cswiftslash_fcntl_setfl(write, O_NONBLOCK) != -1 else {
 			throw FileHandleError.pipeOpenError
 		}
 		return PosixPipe(reading:read, writing:write)

@@ -33,7 +33,7 @@ internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTrig
 	var prim:EventTriggerHandlePrimitive { get }
 
 	/// creates a new primitive for the event trigger.
-	static func newHandlePrimitive() -> EventTriggerHandlePrimitive
+	static func newHandlePrimitive() throws(FileHandleError) -> EventTriggerHandlePrimitive
 
 	/// closes the primitive for the event trigger.
 	static func closePrimitive(_ prim:consuming EventTriggerHandlePrimitive) throws(FileHandleError)

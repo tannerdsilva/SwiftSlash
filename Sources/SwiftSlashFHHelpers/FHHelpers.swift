@@ -38,6 +38,7 @@ extension Int32 {
 						throw FileHandleError.error_unknown(errNo)
 				}
 			}
+			return
 		} while true
 	}
 

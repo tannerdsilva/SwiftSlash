@@ -147,8 +147,13 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		} while true
 	}
 
-	internal static func newHandlePrimitive() -> EventTriggerHandle {
-		return kqueue()
+	internal static func newHandlePrimitive() throws(FileHandleError) -> EventTriggerHandle {
+		let kqCreate = kqueue()
+		guard kqCreate != -1 else {
+			let errNo = __cswiftslash_get_errno()
+			throw FileHandleError.error_unknown(errNo)
+		}
+		return kqCreate
 	}
 
 	internal static func closePrimitive(_ prim:consuming EventTriggerHandle) throws(FileHandleError) {

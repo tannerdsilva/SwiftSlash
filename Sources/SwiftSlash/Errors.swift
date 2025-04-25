@@ -48,3 +48,9 @@ public enum ProcessSpawnError:UInt8, Swift.Error {
 	/// describes a failure of the fork function
 	case forkFailure = 0xFB
 }
+
+extension ProcessInterface {
+	public enum Error:Swift.Error {
+		case processAlreadyLaunched
+	}
+}
