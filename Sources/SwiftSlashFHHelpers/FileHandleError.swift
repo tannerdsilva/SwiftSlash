@@ -8,6 +8,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
+import __cswiftslash_posix_helpers
+
 public enum FileHandleError:Swift.Error {
 	case pollingError;
 	case readAllocationError;
@@ -28,4 +30,27 @@ public enum FileHandleError:Swift.Error {
 	case error_quota;
 	
 	case error_pipe;
+
+	public init(errno:Int32) {
+		switch errno {
+			case EAGAIN:
+				self = .error_again;
+			case EWOULDBLOCK:
+				self = .error_wouldblock;
+			case EBADF:
+				self = .error_bad_fh;
+			case EINTR:
+				self = .error_interrupted;
+			case EINVAL:
+				self = .error_invalid;
+			case EIO:
+				self = .error_io;
+			case ENOSPC:
+				self = .error_nospace;
+			case EDQUOT:
+				self = .error_quota;
+			default:
+				self = .error_unknown(errno)
+		}
+	}
 }

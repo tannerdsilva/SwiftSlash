@@ -40,7 +40,7 @@ public struct PosixPipe:Sendable, Hashable, Equatable {
 				case 0:
 					return (fdsPtr.pointee.0, fdsPtr.pointee.1)
 				default:
-					throw SystemErrno(__cswiftslash_get_errno())
+					throw FileHandleError(errno:__cswiftslash_get_errno())
 			}
 		}
 		if (nonblockingReads == true) {

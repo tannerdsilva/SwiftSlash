@@ -78,13 +78,11 @@ extension Int32 {
 	/// - throws: FileHandleError.error_wouldblock, FileHandleError.error_bad_fh, FileHandleError.error_invalid, FileHandleError.error_io, FileHandleError.error_nospace, FileHandleError.error_unknown.
 	/// - note: error conditions for EAGAIN and EINTR are handled internally.
 	public func writeFH(_ dataToWrite:UnsafeBufferPointer<UInt8>) throws(FileHandleError) -> size_t {
-		return try writeFH(from:dataToWrite.baseAddress!, size: dataToWrite.count)
+		return try writeFH(from:dataToWrite.baseAddress!, size:dataToWrite.count)
 	}
 
 	public func writeFH(singleByte:consuming UInt8) throws(FileHandleError) -> size_t {
-		return try withUnsafePointer(to:&singleByte) { (bytePtr:UnsafePointer<UInt8>) throws(FileHandleError) -> size_t in
-			return try writeFH(UnsafeBufferPointer<UInt8>(start:bytePtr, count:1))
-		}
+		return try writeFH(from:&singleByte, size:1)
 	}
 
 	fileprivate func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws(FileHandleError) -> size_t {

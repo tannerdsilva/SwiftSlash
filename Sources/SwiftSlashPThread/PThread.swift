@@ -220,7 +220,7 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	}
 
 	@available(*, noasync, message:"function joinSync() is not async safe. it is only safe to call this function from the main thread.")
-	public borrowing func joinSync() throws(PThreadJoinFailure) {
+	public consuming func joinSync() throws(PThreadJoinFailure) {
 		// verify that the pthread has not already been joined
 		guard state.load(ordering:.acquiring) != .threadJoined else {
 			throw PThreadJoinFailure()
@@ -239,16 +239,16 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 			throw PThreadJoinFailure()
 		}
 		await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
-			withUnsafeMutablePointer(to:&self) { selfPtr in
+			withUnsafeMutablePointer(to:&self) { (selfPtr:UnsafeMutablePointer<Running<W>>) in
 				// join the pthread
 				guard pthread_join(selfPtr.pointee.ptp, nil) == 0 else {
 					fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
 				}
 				guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
-					fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+					fatalError("SwiftSlashPThread: pthread_join atomic operations tripped. this is a critical error. \(#file):\(#line)")
 				}
-				cont.resume()
 			}
+			cont.resume()
 		})
 	}
 
