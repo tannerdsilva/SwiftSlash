@@ -16,7 +16,7 @@ public enum FileHandleError:Swift.Error {
 	
 	case fcntlError;
 	
-	case error_unknown;
+	case error_unknown(Int32);
 	
 	case error_again;
 	case error_wouldblock;
@@ -25,6 +25,7 @@ public enum FileHandleError:Swift.Error {
 	case error_invalid;
 	case error_io;
 	case error_nospace;
+	case error_quota;
 	
 	case error_pipe;
 }

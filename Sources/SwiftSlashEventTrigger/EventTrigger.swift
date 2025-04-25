@@ -80,7 +80,7 @@ public final class EventTrigger:Sendable {
 
 	deinit {
 		// cancel the thread since it will still be running at this point
-		try? launchedThread.cancel()
+		try! launchedThread.cancel()
 		// signal to the polling infrastructure to unblock
 		_ = try! cancelPipe.writing.writeFH(singleByte:0x0)
 		// join the pthread
