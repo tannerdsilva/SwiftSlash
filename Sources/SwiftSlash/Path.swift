@@ -8,6 +8,10 @@ public struct Path:Sendable {
 	public init<S>(_ p:consuming S) where S:StringProtocol, S.SubSequence == Substring {
 		components = p.split(separator: "/", omittingEmptySubsequences:true).map(String.init)
 	}
+
+	public init(pathComponents:[String]) {
+		components = pathComponents
+	}
 	
 	/// appends a component to the path.
 	public mutating func appendPathComponent(_ component:consuming String) {

@@ -1,13 +1,13 @@
 public struct Command {
 	
 	/// the executable command to run. this should be an absolute path.
-	public var executable:String
+	public var executable:Path
 	/// the arguments to pass to the command.
 	public var arguments:[String]
 	/// the environment variables to set for the command.
 	public var environment:[String:String]
 	/// the working directory to run the command in.
-	public var workingDirectory:String
+	public var workingDirectory:Path
 
 	/// creates a new command.
 	/// - parameters:
@@ -16,10 +16,10 @@ public struct Command {
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
 	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
 	public init(
-		absolutePath execute:String,
+		absolutePath execute:Path,
 		arguments:[String] = [],
 		environment:[String:String] = [:],
-		workingDirectory:String = CurrentProcess.workingDirectory()
+		workingDirectory:Path = CurrentProcess.workingDirectory()
 	) {
 		executable = execute
 		self.arguments = arguments
@@ -31,10 +31,10 @@ public struct Command {
 	/// - parameters:
 	///		- execute: the relative path to execute.
 	public init(
-		_ execute:String,
+		_ execute:Path,
 		arguments:[String] = [],
 		environment:[String:String] = [:],
-		workingDirectory:String = CurrentProcess.workingDirectory()
+		workingDirectory:Path = CurrentProcess.workingDirectory()
 	) {
 		executable = execute
 		self.arguments = arguments

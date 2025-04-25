@@ -2,8 +2,11 @@ import SwiftSlashNAsyncStream
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
-/// represents a uni-directional stream of data that can exist between a parent process and a child process.
-public struct DataChannel {
+/// represents a uni-directional stream of data that can exist between a parent process and a child process. A data channel can only be one of two possible types...`ChildWriteParentRead` or `ChildReadParentWrite`.
+public enum DataChannel {
+
+	case childWriting(ChildWriteParentRead.Configuration)
+	case childReading(ChildReadParentWrite.Configuration)
 
 	// used for reading data that a running process writes.
 	public struct ChildWriteParentRead:Sendable {
@@ -16,10 +19,15 @@ public struct DataChannel {
 			case active(ChildWriteParentRead, [UInt8])
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it writes will go directly to /dev/null (never touches the parent process). as such, the parent process has no associated work to do in this configuration.
 			case nullPipe
+
+			/// returns a new configuration with unix-style line parsing `\n` aka `0x0A`
+			internal static func createDefaultConfiguration() -> Configuration {
+				return .active(.init(), [0x0A])
+			}
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		internal let nasync:NAsyncStream<[UInt8], Never>
+		internal let nasync:NAsyncStream<[UInt8], Never> = .init()
 
 		public struct AsyncIterator:~Copyable {
 			private let nasync:NAsyncStream<[UInt8], Never>.Consumer
@@ -58,7 +66,7 @@ public struct DataChannel {
 		}
 
 		// the underlying nasyncstream that this struct wraps
-		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>
+		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
 
 		// create a new outbound data channel
 		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {

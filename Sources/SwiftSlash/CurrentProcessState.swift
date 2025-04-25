@@ -45,7 +45,7 @@ extension CurrentProcess {
 	}
 
 	/// returns the current working directory path of the process the function is called from.
-	public static func workingDirectory() -> String {
+	public static func workingDirectory() -> Path {
 		let rawPointer = getcwd(nil, 0)
 		defer {
 			free(rawPointer)
@@ -53,10 +53,10 @@ extension CurrentProcess {
 		guard rawPointer != nil else {
 			fatalError("swiftslash - attempted to get the current working directory of current process (pid \(getpid()))...got a NULL string instead. \(#file):\(#line)")
 		}
-		return String(cString:rawPointer!)
+		return Path(String(cString:rawPointer!))
 	}
 
-	public static func searchPaths(executableName:String) throws -> String {
+	public static func searchPaths(executableName:String) throws -> Path {
 		var i = 0
 		mainLoop: while let curPtr = environ[i] {
 			defer {
@@ -84,7 +84,7 @@ extension CurrentProcess {
 				}
 
 				// the file exists, return the path
-				return curExecutablePath.path()
+				return curExecutablePath
 			}
 			i = i + 1
 
