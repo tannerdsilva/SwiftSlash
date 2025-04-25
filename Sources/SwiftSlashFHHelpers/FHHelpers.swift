@@ -95,7 +95,6 @@ extension Int32 {
 				// need to actually think about better ways to handle these at some point.
 				let errNo = __cswiftslash_get_errno()
 				switch errNo {
-
 					case EAGAIN:
 						continue infiniteLoop 
 					case EWOULDBLOCK:

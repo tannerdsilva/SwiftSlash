@@ -59,25 +59,13 @@ typedef void(* _Nonnull __cswiftslash_future_result_cncl_handler_f)(
 
 /// used to represent a thread that is synchronously waiting and blocking for the result of a future.
 typedef struct __cswiftslash_future_wait_t {
-	/// the context pointer that will be transparenly passed to the result handler.
 	const __cswiftslash_optr_t ____c;
-	/// reflects the synchronous state of the future waiter. true for sync, false for async.
 	const bool ____sy;
-	
-	/// the mutex that is used to block the thread until the future is complete. this is only used if the waiter is synchronous.
 	pthread_mutex_t ____rm;
-
-	/// the result handler to call when the future is complete.
 	const __cswiftslash_future_result_val_handler_f ____r;
-	/// the error handler to call when the future is complete.
 	const __cswiftslash_future_result_err_handler_f ____e;
-	/// the cancel handler to call when the future is cancelled and a result will never be available.
 	const __cswiftslash_future_result_cncl_handler_f ____v;
-
-	/// the waiter ID for the future waiter.
 	_Atomic uint64_t ____i;
-
-	/// has the individual waiter instance been cancelled?
 	_Atomic bool ____ic;
 } __cswiftslash_future_wait_t;
 
@@ -89,17 +77,10 @@ typedef __cswiftslash_future_wait_t *_Nonnull __cswiftslash_future_wait_ptr_t;
 
 /// a future that will either succeed with a pointer type and pointer, or fail with an error type and pointer.
 typedef struct __cswiftslash_future {
-	// internal status
 	_Atomic uint8_t ____s;
-	// internal mutex
 	pthread_mutex_t ____m;
-	
-	// result type
 	_Atomic uint8_t ____rt;
-	// result value
 	_Atomic __cswiftslash_optr_t ____rv;
-
-	// waiters
 	__cswiftslash_ptr_t ____wi;
 } __cswiftslash_future_t;
 

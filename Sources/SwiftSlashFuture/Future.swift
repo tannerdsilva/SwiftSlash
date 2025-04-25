@@ -159,6 +159,7 @@ extension Future {
 	/// cancel a waiter that was created with `whenResult`.
 	/// - parameters:
 	/// 	- waiterID: the id of the waiter to cancel.
+	/// - returns: true if the waiter was successfully cancelled, false if the waiter could not be cancelled.
 	@discardableResult public func cancelWaiter(_ waiterID:consuming UInt64) -> Bool {
 		return __cswiftslash_future_t_wait_async_invalidate(prim, waiterID)
 	}
@@ -205,7 +206,7 @@ extension Future {
 				}
 			} else {
 				if E.self == Never.self {
-					// task cancellation is set to never throw, so we can just wait for the result directly from the AsyncResult.
+					// task cancellation is set to never, so we can just wait for the result directly from the AsyncResult without any cancellation complications.
 					await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
 						__cswiftslash_future_t_wait_sync_block(prim, waiterPtr!)
 						cont.resume()
