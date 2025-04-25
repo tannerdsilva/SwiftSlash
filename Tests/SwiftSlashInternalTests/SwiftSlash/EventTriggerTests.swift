@@ -32,8 +32,8 @@ extension SwiftSlashTests {
 			let nextItem:size_t? = await asyncConsumer.next()
 			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(nextItem)")
 			try et.deregister(reader:newPipe.reading)
-			close(newPipe.reading)
-			close(newPipe.writing)
+			try newPipe.reading.closeFileHandle()
+			try newPipe.writing.closeFileHandle()
 		}
 		@Test("SwiftSlashEventTrigger :: writing registration", .timeLimit(.minutes(1)))
 		func writingRegistration() async throws {
@@ -45,8 +45,8 @@ extension SwiftSlashTests {
 			let nextItem:Void? = await asyncConsumer.next()
 			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")
 			try et.deregister(writer:newPipe.writing)
-			close(newPipe.reading)
-			close(newPipe.writing)
+			try newPipe.reading.closeFileHandle()
+			try newPipe.writing.closeFileHandle()
 		}
 	}
 }

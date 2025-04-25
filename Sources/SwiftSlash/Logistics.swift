@@ -109,7 +109,7 @@ internal struct ProcessLogistics {
 						] in
 							defer {
 								try! et.deregister(writer:fh)
-								wFH.closeFileHandle()
+								try! wFH.closeFileHandle()
 							}
 
 							let userDataConsume = userDataStream.makeAsyncConsumer()
@@ -191,7 +191,7 @@ internal struct ProcessLogistics {
 								// file handle should not remain registered after this task is complete.
 								try! et!.deregister(reader:fh)
 								// this is the only place where action happens with the file handle, 
-								rFH.closeFileHandle()
+								try! rFH.closeFileHandle()
 							}
 							// wait for the system to indicate that the file handle is ready for reading.
 							readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
@@ -226,11 +226,11 @@ internal struct ProcessLogistics {
 			for (_, possibleEnabledWriter) in writePipes {
 				if nullPipes.contains(possibleEnabledWriter) == false {
 					// the user configured this pipe to be "enabled" so we must close the reading end of the pipe
-					possibleEnabledWriter.reading.closeFileHandle()
+					try! possibleEnabledWriter.reading.closeFileHandle()
 				} else {
 					// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-					possibleEnabledWriter.writing.closeFileHandle()
-					possibleEnabledWriter.reading.closeFileHandle()
+					try! possibleEnabledWriter.writing.closeFileHandle()
+					try! possibleEnabledWriter.reading.closeFileHandle()
 				}
 			}
 
@@ -238,11 +238,11 @@ internal struct ProcessLogistics {
 			for (_, possibleEnabledReader) in readPipes {
 				if nullPipes.contains(possibleEnabledReader) == false {
 					// the user configured this pipe to be "enabled" so we must close the writing end of the pipe
-					possibleEnabledReader.writing.closeFileHandle()
+					try! possibleEnabledReader.writing.closeFileHandle()
 				} else {
 					// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-					possibleEnabledReader.writing.closeFileHandle()
-					possibleEnabledReader.reading.closeFileHandle()
+					try! possibleEnabledReader.writing.closeFileHandle()
+					try! possibleEnabledReader.reading.closeFileHandle()
 				}
 			}
 			return launchedPID
@@ -268,13 +268,17 @@ internal struct ProcessLogistics {
 		func prepareLaunch() -> Never { 
 			
 			// close the reading end of the internal pipe immediately after fork. the parent process will be reading, our job is to write.
-			internalNotify.reading.closeFileHandle()
+			do {
+				try internalNotify.reading.closeFileHandle()
+			} catch {
+				exit(Int32(ProcessSpawnError.posixPipeInitialCleanupFailure.rawValue))
+			}
 
 			// change the working directory.
 			guard chdir(wd) == 0 else {
 				// pass the error condition to the parent process.
 				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.chdirFailure.rawValue)
-				internalNotify.writing.closeFileHandle()
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.chdirFailure.rawValue))
 			}
 
@@ -282,7 +286,7 @@ internal struct ProcessLogistics {
 			guard CurrentProcess.clearEnvironmentVariables() == 0 else {
 				// pass the error condition to the parent process.
 				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.envClearFailure.rawValue)
-				internalNotify.writing.closeFileHandle()
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.envClearFailure.rawValue))
 			}
 
@@ -291,7 +295,7 @@ internal struct ProcessLogistics {
 				guard setenv(key, value, 1) == 0 else {
 					// pass the error condition to the parent process.
 					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.envSetFailure.rawValue)
-					internalNotify.writing.closeFileHandle()
+					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.envSetFailure.rawValue))
 				}
 			}
@@ -301,11 +305,15 @@ internal struct ProcessLogistics {
 				guard dup2(reader.value.reading, reader.key) != -1 else {
 					// pass the error condition to the parent process.
 					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2ReaderFailure.rawValue)
-					internalNotify.writing.closeFileHandle()
+					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.dup2ReaderFailure.rawValue))
 				}
-				close(reader.value.reading)
-				close(reader.value.writing)
+				do {
+					try reader.value.reading.closeFileHandle()
+					try reader.value.writing.closeFileHandle()
+				} catch {
+					exit(Int32(ProcessSpawnError.readerPipeCleanupFailure.rawValue))
+				}
 			}
 
 			// assign the writing pipes to the child process.
@@ -313,16 +321,20 @@ internal struct ProcessLogistics {
 				guard dup2(writer.value.writing, writer.key) != -1 else {
 					// pass the error condition to the parent process.
 					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2WriterFailure.rawValue)
-					internalNotify.writing.closeFileHandle()
+					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.dup2WriterFailure.rawValue))
 				}
-				close(writer.value.reading)
-				close(writer.value.writing)
+				do {
+					try writer.value.reading.closeFileHandle()
+					try writer.value.writing.closeFileHandle()
+				} catch {
+					exit(Int32(ProcessSpawnError.writerPipeCleanupFailure.rawValue))
+				}
 			}
 
 			// loop to determine which file handles are open and close any that are not intended for this launch.
 			// i dont love that this has to be here but theres no better way to reliably determine which file handles are open on the current process, let alone doing so in a remotely cross platform way.
-			// as it sits, I'd much rather have this loop than have no fh cleanup at all. after all, the launches are serialized, so this isn't going to have a tangible impact on performance.
+			// as it sits, I'd much rather have this loop than have no fh cleanup at all.
 			// file handles are a huge security concern, so this is an effort worth making.
 			#if os(Linux)
 			let fdPath = "/proc/self/fd"
@@ -332,7 +344,7 @@ internal struct ProcessLogistics {
 			guard let openFileHandlesPointer = opendir(fdPath) else {
 				// pass the error condition to the parent process.
 				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupDirOpenFailure.rawValue)
-				internalNotify.writing.closeFileHandle()
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.fhCleanupDirOpenFailure.rawValue))
 			}
 			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
@@ -341,10 +353,12 @@ internal struct ProcessLogistics {
 					if fdString.contains(".") == false {
 						let curFh = atoi(fdString)
 						if writePipes[curFh] == nil && readPipes[curFh] == nil {
-							guard close(curFh) == 0 else {
+							do {
+								try curFh.closeFileHandle()
+							} catch {
 								// pass the error condition to the parent process.
 								_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupCloseFailure.rawValue)
-								internalNotify.writing.closeFileHandle()
+								try? internalNotify.writing.closeFileHandle()
 								exit(Int32(ProcessSpawnError.fhCleanupCloseFailure.rawValue))
 							}
 						}
@@ -354,10 +368,17 @@ internal struct ProcessLogistics {
 			guard closedir(openFileHandlesPointer) == 0 else {
 				// pass the error condition to the parent process.
 				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupDirCloseFailure.rawValue)
-				internalNotify.writing.closeFileHandle()
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.fhCleanupDirCloseFailure.rawValue))
 			}
-			internalNotify.writing.closeFileHandle()
+			
+			// clean up the internal pipe
+			do {
+				try internalNotify.writing.closeFileHandle()
+			} catch {
+				exit(Int32(ProcessSpawnError.posixPipeFinalCleanupFailure.rawValue))
+			}
+			// run the process
 			__cswiftslash_execvp(path, arguments)
 			exit(0)
 		}
@@ -368,8 +389,8 @@ internal struct ProcessLogistics {
 
 		switch forkResult {
 			case -1:
-				internalNotify.writing.closeFileHandle()
-				internalNotify.reading.closeFileHandle()
+				try! internalNotify.writing.closeFileHandle()
+				try! internalNotify.reading.closeFileHandle()
 				throw ProcessSpawnError.forkFailure
 			case 0:
 				// in child: successful fork
@@ -377,9 +398,9 @@ internal struct ProcessLogistics {
 			default:
 				// in parent: successful fork
 				// close the writing end of the internal pipe immediately after fork. the child process will be writing here, our job is to read the other end.
-				internalNotify.writing.closeFileHandle()
+				try! internalNotify.writing.closeFileHandle()
 				defer {
-					internalNotify.reading.closeFileHandle()
+					try! internalNotify.reading.closeFileHandle()
 				}
 				
 				// wait for the child process to signal that it is ready to be configured.

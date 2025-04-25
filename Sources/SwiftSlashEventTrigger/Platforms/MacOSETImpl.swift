@@ -151,8 +151,8 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 		return kqueue()
 	}
 
-	internal static func closePrimitive(_ prim:consuming EventTriggerHandle) {
-		close(prim)
+	internal static func closePrimitive(_ prim:consuming EventTriggerHandle) throws(FileHandleError) {
+		try prim.closeFileHandle()
 	}
 }
 

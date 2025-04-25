@@ -47,7 +47,7 @@ public final class EventTrigger:Sendable {
 		do {
 			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream, cancelPipe:cancelPipe))
 		} catch let error {
-			PlatformSpecificETImplementation.closePrimitive(p)
+			try PlatformSpecificETImplementation.closePrimitive(p)
 			throw error
 		}
 		launchedThread = lt
@@ -88,10 +88,10 @@ public final class EventTrigger:Sendable {
 		// deregister the cancel pipe from the event trigger
 		try! PlatformSpecificETImplementation.deregister(prim!, reader:cancelPipe.reading)
 		// close the polling primitive
-		PlatformSpecificETImplementation.closePrimitive(prim!)
+		try! PlatformSpecificETImplementation.closePrimitive(prim!)
 		// cancel pipe has served its purpose so we can close it
-		cancelPipe.writing.closeFileHandle()
+		try! cancelPipe.writing.closeFileHandle()
 		// close the writing end of the close pipe
-		cancelPipe.reading.closeFileHandle()
+		try! cancelPipe.reading.closeFileHandle()
 	}
 }
