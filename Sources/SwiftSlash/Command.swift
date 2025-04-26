@@ -1,4 +1,4 @@
-public struct Command {
+public struct Command:Sendable {
 	
 	/// the executable command to run. this should be an absolute path.
 	public var executable:Path
@@ -16,29 +16,41 @@ public struct Command {
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
 	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
 	public init(
-		absolutePath execute:Path,
-		arguments:[String] = [],
-		environment:[String:String] = [:],
-		workingDirectory:Path = CurrentProcess.workingDirectory()
+		absolutePath execute:consuming Path,
+		arguments args:consuming [String] = [],
+		environment envs:consuming [String:String] = [:],
+		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
 	) {
 		executable = execute
-		self.arguments = arguments
-		self.environment = environment
-		self.workingDirectory = workingDirectory
+		arguments = args
+		environment = envs
+		workingDirectory = wd
 	}
 
 	/// creates a new command with a relative executable name.
 	/// - parameters:
 	///		- execute: the relative path to execute.
-	public init(
-		_ execute:Path,
-		arguments:[String] = [],
-		environment:[String:String] = [:],
-		workingDirectory:Path = CurrentProcess.workingDirectory()
+	/*public init(
+		_ execute:consuming Path,
+		arguments args:consuming [String] = [],
+		environment envs:consuming [String:String] = [:],
+		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
 	) {
 		executable = execute
-		self.arguments = arguments
-		self.environment = environment
-		self.workingDirectory = workingDirectory
+		arguments = args
+		environment = envs
+		workingDirectory = wd
+	}*/
+}
+
+extension Command:Hashable, Equatable{
+	public static func == (lhs:Command, rhs:Command) -> Bool {
+		return lhs.executable == rhs.executable && lhs.arguments == rhs.arguments && lhs.environment == rhs.environment && lhs.workingDirectory == rhs.workingDirectory
+	}
+	public func hash(into hasher:inout Hasher) {
+		hasher.combine(executable)
+		hasher.combine(arguments)
+		hasher.combine(environment)
+		hasher.combine(workingDirectory)
 	}
 }

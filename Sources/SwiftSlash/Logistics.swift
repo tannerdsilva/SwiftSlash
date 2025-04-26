@@ -5,21 +5,27 @@ import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
 import SwiftSlashLineParser
 
+internal enum WaitPIDResult {
+	case signaled(Int32)
+	case exited(Int32)
+	case failed(errno:Int32)
+}
 extension pid_t {
-	fileprivate func waitPID() async throws(WaitPIDError) {
+	internal func waitPID() async -> WaitPIDResult {
 		let (returnValue, statusValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(pid_t, Int32), Never>) in
 			var statusCapture:Int32 = 0
 			let wpidReturn = waitpid(self, &statusCapture, 0)
 			continuation.resume(returning:(wpidReturn, statusCapture))
 		})
 		guard returnValue == self else {
-			throw WaitPIDError(errnoValue:__cswiftslash_get_errno())
+			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
 		}
 		if __cswiftslash_eventtrigger_wifsignaled(statusValue) != 0 {
-
+			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusValue))
 		} else if __cswiftslash_eventtrigger_wifexited(statusValue) != 0 {
-			
+			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusValue))
 		}
+		fatalError("swiftslash - internal error \(#file):\(#line)")
 	}
 }
 
@@ -67,7 +73,7 @@ internal struct ProcessLogistics {
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger? = nil
-	@SerializedLaunch fileprivate static func launch(package:consuming LaunchPackage, taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) async throws -> pid_t {
+	@SerializedLaunch internal static func launch(package:consuming LaunchPackage) async throws -> pid_t {
 		if eventTrigger == nil {
 			eventTrigger = try await EventTrigger()
 		}
@@ -96,7 +102,7 @@ internal struct ProcessLogistics {
 						writePipes[fh] = newPipe
 						
 						// launch the writing handler task.
-						taskGroup.addTask { [ // capture some things from the current scope before escaping into the task.
+						Task { [ // capture some things from the current scope before escaping into the task.
 							/// the user data stream that will be written to the file handle. this is where we will consume the data the user wants to write. we have an obligation to ensure the user cant pass any futures into this that we cannot fufill. therefore, finishing this and handling any contents before returning is a must.
 							userDataStream = channel,
 							// claim the consumer for the system write event stream.
@@ -175,7 +181,7 @@ internal struct ProcessLogistics {
 
 						// close the writing end of the pipe after fork.
 						readPipes[fh] = newPipe
-						taskGroup.addTask { [
+						Task { [
 							/// the user data stream that we will pass the parsed data into. the main purpose of this task is to execute the read when the system indicates it is time to do so. the data is then passed into a line parser that is configured to the users specifications. the resulting output of the line parser will go through this channel.
 							userDataStream = channel,
 							/// this is the FIFO that the system uses to signal to this task that it is time to read from the file handle.

@@ -18,23 +18,29 @@ public actor ProcessInterface {
 		case failed(Int32)
 	}
 	/// the current operating state of the process. this is a primary pillar of logic for the ProcessInterface functionality.
-	public private(set) var curState:State = .initialized
+	public private(set) var state:State = .initialized
 
 	private let command:Command
 
+	public init(
+		_ command:consuming Command
+	) {
+		self.command = command
+	}
+
 	/// stores all of the data channels that the process will write to.
 	private var outbound:[Int32:DataChannel.ChildWriteParentRead.Configuration] = [
-		STDOUT_FILENO:.createDefaultConfiguration(),
-		STDERR_FILENO:.createDefaultConfiguration()
+		STDOUT_FILENO:.createActiveConfiguration(),
+		STDERR_FILENO:.createActiveConfiguration()
 	]
 	/// stores all of the data channels that the process will read from.
 	private var inbound:[Int32:DataChannel.ChildReadParentWrite.Configuration] = [
-		STDIN_FILENO:.active(.init())
+		STDIN_FILENO:.active(stream:.init())
 	]
-	/// access or assign a writable data stream to the process of a specified file handle value.
+	/*/// access or assign a writable data stream to the process of a specified file handle value.
 	public subscript(writer fh:Int32) -> DataChannel.ChildWriteParentRead.Configuration? {
 		set {
-			switch curState {
+			switch state {
 				case .initialized:
 					guard inbound[fh] == nil else {
 						fatalError("SwiftSlash critical error :: cannot assign a writing data stream when a reader has already been configured for the same handle value.")
@@ -52,7 +58,7 @@ public actor ProcessInterface {
 	/// access or assign a readable data stream to the process of a specified file handle value.
 	public subscript(reader fh:Int32) -> DataChannel.ChildReadParentWrite.Configuration? {
 		set {
-			switch curState {
+			switch state {
 				case .initialized:
 					guard outbound[fh] == nil else {
 						fatalError("SwiftSlash critical error :: cannot assign a reading data stream when a writer has already been configured for the same handle value.")
@@ -76,14 +82,26 @@ public actor ProcessInterface {
 			buildChannels[fh] = .childReading(curIn)
 		}
 		return buildChannels
-	}
+	}*/
 
-	public borrowing func launch() async throws {
+	public borrowing func runChildProcess() async throws {
 		// check the current state of the process.
-		switch curState {
+		switch state {
 			case .initialized:
-				curState = .launching
-				let launchPackage = ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment)
+				state = .launching
+				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+					let launchedPID = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound), taskGroup:tg)
+					// state = .running(launchedPID)
+					// switch await launchedPID.waitPID() {
+					// 	case .exited(let exitCode):
+					// 		state = .exited(exitCode)
+					// 	case .signaled(let sigCode):
+					// 		state = .signaled(sigCode)
+					// 	default:
+					// 		fatalError("SwiftSlash critical error :: process exited with an unknown state.")
+					// }
+					// try await tg.waitForAll()
+				}
 				break;
 			case .launching:
 				throw Error.processAlreadyLaunched
@@ -98,7 +116,7 @@ public actor ProcessInterface {
 			case .failed(_):
 				throw Error.processAlreadyLaunched
 		}
-		curState = .launching
+		state = .launching
 	}
 }
 

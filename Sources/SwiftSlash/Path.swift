@@ -56,3 +56,14 @@ extension String {
 		self = p.path()
 	}
 }
+
+extension Path:Hashable, Equatable {
+	/// hashable protocol implementation
+	public func hash(into hasher:inout Hasher) {
+		hasher.combine(components)
+	}
+	/// equatable protocol implementation
+	public static func == (lhs:Path, rhs:Path) -> Bool {
+		return lhs.components == rhs.components
+	}
+}

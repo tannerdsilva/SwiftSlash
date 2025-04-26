@@ -9,40 +9,50 @@ public enum DataChannel {
 	case childReading(ChildReadParentWrite.Configuration)
 
 	// used for reading data that a running process writes.
-	public struct ChildWriteParentRead:Sendable {
+	public struct ChildWriteParentRead:Sendable, AsyncSequence {
+	    public borrowing func makeAsyncIterator() -> AsyncIterator {
+	        return AsyncIterator(nasync.makeAsyncConsumer())
+	    }
+
+	    public typealias Element = [UInt8]
+
 
 		/// specifies a configuration for an inbound data channel.
 		public enum Configuration {
 			/// configure the child process to write to this data channel as this running process reads from it.
 			/// - parameters:
-			/// 	1. the line separator to use when reading the data from the channel.
-			case active(ChildWriteParentRead, [UInt8])
+			/// 	- parameter stream: the stream that the child process will write to.
+			/// 	- parameter separator: the byte sequence that will be used to separate the data chunks. this is used for line parsing. if this is not provided, the default value of `\n` aka `0x0A` will be used.
+			case active(stream:ChildWriteParentRead, separator:[UInt8])
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it writes will go directly to /dev/null (never touches the parent process). as such, the parent process has no associated work to do in this configuration.
 			case nullPipe
 
 			/// returns a new configuration with unix-style line parsing `\n` aka `0x0A`
-			internal static func createDefaultConfiguration() -> Configuration {
-				return .active(.init(), [0x0A])
+			public static func createActiveConfiguration(separator:[UInt8]? = nil) -> Configuration {
+				if separator != nil {
+					return .active(stream:.init(), separator:separator!)
+				} else {
+					return .active(stream:.init(), separator:[0x0A])
+				}
 			}
 		}
 
-		// the underlying nasyncstream that this struct wraps
+		/// the underlying nasyncstream that this struct wraps
 		internal let nasync:NAsyncStream<[UInt8], Never> = .init()
 
-		public struct AsyncIterator:~Copyable {
+		/// initialize a new data channel that the child process will write to and the calling process will read from.
+		public init() {}
+
+		public final class AsyncIterator:AsyncIteratorProtocol {
 			private let nasync:NAsyncStream<[UInt8], Never>.Consumer
 
-			internal init(nasync:consuming NAsyncStream<[UInt8], Never>.Consumer) {
+			internal init(_ nasync:consuming NAsyncStream<[UInt8], Never>.Consumer) {
 				self.nasync = nasync
 			}
 
 			public borrowing func next() async -> [UInt8]? {
 				return await nasync.next(whenTaskCancelled:.finish)
 			}
-		}
-
-		public borrowing func makeAsyncConsumer() -> NAsyncStream<[UInt8], Never>.Consumer {
-			return nasync.makeAsyncConsumer()
 		}
 
 		internal borrowing func yield(_ element:consuming [UInt8]) {
@@ -60,7 +70,7 @@ public enum DataChannel {
 		/// specifies a configuration for an outbound data channel.
 		public enum Configuration {
 			/// configure the swiftslash to write to this data channel as the running process reads from it.
-			case active(ChildReadParentWrite)
+			case active(stream:ChildReadParentWrite)
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it reads will come directly from /dev/null. as such, the parent process has no associated work to do in this configuration.
 			case nullPipe
 		}
