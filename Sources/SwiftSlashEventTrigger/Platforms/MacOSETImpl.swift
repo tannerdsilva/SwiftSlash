@@ -124,11 +124,13 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 
 								// reader close.
+								try Self.deregister(prim, reader:curIdent)
 								readersDataOut.removeValue(forKey:curIdent)!.finish()
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
+								try Self.deregister(prim, writer:curIdent)
 								writersDataTrigger.removeValue(forKey:curIdent)!.finish()
 							}
 						}

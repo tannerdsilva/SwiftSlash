@@ -27,6 +27,11 @@ copyright (c) tanner silva 2025. all rights reserved.
 /// @return the result of the fork function call.
 pid_t __cswiftslash_fork();
 
+/// check the specified path to ensure execvp will not fail if using it as an executable.
+/// @param file the file path to check.
+/// @return 0 if the file is a valid executable, -1 if it is not and errno is set.
+int __cswiftslash_execvp_safetycheck(const char *path);
+
 /// swift compiler will not allow for calling execvp directly, so this function is a wrapper around the execvp function.
 /// @param file the file path to execute.
 /// @param argv the arguments to pass to the executing file path.

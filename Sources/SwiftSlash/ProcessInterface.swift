@@ -92,9 +92,9 @@ public actor ProcessInterface {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					let preapredPackage = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound))
 					state = .running(preapredPackage.launchedPID)
-					// for curWrite in preapredPackage.writeTasks {
-					// 	curWrite.launch(taskGroup:&tg)
-					// }
+					for curWrite in preapredPackage.writeTasks {
+						curWrite.launch(taskGroup:&tg)
+					}
 					for curRead in preapredPackage.readTasks {
 						curRead.launch(taskGroup:&tg)
 					}
@@ -111,6 +111,13 @@ public actor ProcessInterface {
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
 					}
+					for curWrite in preapredPackage.writeTasks {
+						curWrite.processExited()
+					}
+					for curRead in preapredPackage.readTasks {
+						curRead.processExited()
+					}
+					try await tg.waitForAll()
 				}
 				break;
 			case .launching:

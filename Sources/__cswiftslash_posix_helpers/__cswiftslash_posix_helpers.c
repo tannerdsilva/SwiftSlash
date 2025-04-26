@@ -17,6 +17,21 @@ pid_t __cswiftslash_fork() {
 	return fork();
 }
 
+int __cswiftslash_execvp_safetycheck(const char *path) {
+	struct stat sb;
+	if (stat(path, &sb) < 0) {
+		return -1;
+	}
+	if (!S_ISREG(sb.st_mode)) {
+		errno = EACCES;
+		return -1;
+	}
+	if (access(path, X_OK) < 0) {
+		return -1;
+	}
+	return 0;
+}
+
 int __cswiftslash_execvp(const char *file, char *const argv[]) {
 	return execvp(file, argv);
 }

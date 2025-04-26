@@ -32,7 +32,7 @@ fileprivate struct BufferLogistics:~Copyable {
 		occupied += written
 	}
 
-	fileprivate mutating func process(_ accessHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t?) rethrows {
+	fileprivate mutating func process(_ accessHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t?) rethrows -> size_t?{
 		let stride = try accessHandler(UnsafeMutableBufferPointer<UInt8>(start:intakebuff.baseAddress, count:occupied))
 		#if DEBUG
 		if stride != nil {
@@ -45,6 +45,7 @@ fileprivate struct BufferLogistics:~Copyable {
 			occupied -= stride!
 			memmove(intakebuff.baseAddress!, intakebuff.baseAddress! + stride!, occupied)
 		}
+		return stride
 	}
 
 	/// prepare the buffer to accept the specified number of bytes.

@@ -108,12 +108,13 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 
 							// reading handle closed
+							try Self.deregister(prim, reader:curIdent)
 							readersDataOut.removeValue(forKey:currentEvent.data.fd)!.finish()
 
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							// fatalError("TESTING I HOPE THIS HAPPENS \(#file):\(#line)")
+							try Self.deregister(prim, writer:curIdent)
 							writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!.finish()
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {

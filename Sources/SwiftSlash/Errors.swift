@@ -17,6 +17,8 @@ public struct WaitPIDError:Swift.Error {
 
 /// describes an error in the process spawning function. these are generally considered to be errors that can be thrown after the child process has been launched but before it has finished configuring itself for the specified work.
 public enum ProcessSpawnError:UInt8, Swift.Error {
+	/// thrown when the specified command is not a valid executable that can be run as a child process.
+	case execSafetyCheckFailure = 0x00
 	/// describes a failure to change the working directory of the child process.
 	case chdirFailure = 0xAA
 	/// describes a failure to clear the environment variables of the child process.

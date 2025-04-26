@@ -47,19 +47,20 @@ internal struct ProcessLogistics {
 		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
 
 		fileprivate borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
+			let buildArgs = [exe.path()] + arguments
 			// declare the base array for the arguments. the last element of the array is nil.
-			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:arguments.count + 1)
+			let baseArray = UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>.allocate(capacity:buildArgs.count + 1)
 			defer {
 				baseArray.deallocate()
 			}
 			// populate the base array with the arguments.
-			for (i, arg) in arguments.enumerated() {
+			for (i, arg) in buildArgs.enumerated() {
 				baseArray[i] = strndup(arg, arg.count)
 			}
 			// cap the base array with nil.
-			baseArray[arguments.count] = nil
+			baseArray[buildArgs.count] = nil
 			defer {
-				for i in 0..<arguments.count {
+				for i in 0..<buildArgs.count {
 					free(baseArray[i])
 				}
 			}
@@ -76,10 +77,13 @@ internal struct ProcessLogistics {
 				internal let writeConsumerFIFO:FIFO<Void, Never>
 				internal let wFH:Int32
 				internal let eventTrigger:EventTrigger
+				internal borrowing func processExited() {
+					// fatalError("swiftslash - inte/rnal error \(#file):\(#line)")
+					userDataStream.finish()
+				}
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumer()] in
 						defer {
-							try! eventTrigger.deregister(writer:wFH)
 							try! wFH.closeFileHandle()
 						}
 
@@ -104,11 +108,9 @@ internal struct ProcessLogistics {
 									if currentWriteStep == nil {
 										if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
 											// apply this as the data we will step through in one or more writes.
-											fatalError("swiftslash - internal error \(#file):\(#line)")
 											currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
 										} else {
 											// user is ready for this stream to be closed.
-											fatalError("swiftslash - internal error \(#file):\(#line)")
 											break systemEventLoop
 										}
 									}
@@ -126,9 +128,7 @@ internal struct ProcessLogistics {
 								continue systemEventLoop
 							}
 						}
-						fatalError("swiftslash - internal error \(#file):\(#line)")
 						await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
-						fatalError("swiftslash - internal error \(#file):\(#line)")
 					}
 				}
 			}
@@ -138,15 +138,17 @@ internal struct ProcessLogistics {
 				internal let systemReadEventsFIFO:FIFO<size_t, Never>
 				internal let rFH:Int32
 				internal let eventTrigger:EventTrigger
+				internal borrowing func processExited() {
+					userDataStream.finish()
+				}
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer()] in
 						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
 						var lineParser = LineParser(separator:separator, nasync:userDataStream.nasync)
 						defer {
-							// file handle should not remain registered after this task is complete.
-							try! eventTrigger.deregister(reader:rFH)
 							// this is the only place where action happens with the file handle, 
 							try! rFH.closeFileHandle()
+							lineParser.finish()
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
 						var largestReadSize = 256
@@ -164,17 +166,24 @@ internal struct ProcessLogistics {
 								continue readLoop
 							}
 						}
-						finalRead: repeat {
+						// fatalError("swiftslash - internal error \(#file):\(#line)")
+						// finalRead: repeat {
 							do {
 								// prepare the lineparser to intake the data.
+								// var readSize:Int = 0
 								try lineParser.intake(bytes:largestReadSize) { wptr in
 									// read the data directly from the handle to the lineparser.
 									return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
 								}
+								// fatalError("swiftslash - internal error \(#file):\(#line)")
 							} catch FileHandleError.error_wouldblock {
-								break finalRead;
+								fatalError("swiftslash - internal ERROR BTICH \(#file):\(#line)")
+								
+							} catch let error {
+								fatalError("swiftslash - internal error \(#file):\(#line) \(error)")
 							}
-						} while true
+
+						// } while true
 					}
 				}
 			}
@@ -303,6 +312,11 @@ internal struct ProcessLogistics {
 	}
 
 	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
+		// verify that the exec path passes initial validation.
+		guard __cswiftslash_execvp_safetycheck(path) == 0 else {
+			throw ProcessSpawnError.execSafetyCheckFailure
+		}
+		
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify:PosixPipe
 		do {

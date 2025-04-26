@@ -18,7 +18,7 @@ public struct Command:Sendable {
 	public init(
 		absolutePath execute:consuming Path,
 		arguments args:consuming [String] = [],
-		environment envs:consuming [String:String] = [:],
+		environment envs:consuming [String:String] = CurrentProcess.environmentVariables(),
 		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
 	) {
 		executable = execute
