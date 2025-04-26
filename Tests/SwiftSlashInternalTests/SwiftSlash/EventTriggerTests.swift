@@ -16,7 +16,7 @@ extension SwiftSlashTests {
 	struct EventTriggerTests {
 		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))
 		func initializationBasics() async throws {
-			var et:EventTrigger? = try await EventTrigger()
+			var et:EventTrigger? = try EventTrigger()
 			#expect(et != nil)
 			et = nil
 			#expect(et == nil)
@@ -26,11 +26,11 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let readingFIFO = FIFO<size_t, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
-			let et = try await EventTrigger()
+			let et = try EventTrigger()
 			try et.register(reader:newPipe.reading, readingFIFO)
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
 			let nextItem:size_t? = await asyncConsumer.next()
-			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(nextItem)")
+			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(String(describing:nextItem))")
 			try et.deregister(reader:newPipe.reading)
 			try newPipe.reading.closeFileHandle()
 			try newPipe.writing.closeFileHandle()
@@ -39,8 +39,8 @@ extension SwiftSlashTests {
 		func writingRegistration() async throws {
 			let newPipe = try PosixPipe()
 			let writingFIFO = FIFO<Void, Never>()
-			let asyncConsumer = writingFIFO.makeAsyncConsumer()
-			let et = try await EventTrigger()
+			let asyncConsumer: FIFO<Void, Never>.AsyncConsumer = writingFIFO.makeAsyncConsumer()
+			let et = try EventTrigger()
 			try et.register(writer:newPipe.writing, writingFIFO)
 			let nextItem:Void? = await asyncConsumer.next()
 			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")

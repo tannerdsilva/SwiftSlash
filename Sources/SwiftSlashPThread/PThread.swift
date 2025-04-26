@@ -23,7 +23,7 @@ public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async th
 }
 
 /// launch a pthread with a given function and return the running pthread.
-public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
+public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
 	return try GenericPThread.launch(work)
 }
 
