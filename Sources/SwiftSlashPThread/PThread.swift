@@ -18,23 +18,21 @@ import Synchronization
 
 /// runs any given arbitrary function on a newly created pthread.
 public func run<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Result<R, Swift.Error>? where R:Sendable {
-	let launchedThread = try await GenericPThread.launch(work)
+	let launchedThread = try GenericPThread.launch(work)
 	return await launchedThread.workResult()
 }
 
 /// launch a pthread with a given function and return the running pthread.
 public func launch<R>(_ work:consuming @escaping @Sendable () throws -> R) async throws(PThreadLaunchFailure) -> Running<GenericPThread<R>> where R:Sendable {
-	return try await GenericPThread.launch(work)
+	return try GenericPThread.launch(work)
 }
 
 extension PThreadWork {
-	public static func launch(_ arg:consuming ArgumentType) async throws(PThreadLaunchFailure) -> Running<Self> {
-		return try await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Running<Self>, PThreadLaunchFailure>, Never>) in
-			continuation.resume(returning:launchPThread(work:Self.self, argument:arg))
-		}).get()
+	public static func launch(_ arg:consuming ArgumentType) throws(PThreadLaunchFailure) -> Running<Self> {
+		return try launchPThread(work:Self.self, argument:arg).get()
 	}
 	public static func run(_ arg:consuming ArgumentType) async throws -> Result<ReturnType, ThrowType>? {
-		let launched = try await Self.launch(arg)
+		let launched = try Self.launch(arg)
 		return try await launched.workResult(throwingOnCurrentTaskCancellation:CancellationError.self, taskCancellationError:CancellationError())
 	}
 }

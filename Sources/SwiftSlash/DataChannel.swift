@@ -8,7 +8,7 @@ public enum DataChannel {
 	case childWriting(ChildWriteParentRead.Configuration)
 	case childReading(ChildReadParentWrite.Configuration)
 
-	// used for reading data that a running process writes.
+	/// used for reading data that a running process writes.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
 	    public borrowing func makeAsyncIterator() -> AsyncIterator {
 	        return AsyncIterator(nasync.makeAsyncConsumer())
@@ -18,7 +18,7 @@ public enum DataChannel {
 
 
 		/// specifies a configuration for an inbound data channel.
-		public enum Configuration {
+		public enum Configuration:Sendable {
 			/// configure the child process to write to this data channel as this running process reads from it.
 			/// - parameters:
 			/// 	- parameter stream: the stream that the child process will write to.
@@ -64,11 +64,11 @@ public enum DataChannel {
 		}
 	}
 
-	// used for writing data that a running process reads.
+	/// used for writing data that a running process reads.
 	public struct ChildReadParentWrite:Sendable {
 
 		/// specifies a configuration for an outbound data channel.
-		public enum Configuration {
+		public enum Configuration:Sendable {
 			/// configure the swiftslash to write to this data channel as the running process reads from it.
 			case active(stream:ChildReadParentWrite)
 			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it reads will come directly from /dev/null. as such, the parent process has no associated work to do in this configuration.

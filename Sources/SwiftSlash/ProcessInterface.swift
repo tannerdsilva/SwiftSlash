@@ -84,23 +84,29 @@ public actor ProcessInterface {
 		return buildChannels
 	}*/
 
-	public borrowing func runChildProcess() async throws {
+	public func runChildProcess() async throws {
 		// check the current state of the process.
 		switch state {
 			case .initialized:
 				state = .launching
-				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
-					let launchedPID = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound), taskGroup:tg)
-					// state = .running(launchedPID)
-					// switch await launchedPID.waitPID() {
-					// 	case .exited(let exitCode):
-					// 		state = .exited(exitCode)
-					// 	case .signaled(let sigCode):
-					// 		state = .signaled(sigCode)
-					// 	default:
-					// 		fatalError("SwiftSlash critical error :: process exited with an unknown state.")
-					// }
-					// try await tg.waitForAll()
+				try await withThrowingTaskGroup(of:Void.self) { tg in
+					let preapredPackage = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound))
+					state = .running(preapredPackage.launchedPID)
+					for curWrite in preapredPackage.writeTasks {
+						curWrite.launch(taskGroup:&tg)
+					}
+					for curRead in preapredPackage.readTasks {
+						curRead.launch(taskGroup:&tg)
+					}
+					switch await preapredPackage.launchedPID.waitPID() {
+						case .exited(let exitCode):
+							state = .exited(exitCode)
+						case .signaled(let sigCode):
+							state = .signaled(sigCode)
+						default:
+							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
+					}
+					try await tg.waitForAll()
 				}
 				break;
 			case .launching:

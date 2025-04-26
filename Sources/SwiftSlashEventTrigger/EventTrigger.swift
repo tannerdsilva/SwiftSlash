@@ -38,14 +38,14 @@ public final class EventTrigger:Sendable {
 	private let cancelPipe:PosixPipe
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
-	public init() async throws {
+	public init() throws {
 		cancelPipe = try PosixPipe()
 		regStream = FIFO<Register, Never>()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
 		do {
-			lt = try await PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream, cancelPipe:cancelPipe))
+			lt = try PlatformSpecificETImplementation.launch(EventTriggerSetup(handle:p, registersIn:regStream, cancelPipe:cancelPipe))
 		} catch let error {
 			try PlatformSpecificETImplementation.closePrimitive(p)
 			throw error
