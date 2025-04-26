@@ -92,20 +92,22 @@ public actor ProcessInterface {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
 					let preapredPackage = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound))
 					state = .running(preapredPackage.launchedPID)
-					for curWrite in preapredPackage.writeTasks {
-						curWrite.launch(taskGroup:&tg)
-					}
+					// for curWrite in preapredPackage.writeTasks {
+					// 	curWrite.launch(taskGroup:&tg)
+					// }
 					for curRead in preapredPackage.readTasks {
 						curRead.launch(taskGroup:&tg)
 					}
 					// try? await tg.waitForAll()
 					switch await preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
-							fatalError("EXIT FATAL \(exitCode)")
+							// fatalError("SwiftSlash critical error :: process exited with an unknown state. \(#file):\(#line) \(exitCode)")
+							guard exitCode == 0 else {
+								fatalError("SwiftSlash critical error :: process exited with an unknown state. \(#file):\(#line) \(exitCode)")
+							}
 							state = .exited(exitCode)
 						case .signaled(let sigCode):
-							fatalError("SIGNAL FATAL \(sigCode)")
-							// state = .signaled(sigCode)
+							state = .signaled(sigCode)
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
 					}
@@ -123,6 +125,52 @@ public actor ProcessInterface {
 				throw Error.processAlreadyLaunched
 			case .failed(_):
 				throw Error.processAlreadyLaunched
+		}
+	}
+}
+
+extension ProcessInterface.State:Hashable, Equatable {
+	public static func == (lhs: ProcessInterface.State, rhs: ProcessInterface.State) -> Bool {
+		switch (lhs, rhs) {
+			case (.initialized, .initialized):
+				return true
+			case (.launching, .launching):
+				return true
+			case (.running(let lhsPID), .running(let rhsPID)):
+				return lhsPID == rhsPID
+			case (.suspended(let lhsPID), .suspended(let rhsPID)):
+				return lhsPID == rhsPID
+			case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
+				return lhsSignal == rhsSignal
+			case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
+				return lhsExitCode == rhsExitCode
+			case (.failed(let lhsError), .failed(let rhsError)):
+				return lhsError == rhsError
+			default:
+				return false
+		}
+	}
+	public func hash(into hasher: inout Hasher) {
+		switch self {
+			case .initialized:
+				hasher.combine(0)
+			case .launching:
+				hasher.combine(1)
+			case .running(let pid):
+				hasher.combine(2)
+				hasher.combine(pid)
+			case .suspended(let pid):
+				hasher.combine(3)
+				hasher.combine(pid)
+			case .signaled(let sig):
+				hasher.combine(4)
+				hasher.combine(sig)
+			case .exited(let exitCode):
+				hasher.combine(5)
+				hasher.combine(exitCode)
+			case .failed(let err):
+				hasher.combine(6)
+				hasher.combine(err)
 		}
 	}
 }

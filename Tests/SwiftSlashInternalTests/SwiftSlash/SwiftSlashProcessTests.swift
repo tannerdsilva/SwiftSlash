@@ -18,25 +18,34 @@ extension SwiftSlashTests {
 			.tags(.swiftSlashFIFO)
 		)
 		func testSwiftSlashProcess() async throws {
-			let command = Command(absolutePath:"/bin/zsh", arguments:["-c", "pwd"])
+			let command = Command(absolutePath:"/usr/bin/bash", arguments:["-c", "/usr/bin/pwd"])
 			let process = ProcessInterface(command)
-			let stdoutStream = await process[writer:STDERR_FILENO]!
-			let streamTask = Task {
-				switch stdoutStream {
-					case .active(stream:let curStream, separator:let bytes):
-						// fatalError("READ ERROR EARLY")
-						for await curItem in curStream {
-							fatalError("READ ERROR")
-							let curString = String(bytes:curItem, encoding:.utf8)
-							#expect(curString == "hello world")
-						}
-					default:
-						fatalError("SwiftSlash critical error :: stdout stream is not active.")
-					
-				}
+			// await process[writer:STDIN_FILENO] = nil
+			let stdoutStream = await process[writer:STDOUT_FILENO]!
+			// let asyncIterator = stdoutStream.makeAsyncIterator()
+
+			switch stdoutStream {
+				case .active(stream:let curStream, separator:let bytes):
+					let iterator = curStream.makeAsyncIterator()
+					let streamTask = Task {
+						try await process.runChildProcess()
+					}
+					// fatalError("READ ERROR EARLY \(#file):\(#line)")
+					while let curItem = await iterator.next() {
+						let curString = String(bytes:curItem, encoding:.utf8)
+						#expect(curString == "hello world")
+						fatalError("'\( curString ?? "nil")'")
+					}
+					fatalError("READ DONE \(#file):\(#line)")
+					_ = try await streamTask.result.get()
+					// let newState: ProcessInterface.State = await process.state
+					// #expect(newState == .exited(0))
+
+				default:
+					fatalError("SwiftSlash critical error :: stdout stream is not active.")
+				
 			}
-			try await process.runChildProcess()
-			let result = await streamTask.result
+			// let result = await streamTask.result
 		}
 	}
 }

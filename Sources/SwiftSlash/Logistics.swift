@@ -54,7 +54,7 @@ internal struct ProcessLogistics {
 			}
 			// populate the base array with the arguments.
 			for (i, arg) in arguments.enumerated() {
-				baseArray[i] = strdup(arg)
+				baseArray[i] = strndup(arg, arg.count)
 			}
 			// cap the base array with nil.
 			baseArray[arguments.count] = nil
@@ -104,9 +104,11 @@ internal struct ProcessLogistics {
 									if currentWriteStep == nil {
 										if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
 											// apply this as the data we will step through in one or more writes.
+											fatalError("swiftslash - internal error \(#file):\(#line)")
 											currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
 										} else {
 											// user is ready for this stream to be closed.
+											fatalError("swiftslash - internal error \(#file):\(#line)")
 											break systemEventLoop
 										}
 									}
@@ -124,7 +126,10 @@ internal struct ProcessLogistics {
 								continue systemEventLoop
 							}
 						}
-						await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)					}
+						fatalError("swiftslash - internal error \(#file):\(#line)")
+						await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
+						fatalError("swiftslash - internal error \(#file):\(#line)")
+					}
 				}
 			}
 			internal struct ReadTask {
@@ -144,9 +149,12 @@ internal struct ProcessLogistics {
 							try! rFH.closeFileHandle()
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
+						var largestReadSize = 256
 						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
-							fatalError("swiftslash - internal error \(#file):\(#line)")
 							do {
+								if readableSize > largestReadSize {
+									largestReadSize = readableSize
+								}
 								// prepare the lineparser to intake the data.
 								try lineParser.intake(bytes:readableSize) { wptr in
 									// read the data directly from the handle to the lineparser.
@@ -156,6 +164,17 @@ internal struct ProcessLogistics {
 								continue readLoop
 							}
 						}
+						finalRead: repeat {
+							do {
+								// prepare the lineparser to intake the data.
+								try lineParser.intake(bytes:largestReadSize) { wptr in
+									// read the data directly from the handle to the lineparser.
+									return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
+								}
+							} catch FileHandleError.error_wouldblock {
+								break finalRead;
+							}
+						} while true
 					}
 				}
 			}
@@ -240,6 +259,13 @@ internal struct ProcessLogistics {
 
 		// launch the application
 		let launchedPID = try package.exposeArguments({ argumentArr in
+			var argSeek = argumentArr
+			while let curArg = argSeek.pointee {
+				print("argSeek: \(argSeek) curArg: \(String(cString:curArg))")
+				// this is a memory leak, but it is not a problem because the memory will be freed when the process exits.
+				argSeek += 1
+			}
+			print("FIN")
 			return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
 		})
 		
@@ -276,7 +302,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
+	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
 		let internalNotify:PosixPipe
 		do {
@@ -284,6 +310,7 @@ internal struct ProcessLogistics {
 		} catch {
 			throw ProcessSpawnError.posixPipeCreateFailure
 		}
+
 
 		// fork the current process.
 		let forkResult = __cswiftslash_fork()
@@ -298,6 +325,8 @@ internal struct ProcessLogistics {
 			do {
 				try internalNotify.reading.closeFileHandle()
 			} catch {
+				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.posixPipeInitialCleanupFailure.rawValue)
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.posixPipeInitialCleanupFailure.rawValue))
 			}
 
@@ -328,33 +357,37 @@ internal struct ProcessLogistics {
 			}
 
 			// assign the reading pipes to the child process.
-			readerPipesLoop: for reader in readPipes {
-				guard dup2(reader.value.reading, reader.key) != -1 else {
+			readerPipesLoop: for (targetFH, reader) in readPipes {
+				guard dup2(reader.writing, targetFH) != -1 else {
 					// pass the error condition to the parent process.
 					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2ReaderFailure.rawValue)
 					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.dup2ReaderFailure.rawValue))
 				}
 				do {
-					try reader.value.reading.closeFileHandle()
-					try reader.value.writing.closeFileHandle()
+					try reader.reading.closeFileHandle()
+					try reader.writing.closeFileHandle()
 				} catch {
+					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.readerPipeCleanupFailure.rawValue)
+					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.readerPipeCleanupFailure.rawValue))
 				}
 			}
 
 			// assign the writing pipes to the child process.
-			writerPipesLoop: for writer in writePipes {
-				guard dup2(writer.value.writing, writer.key) != -1 else {
+			writerPipesLoop: for (targetFH, writer) in writePipes {
+				guard dup2(writer.reading, targetFH) != -1 else {
 					// pass the error condition to the parent process.
 					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2WriterFailure.rawValue)
 					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.dup2WriterFailure.rawValue))
 				}
 				do {
-					try writer.value.reading.closeFileHandle()
-					try writer.value.writing.closeFileHandle()
+					try writer.reading.closeFileHandle()
+					try writer.writing.closeFileHandle()
 				} catch {
+					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.writerPipeCleanupFailure.rawValue)
+					try? internalNotify.writing.closeFileHandle()
 					exit(Int32(ProcessSpawnError.writerPipeCleanupFailure.rawValue))
 				}
 			}
@@ -374,12 +407,13 @@ internal struct ProcessLogistics {
 				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.fhCleanupDirOpenFailure.rawValue))
 			}
+			let dirFD = dirfd(openFileHandlesPointer)
 			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
 				withUnsafePointer(to:&curPointer.pointee.d_name) { newPointer in
 					let fdString = String(cString:UnsafeRawPointer(newPointer).assumingMemoryBound(to:CChar.self))
 					if fdString.contains(".") == false {
 						let curFh = atoi(fdString)
-						if writePipes[curFh] == nil && readPipes[curFh] == nil {
+						if writePipes[curFh] == nil && readPipes[curFh] == nil && curFh != dirFD && curFh != internalNotify.writing {
 							do {
 								try curFh.closeFileHandle()
 							} catch {
@@ -403,6 +437,8 @@ internal struct ProcessLogistics {
 			do {
 				try internalNotify.writing.closeFileHandle()
 			} catch {
+				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.posixPipeFinalCleanupFailure.rawValue)
+				try? internalNotify.writing.closeFileHandle()
 				exit(Int32(ProcessSpawnError.posixPipeFinalCleanupFailure.rawValue))
 			}
 			// run the process
@@ -430,18 +466,15 @@ internal struct ProcessLogistics {
 				}
 				
 				// wait for the child process to signal that it is ready to be configured.
-				do {
-					var byte:UInt8 = 255
-					switch try internalNotify.reading.readFH(into:&byte, size:1) {
-						case 0:
-							break;
-						case 1:
-							throw ProcessSpawnError(rawValue:byte)!
-						default:
-							fatalError("swiftslash - internal error \(#file) \(#line)")
-					}
-				} catch {
-					throw ProcessSpawnError.internalFailure
+				var byte:UInt8 = 255
+				switch try! internalNotify.reading.readFH(into:&byte, size:1) {
+					case 0:
+						
+						break;
+					case 1:
+						throw ProcessSpawnError(rawValue:byte)!
+					default:
+						fatalError("swiftslash - internal error \(#file) \(#line)")
 				}
 				
 				return forkResult
