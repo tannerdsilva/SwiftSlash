@@ -24,7 +24,8 @@ extension SwiftSlashTests {
 			.tags(.swiftSlashProcessTests)
 		)
 		func testSwiftSlashProcess() async throws {
-			let command = Command(absolutePath:"/bin/echo", arguments:["hello world"])
+			let randomInt = Int.random(in: 0...Int.max)
+			let command = Command(absolutePath:"/bin/echo", arguments:["hello world \(randomInt)"])
 			let process = ProcessInterface(command)
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
@@ -37,7 +38,7 @@ extension SwiftSlashTests {
 					// fatalError("READ ERROR EARLY \(#file):\(#line)")
 					parseLoop: while let curItem = await iterator.next() {
 						let curString = String(bytes:curItem, encoding:.utf8)
-						#expect(curString == "hello world")
+						#expect(curString == "hello world \(randomInt)")
 					}
 					_ = try await streamTask.result.get()
 

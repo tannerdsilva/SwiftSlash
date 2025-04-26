@@ -5,6 +5,7 @@ import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
 import SwiftSlashLineParser
 import SwiftSlashFIFO
+import SwiftSlashFuture
 
 internal enum WaitPIDResult {
 	case signaled(Int32)
@@ -73,15 +74,15 @@ internal struct ProcessLogistics {
 			internal let launchedPID:pid_t
 			
 			internal struct WriteTask {
+				internal let finishFuture:Future<Void, Never>
 				internal let userDataStream:DataChannel.ChildReadParentWrite
 				internal let writeConsumerFIFO:FIFO<Void, Never>
 				internal let wFH:Int32
 				internal let eventTrigger:EventTrigger
-				internal borrowing func processExited() {
-					// fatalError("swiftslash - inte/rnal error \(#file):\(#line)")
-					userDataStream.finish()
-				}
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
+					finishFuture.whenResult { [userData = userDataStream] _ in
+						userData.finish()
+					}
 					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumer()] in
 						defer {
 							try! wFH.closeFileHandle()
@@ -133,15 +134,16 @@ internal struct ProcessLogistics {
 				}
 			}
 			internal struct ReadTask {
+				internal let finishFuture:Future<Void, Never>
 				internal let separator:[UInt8]
 				internal let userDataStream:DataChannel.ChildWriteParentRead
 				internal let systemReadEventsFIFO:FIFO<size_t, Never>
 				internal let rFH:Int32
 				internal let eventTrigger:EventTrigger
-				internal borrowing func processExited() {
-					userDataStream.finish()
-				}
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
+					finishFuture.whenResult { [userData = userDataStream] _ in
+						userData.finish()
+					}
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer()] in
 						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
 						var lineParser = LineParser(separator:separator, nasync:userDataStream.nasync)
@@ -166,24 +168,20 @@ internal struct ProcessLogistics {
 								continue readLoop
 							}
 						}
-						// fatalError("swiftslash - internal error \(#file):\(#line)")
-						// finalRead: repeat {
-							do {
-								// prepare the lineparser to intake the data.
-								// var readSize:Int = 0
-								try lineParser.intake(bytes:largestReadSize) { wptr in
-									// read the data directly from the handle to the lineparser.
-									return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
-								}
-								// fatalError("swiftslash - internal error \(#file):\(#line)")
-							} catch FileHandleError.error_wouldblock {
-								fatalError("swiftslash - internal ERROR BTICH \(#file):\(#line)")
-								
-							} catch let error {
-								fatalError("swiftslash - internal error \(#file):\(#line) \(error)")
+						do {
+							// prepare the lineparser to intake the data.
+							// var readSize:Int = 0
+							try lineParser.intake(bytes:largestReadSize) { wptr in
+								// read the data directly from the handle to the lineparser.
+								return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
 							}
-
-						// } while true
+							// fatalError("swiftslash - internal error \(#file):\(#line)")
+						} catch FileHandleError.error_wouldblock {
+							fatalError("swiftslash - internal ERROR BTICH \(#file):\(#line)")
+							
+						} catch let error {
+							fatalError("swiftslash - internal error \(#file):\(#line) \(error)")
+						}
 					}
 				}
 			}
@@ -209,6 +207,8 @@ internal struct ProcessLogistics {
 			// for each writer configured...
 			switch config {
 				case .active(let channel):
+
+					let finishFuture = Future<Void, Never>()
 					
 					// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildReading()
@@ -217,12 +217,13 @@ internal struct ProcessLogistics {
 					let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
 
 					// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
-					try eventTrigger!.register(writer:newPipe.writing, writerFIFO)
+					try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:finishFuture)
 					
 					// this pipe needs to be further handled after the process fork so we will store it for future reference.
 					writePipes[fh] = newPipe
 
 					writeTasks.append(LaunchPackage.Launched.WriteTask(
+						finishFuture:finishFuture,
 						userDataStream:channel,
 						writeConsumerFIFO:writerFIFO,
 						wFH:newPipe.writing,
@@ -242,15 +243,18 @@ internal struct ProcessLogistics {
 			switch config {
 				case .active(let channel, let sep):
 
+					let finishFuture = Future<Void, Never>()
+
 					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildWriting()
 					let readerFIFO = EventTrigger.ReaderFIFO()
-					try eventTrigger!.register(reader:newPipe.reading, readerFIFO)
+					try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:finishFuture)
 
 					// close the writing end of the pipe after fork.
 					readPipes[fh] = newPipe
 
 					readTasks.append(LaunchPackage.Launched.ReadTask(
+						finishFuture:finishFuture,
 						separator:sep,
 						userDataStream:channel,
 						systemReadEventsFIFO:readerFIFO,
@@ -486,6 +490,9 @@ internal struct ProcessLogistics {
 						
 						break;
 					case 1:
+						guard byte != 0 else {
+							fatalError("swiftslash - internal error \(#file):\(#line)")
+						}
 						throw ProcessSpawnError(rawValue:byte)!
 					default:
 						fatalError("swiftslash - internal error \(#file) \(#line)")

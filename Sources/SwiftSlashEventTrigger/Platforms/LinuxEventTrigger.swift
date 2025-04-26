@@ -16,6 +16,7 @@ import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
+import SwiftSlashFuture
 
 internal final class LinuxEventTrigger:EventTriggerEngine {
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
@@ -30,10 +31,10 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
+	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:FIFO<Void, Never>] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<Register, Never>
@@ -108,14 +109,18 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 
 							// reading handle closed
-							try Self.deregister(prim, reader:curIdent)
-							readersDataOut.removeValue(forKey:currentEvent.data.fd)!.finish()
+							try Self.deregister(prim, reader:currentEvent.data.fd)
+							let (fifo, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
+							fifo.finish()
+							try! future.setSuccess(())
 
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							try Self.deregister(prim, writer:curIdent)
-							writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!.finish()
+							try Self.deregister(prim, writer:currentEvent.data.fd)
+							let (fifo, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
+							fifo.finish()
+							try! future.setSuccess(())
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
 							
@@ -125,12 +130,12 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
 							}
 							// fatalError("READING FD \(currentEvent.data.fd) BYTES AVAIL \(byteCount) @@ \(#file):\(#line)")
-							readersDataOut[currentEvent.data.fd]!.yield(Int(byteCount))
+							readersDataOut[currentEvent.data.fd]!.0.yield(Int(byteCount))
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available
 							// fatalError("WRITE AVAILABLE FD \(currentEvent.data.fd) @@ \(#file):\(#line)")
-							writersDataTrigger[currentEvent.data.fd]!.yield(())
+							writersDataTrigger[currentEvent.data.fd]!.0.yield(())
 							
 						}
 					}

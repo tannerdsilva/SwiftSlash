@@ -3,6 +3,7 @@ import Testing
 import __cswiftslash_posix_helpers
 import SwiftSlashFHHelpers
 import SwiftSlashFIFO
+import SwiftSlashFuture
 
 extension Tag {
 	@Tag internal static var swiftSlashEventTrigger:Self
@@ -27,17 +28,19 @@ extension SwiftSlashTests {
 			let readingFIFO = FIFO<size_t, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
 			let et = try EventTrigger()
-			try et.register(reader:newPipe.reading, readingFIFO)
+			let fut = Future<Void, Never>()
+			try et.register(reader:newPipe.reading, readingFIFO, finishFuture:fut)
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
 			var nextItem:size_t? = await asyncConsumer.next()
 			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(String(describing:nextItem))")
+			#expect(fut.hasResult() == false, "readingFIFO should not have a result but instead found hasResult == \(String(describing:fut.hasResult()))")
 			var myByte:UInt8 = 255
 			#expect(try newPipe.reading.readFH(into:&myByte, size:1) == 1)
 			#expect(myByte == 0x0, "readingFIFO should have read 0x0 but instead found \(String(describing:myByte))")
 			try newPipe.writing.closeFileHandle()
 			nextItem = await asyncConsumer.next()
 			#expect(nextItem == nil, "readingFIFO should be nil but instead found \(String(describing:nextItem))")
-			try et.deregister(reader:newPipe.reading)
+			#expect(fut.hasResult() == true, "readingFIFO should have a result but instead found hasResult == \(String(describing:fut.hasResult()))")
 			try newPipe.reading.closeFileHandle()
 		}
 		@Test("SwiftSlashEventTrigger :: writing lifecycle simple", .timeLimit(.minutes(1)))
@@ -46,13 +49,15 @@ extension SwiftSlashTests {
 			let writingFIFO = FIFO<Void, Never>()
 			let asyncConsumer: FIFO<Void, Never>.AsyncConsumer = writingFIFO.makeAsyncConsumer()
 			let et = try EventTrigger()
-			try et.register(writer:newPipe.writing, writingFIFO)
+			let fut = Future<Void, Never>()
+			try et.register(writer:newPipe.writing, writingFIFO, finishFuture:fut)
 			var nextItem:Void? = await asyncConsumer.next()
 			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")
+			#expect(fut.hasResult() == false, "writingFIFO should not have a result but instead found hasResult == \(String(describing:fut.hasResult()))")
 			try newPipe.reading.closeFileHandle()
 			nextItem = await asyncConsumer.next()
 			#expect(nextItem == nil, "writingFIFO should be nil but instead found \(String(describing:nextItem))")
-			try et.deregister(writer:newPipe.writing)
+			#expect(fut.hasResult() == true, "writingFIFO should have a result but instead found hasResult == \(String(describing:fut.hasResult()))")
 			try newPipe.writing.closeFileHandle()
 		}
 	}

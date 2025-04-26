@@ -518,6 +518,7 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: broadcast error after result", .timeLimit(.minutes(1)))
 			func testBroadcastErrorAfterResult() async throws {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						let data = UnsafeMutableRawPointer(bitPattern: 0x3000)!
 						#expect(future.hasResult() == false)
@@ -531,7 +532,6 @@ extension __cswiftslash_tests {
 						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
-					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
 					#expect(future.hasResult() == true)
 					
@@ -555,6 +555,7 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: broadcast error multiple times", .timeLimit(.minutes(1)))
 			func testBroadcastErrorAfterError() async throws {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						let errorData1 = UnsafeMutableRawPointer(bitPattern: 0x5000)!
 						#expect(future.hasResult() == false)
@@ -568,7 +569,6 @@ extension __cswiftslash_tests {
 						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
-					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
 					#expect(future.hasResult() == true)
 					
@@ -592,6 +592,7 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: broadcast result after error", .timeLimit(.minutes(1)))
 			func testBroadcastResultAfterError() async throws {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0x7000)!
 						#expect(future.hasResult() == false)
@@ -605,7 +606,6 @@ extension __cswiftslash_tests {
 						#expect(future.hasResult() == true)
 					}
 					// wait synchronously for the future to complete
-					#expect(future.hasResult() == false)
 					let result = try await future.waitSync()
 					#expect(future.hasResult() == true)
 					

@@ -11,26 +11,27 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
+import SwiftSlashFuture
 
 internal enum Register:Equatable, Hashable {
 
 	/// register a reader.
 	/// - parameter 1: the file handle to register.
 	/// - parameter 2: the fifo to signal when there is data to read from the file handle.
-	case reader(Int32, FIFO<size_t, Never>?)
+	case reader(fh:Int32, (FIFO<size_t, Never>, Future<Void, Never>)?)
 
 
 	/// register a writer.
 	/// - parameter 1: the file handle to register.
 	/// - parameter 2: the fifo to signal when there is space to write more data to the file handle.
-	case writer(Int32, FIFO<Void, Never>?)
+	case writer(fh:Int32, (FIFO<Void, Never>, Future<Void, Never>)?)
 }
 
 extension Register {
 	/// equatable implementation
 	internal static func == (lhs:Register, rhs:Register) -> Bool {
 		switch (lhs, rhs) {
-			case (.reader(let l1, _), .reader(let r1, _)):
+			case (.reader(fh:let l1, _), .reader(fh:let r1, _)):
 				return l1 == r1
 			case (.writer(let l1, _), .writer(let r1, _)):
 				return l1 == r1

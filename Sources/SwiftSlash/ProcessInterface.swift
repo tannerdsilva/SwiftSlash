@@ -111,12 +111,6 @@ public actor ProcessInterface {
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
 					}
-					for curWrite in preapredPackage.writeTasks {
-						curWrite.processExited()
-					}
-					for curRead in preapredPackage.readTasks {
-						curRead.processExited()
-					}
 					try await tg.waitForAll()
 				}
 				break;
