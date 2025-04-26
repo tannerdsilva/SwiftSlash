@@ -145,6 +145,7 @@ internal struct ProcessLogistics {
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
 						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
+							fatalError("swiftslash - internal error \(#file):\(#line)")
 							do {
 								// prepare the lineparser to intake the data.
 								try lineParser.intake(bytes:readableSize) { wptr in

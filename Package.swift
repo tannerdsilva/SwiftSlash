@@ -145,7 +145,8 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashFIFO",
 		"SwiftSlashNAsyncStream",
 		"SwiftSlashLineParser",
-		"SwiftSlashEventTrigger"
+		"SwiftSlashEventTrigger",
+		"SwiftSlash",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )

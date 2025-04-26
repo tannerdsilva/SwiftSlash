@@ -37,7 +37,7 @@ public actor ProcessInterface {
 	private var inbound:[Int32:DataChannel.ChildReadParentWrite.Configuration] = [
 		STDIN_FILENO:.active(stream:.init())
 	]
-	/*/// access or assign a writable data stream to the process of a specified file handle value.
+	/// access or assign a writable data stream to the process of a specified file handle value.
 	public subscript(writer fh:Int32) -> DataChannel.ChildWriteParentRead.Configuration? {
 		set {
 			switch state {
@@ -82,7 +82,7 @@ public actor ProcessInterface {
 			buildChannels[fh] = .childReading(curIn)
 		}
 		return buildChannels
-	}*/
+	}
 
 	public func runChildProcess() async throws {
 		// check the current state of the process.
@@ -98,15 +98,17 @@ public actor ProcessInterface {
 					for curRead in preapredPackage.readTasks {
 						curRead.launch(taskGroup:&tg)
 					}
+					// try? await tg.waitForAll()
 					switch await preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
+							fatalError("EXIT FATAL \(exitCode)")
 							state = .exited(exitCode)
 						case .signaled(let sigCode):
-							state = .signaled(sigCode)
+							fatalError("SIGNAL FATAL \(sigCode)")
+							// state = .signaled(sigCode)
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
 					}
-					try await tg.waitForAll()
 				}
 				break;
 			case .launching:
@@ -122,7 +124,6 @@ public actor ProcessInterface {
 			case .failed(_):
 				throw Error.processAlreadyLaunched
 		}
-		state = .launching
 	}
 }
 
