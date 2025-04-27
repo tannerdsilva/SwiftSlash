@@ -370,6 +370,7 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: core :: async result", .timeLimit(.minutes(1)))
 			func testWaitAsyncForResult() async throws {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						let data = UnsafeMutableRawPointer(bitPattern: 0x5678)!
 						#expect(future.hasResult() == false)
@@ -377,7 +378,6 @@ extension __cswiftslash_tests {
 						#expect(future.hasResult() == true)
 					}
 					// wait asynchronously for the future to complete
-					#expect(future.hasResult() == false)
 					let result = try await future.waitAsync()
 					#expect(future.hasResult() == true)
 					

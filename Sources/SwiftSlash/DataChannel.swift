@@ -14,7 +14,7 @@ public enum DataChannel {
 	        return AsyncIterator(nasync.makeAsyncConsumer())
 	    }
 
-	    public typealias Element = [UInt8]
+	    public typealias Element = [[UInt8]]
 
 
 		/// specifies a configuration for an inbound data channel.
@@ -38,26 +38,26 @@ public enum DataChannel {
 		}
 
 		/// the underlying nasyncstream that this struct wraps
-		internal let nasync:NAsyncStream<[UInt8], Never> = .init()
+		internal let nasync:NAsyncStream<[[UInt8]], Never> = .init()
 
 		/// initialize a new data channel that the child process will write to and the calling process will read from.
 		public init() {}
 
 		/// AsyncIterator for consuming read data from the child process.
 		public final class AsyncIterator:AsyncIteratorProtocol {
-			private let nasync:NAsyncStream<[UInt8], Never>.Consumer
+			private let nasync:NAsyncStream<[[UInt8]], Never>.Consumer
 
-			internal init(_ nasync:consuming NAsyncStream<[UInt8], Never>.Consumer) {
+			internal init(_ nasync:consuming NAsyncStream<[[UInt8]], Never>.Consumer) {
 				self.nasync = nasync
 			}
 
-			public borrowing func next() async -> [UInt8]? {
+			public borrowing func next() async -> [[UInt8]]? {
 				return await nasync.next(whenTaskCancelled:.finish)
 			}
 		}
 
 		/// used for writing data that a running process reads.
-		internal borrowing func yield(_ element:consuming [UInt8]) {
+		internal borrowing func yield(_ element:consuming [[UInt8]]) {
 			nasync.yield(element)
 		}
 
