@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_IDENTIFIED_LIST_H
-#define __CSWIFTSLASH_IDENTIFIED_LIST_H
+#ifndef __CLIBSWIFTSLASH_IDENTIFIED_LIST_H
+#define __CLIBSWIFTSLASH_IDENTIFIED_LIST_H
 
 #include "__cswiftslash_types.h"
 
@@ -128,4 +128,4 @@ void __cswiftslash_identified_list_iterate_hanginglock_complete(
 	const __cswiftslash_identified_list_pair_ptr_t _
 );
 
-#endif // __CSWIFTSLASH_IDENTIFIED_LIST_H
+#endif // __CLIBSWIFTSLASH_IDENTIFIED_LIST_H

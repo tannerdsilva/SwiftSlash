@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_POSIX_HELPERS_H
-#define __CSWIFTSLASH_POSIX_HELPERS_H
+#ifndef __CLIBSWIFTSLASH_POSIX_HELPERS_H
+#define __CLIBSWIFTSLASH_POSIX_HELPERS_H
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -63,4 +63,4 @@ int __cswiftslash_fcntl_setfd(int fd, int flags);
 /// @return the result of the fcntl function call.
 int __cswiftslash_fcntl_getfd(int fd);
 
-#endif // __CSWIFTSLASH_POSIX_HELPERS_H
+#endif // __CLIBSWIFTSLASH_POSIX_HELPERS_H

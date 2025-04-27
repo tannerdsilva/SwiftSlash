@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_FIFO_H
-#define __CSWIFTSLASH_FIFO_H
+#ifndef __CLIBSWIFTSLASH_FIFO_H
+#define __CLIBSWIFTSLASH_FIFO_H
 
 #include "__cswiftslash_types.h"
 
@@ -161,4 +161,4 @@ __cswiftslash_fifo_consume_result_t __cswiftslash_fifo_consume_blocking(
 	__cswiftslash_optr_t *_Nonnull __
 );
 
-#endif // __CSWIFTSLASH_FIFO_H
+#endif // __CLIBSWIFTSLASH_FIFO_H

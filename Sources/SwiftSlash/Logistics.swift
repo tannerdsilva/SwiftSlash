@@ -160,7 +160,7 @@ internal struct ProcessLogistics {
 									largestReadSize = readableSize
 								}
 								// prepare the lineparser to intake the data.
-								try lineParser.intake(bytes:readableSize) { wptr in
+								_ = try lineParser.intake(bytes:readableSize) { wptr in
 									// read the data directly from the handle to the lineparser.
 									return try rFH.readFH(into:wptr.baseAddress!, size:readableSize)
 								}
@@ -170,17 +170,17 @@ internal struct ProcessLogistics {
 						}
 						do {
 							// prepare the lineparser to intake the data.
-							// var readSize:Int = 0
-							try lineParser.intake(bytes:largestReadSize) { wptr in
-								// read the data directly from the handle to the lineparser.
-								return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
-							}
-							// fatalError("swiftslash - internal error \(#file):\(#line)")
+							var writtenCount:size_t
+							repeat {
+								writtenCount = try lineParser.intake(bytes:largestReadSize) { wptr in
+									// read the data directly from the handle to the lineparser.
+									return try rFH.readFH(into:wptr.baseAddress!, size:largestReadSize)
+								}
+							} while writtenCount > 0
 						} catch FileHandleError.error_wouldblock {
-							fatalError("swiftslash - internal ERROR BTICH \(#file):\(#line)")
-							
+							// no action
 						} catch let error {
-							fatalError("swiftslash - internal error \(#file):\(#line) \(error)")
+							throw error
 						}
 					}
 				}
@@ -272,13 +272,6 @@ internal struct ProcessLogistics {
 
 		// launch the application
 		let launchedPID = try package.exposeArguments({ argumentArr in
-			var argSeek = argumentArr
-			while let curArg = argSeek.pointee {
-				print("argSeek: \(argSeek) curArg: \(String(cString:curArg))")
-				// this is a memory leak, but it is not a problem because the memory will be freed when the process exits.
-				argSeek += 1
-			}
-			print("FIN")
 			return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
 		})
 		

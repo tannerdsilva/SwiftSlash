@@ -1,3 +1,14 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 public struct Command:Sendable {
 	
 	/// the executable command to run. this should be an absolute path.
@@ -27,6 +38,11 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
+	/// mutate the configured environment variables to match the environment of the current process at the time of calling.
+	public mutating func inheritCurrentEnvironment() {
+		environment = CurrentProcess.environmentVariables()
+	}
+
 	/// creates a new command with a relative executable name.
 	/// - parameters:
 	///		- execute: the relative path to execute.
@@ -43,7 +59,7 @@ public struct Command:Sendable {
 	}*/
 }
 
-extension Command:Hashable, Equatable{
+extension Command:Hashable, Equatable {
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return lhs.executable == rhs.executable && lhs.arguments == rhs.arguments && lhs.environment == rhs.environment && lhs.workingDirectory == rhs.workingDirectory
 	}

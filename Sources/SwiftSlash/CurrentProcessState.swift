@@ -7,7 +7,6 @@ import Darwin
 #endif
 
 public struct CurrentProcess {
-	private init() {} // this is just a namespace - no instances allowed.
 	public enum PathSearchError:Swift.Error {
 		case pathNotFoundInEnvironment
 		case executableNotFound([String], Path)
@@ -56,8 +55,9 @@ extension CurrentProcess {
 		return Path(String(cString:rawPointer!))
 	}
 
-	public static func searchPaths(executableName:String) throws -> Path {
+	public static func searchPaths(executableName:String) throws(PathSearchError) -> Path {
 		var i = 0
+		var foundPath:Bool = false
 		mainLoop: while let curPtr = environ[i] {
 			defer {
 				i = i + 1
@@ -67,6 +67,8 @@ extension CurrentProcess {
 			guard memcmp(curPtr, "PATH=", 5) == 0 else {
 				continue mainLoop;
 			}
+
+			foundPath = true
 
 			// key found. capture the value of the PATH variable as a String
 			let curEnvString = String(cString:curPtr.advanced(by:5))

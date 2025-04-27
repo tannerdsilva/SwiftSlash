@@ -426,6 +426,7 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: core :: async error", .timeLimit(.minutes(1)))
 			func coreAsyncError() async throws {
 				try await withThrowingTaskGroup(of:Void.self, returning:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						let errorData = UnsafeMutableRawPointer(bitPattern: 0xbeef)!
 						#expect(future.hasResult() == false)
@@ -433,7 +434,6 @@ extension __cswiftslash_tests {
 						#expect(future.hasResult() == true)
 					}
 					// wait asynchronously for the future to complete
-					#expect(future.hasResult() == false)
 					let result = try await future.waitAsync()
 					#expect(future.hasResult() == true)
 					
@@ -457,13 +457,13 @@ extension __cswiftslash_tests {
 			@Test("__cswiftslash_future :: core :: async cancel", .timeLimit(.minutes(1)))
 			func coreAsyncCancel() async throws {
 				try await withThrowingTaskGroup(of:Void.self) { tg in
+					#expect(future.hasResult() == false)
 					tg.addTask {
 						try await Task.sleep(nanoseconds:100_000)
 						#expect(future.hasResult() == false)
 						#expect(future.cancel() == true)
 						#expect(future.hasResult() == true)
 					}
-					#expect(future.hasResult() == false)
 					let waitResult = try await future.waitAsync()
 					#expect(future.hasResult() == true)
 					#expect(waitResult == nil)

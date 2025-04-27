@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_TYPES_H
-#define __CSWIFTSLASH_TYPES_H
+#ifndef __CLIBSWIFTSLASH_TYPES_H
+#define __CLIBSWIFTSLASH_TYPES_H
 
 /// a non-optional pointer
 typedef void*_Nonnull __cswiftslash_ptr_t;
@@ -24,4 +24,4 @@ typedef void*_Nullable __cswiftslash_optr_t;
 /// a constant optional pointer
 typedef const void*_Nonnull __cswiftslash_coptr_t;
 
-#endif // __CSWIFTSLASH_TYPES_H
+#endif // __CLIBSWIFTSLASH_TYPES_H

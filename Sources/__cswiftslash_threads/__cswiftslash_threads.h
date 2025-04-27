@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_THREADS_H
-#define __CSWIFTSLASH_THREADS_H
+#ifndef __CLIBSWIFTSLASH_THREADS_H
+#define __CLIBSWIFTSLASH_THREADS_H
 
 #include "__cswiftslash_types.h"
 #include <pthread.h>
@@ -75,4 +75,4 @@ __cswiftslash_threads_t_type __cswiftslash_threads_config_run(
 	int *_Nonnull __
 );
 
-#endif // __CSWIFTSLASH_THREADS_H
+#endif // __CLIBSWIFTSLASH_THREADS_H

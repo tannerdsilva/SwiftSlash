@@ -25,27 +25,24 @@ fileprivate struct BufferLogistics:~Copyable {
 	///	- parameter bytes: the amount of bytes to intake.
 	///	- parameter writeHandler: the handler to write the bytes to the buffer after the space has been prepared.
 	/// - throws: any error that the handler may throw. if the handler is thrown, any bytes written to the buffer will be discarded.
-	fileprivate mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows {
+	/// - returns: the number of bytes written to the buffer.
+	fileprivate mutating func intake<E>(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E:Swift.Error {
 		// prepare the buffer to accept the specified number of bytes
 		let wptr: UnsafeMutableBufferPointer<UInt8> = intakePrepare(addingBytes:bytes)
 		let written = try writeHandler(wptr)
 		occupied += written
+		return written
 	}
 
-	fileprivate mutating func process(_ accessHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t?) rethrows -> size_t?{
+	fileprivate mutating func process<E>(_ accessHandler:(UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> Void where E:Swift.Error {
 		let stride = try accessHandler(UnsafeMutableBufferPointer<UInt8>(start:intakebuff.baseAddress, count:occupied))
 		#if DEBUG
-		if stride != nil {
-			guard stride! <= occupied else {
-				fatalError("this should never happen '\(#file):\(#line)' :: \(stride!) <= \(occupied)")
-			}
+		guard stride <= occupied else {
+			fatalError("this should never happen '\(#file):\(#line)' :: \(stride) <= \(occupied)")
 		}
 		#endif
-		if stride != nil {
-			occupied -= stride!
-			memmove(intakebuff.baseAddress!, intakebuff.baseAddress! + stride!, occupied)
-		}
-		return stride
+		occupied -= stride
+		memmove(intakebuff.baseAddress!, intakebuff.baseAddress! + stride, occupied)
 	}
 
 	/// prepare the buffer to accept the specified number of bytes.
@@ -210,8 +207,9 @@ public struct LineParser:~Copyable {
 	///	- parameter bytes: the amount of bytes to intake.
 	///	- parameter writeHandler: the handler to write the bytes to the buffer.
 	/// - throws: any error that the handler may throw.
-	public mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows {
-		try dataLogistics.intake(bytes:bytes, writeHandler)
+	/// - returns: the number of bytes written to the buffer. this is a transparent passthrough with the return value of the writeHandler.
+	public mutating func intake(bytes:size_t, _ writeHandler:(UnsafeMutableBufferPointer<UInt8>) throws -> size_t) rethrows -> size_t {
+		let writtenBytesToBuffer = try dataLogistics.intake(bytes:bytes, writeHandler)
 		if separator.isEmpty() == false {
 			dataLogistics.process { buff in
 				return LineParser.processLine(separatorInfo:&separator, storageBuffer:buff, existingSeekOffset:&existingSeekOffset, outputMode:outMode)
@@ -228,17 +226,18 @@ public struct LineParser:~Copyable {
 				return buff.count
 			}
 		}
+		return writtenBytesToBuffer
 	}
 
 	/// handles the given data.
 	///	- parameter data: the data to pass into the line parser.
-	public mutating func handle(_ data:consuming [UInt8]) {
-		return data.withUnsafeBufferPointer({ datBuff in
-			return intake(bytes:datBuff.count, { wptr in
-				memcpy(wptr.baseAddress!, datBuff.baseAddress!, datBuff.count)
-				return datBuff.count
+	public mutating func handle(_ data:consuming [UInt8]) -> size_t {
+		return withUnsafeMutablePointer(to:&data) { datBuff in
+			return intake(bytes:datBuff.pointee.count, { wptr in
+				memcpy(wptr.baseAddress!, datBuff.pointee, datBuff.pointee.count)
+				return datBuff.pointee.count
 			})
-		})
+		}
 	}
 
 	public mutating func finish() {

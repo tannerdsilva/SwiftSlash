@@ -9,8 +9,8 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-#ifndef __CSWIFTSLASH_EVENTTRIGGER_H
-#define __CSWIFTSLASH_EVENTTRIGGER_H
+#ifndef __CLIBSWIFTSLASH_EVENTTRIGGER_H
+#define __CLIBSWIFTSLASH_EVENTTRIGGER_H
 
 #include <stdint.h>
 #include <sys/wait.h>
@@ -40,4 +40,4 @@ int32_t __cswiftslash_eventtrigger_wtermsig(const int32_t status);
 /// wraps WEXITSTATUS as a discrete function instead of a macro.
 int32_t __cswiftslash_eventtrigger_wexitstatus(const int32_t status);
 
-#endif // __CSWIFTSLASH_EVENTTRIGGER_H
+#endif // __CLIBSWIFTSLASH_EVENTTRIGGER_H
