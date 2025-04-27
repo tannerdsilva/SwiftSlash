@@ -49,9 +49,6 @@ extension CurrentProcess {
 		defer {
 			free(rawPointer)
 		}
-		guard rawPointer != nil else {
-			fatalError("swiftslash - attempted to get the current working directory of current process (pid \(getpid()))...got a NULL string instead. \(#file):\(#line)")
-		}
 		return Path(String(cString:rawPointer!))
 	}
 
@@ -62,20 +59,15 @@ extension CurrentProcess {
 			defer {
 				i = i + 1
 			}
-
 			// we are only handling an entry that starts with "PATH="
 			guard memcmp(curPtr, "PATH=", 5) == 0 else {
 				continue mainLoop;
 			}
-
 			foundPath = true
-
 			// key found. capture the value of the PATH variable as a String
 			let curEnvString = String(cString:curPtr.advanced(by:5))
-
 			// find all the paths in the value
 			let envPaths = curEnvString.split(separator:":")
-
 			pathsLoop: for curPath in envPaths {
 
 				// check if the executable exists in the current path
@@ -91,7 +83,12 @@ extension CurrentProcess {
 			i = i + 1
 
 		}
-		// throw an error because the PATH variable was not found in the environment
-		throw PathSearchError.pathNotFoundInEnvironment
+		switch foundPath {
+			case true:
+				// if we found the PATH variable but did not find the executable, throw an error
+				throw PathSearchError.executableNotFound(Array(environmentVariables().keys), Path(executableName))
+			case false:
+				throw PathSearchError.pathNotFoundInEnvironment
+		}
 	}
 }

@@ -43,6 +43,7 @@ public enum DataChannel {
 		/// initialize a new data channel that the child process will write to and the calling process will read from.
 		public init() {}
 
+		/// AsyncIterator for consuming read data from the child process.
 		public final class AsyncIterator:AsyncIteratorProtocol {
 			private let nasync:NAsyncStream<[UInt8], Never>.Consumer
 
@@ -55,10 +56,12 @@ public enum DataChannel {
 			}
 		}
 
+		/// used for writing data that a running process reads.
 		internal borrowing func yield(_ element:consuming [UInt8]) {
 			nasync.yield(element)
 		}
 
+		/// finish writing to the channel so that no more data can be sent through it.
 		internal borrowing func finish() {
 			nasync.finish()
 		}
@@ -75,19 +78,20 @@ public enum DataChannel {
 			case nullPipe
 		}
 
-		// the underlying nasyncstream that this struct wraps
+		/// the underlying nasyncstream that this struct wraps
 		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
 
-		// create a new outbound data channel
+		/// create a new outbound data channel
 		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {
 			fifo.yield((element, future))
 		}
 
-		// finish writing to the channel
+		/// finish writing to the channel
 		public borrowing func finish() {
 			fifo.finish()
 		}
 
+		/// AsyncConsumer for consuming written data from the child process.
 		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumer {
 			return fifo.makeAsyncConsumer()
 		}

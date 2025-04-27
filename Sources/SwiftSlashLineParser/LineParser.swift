@@ -93,8 +93,6 @@ public struct LineParser:~Copyable {
 
 	/// the output mode of the line parser.
 	internal enum Output {
-		/// the line parser will handle the parsed lines with the given handler.
-		case handler(([UInt8]?) -> Void)
 		/// the line parser will yield the parsed lines to the given nasyncstream.
 		case nasync(NAsyncStream<[UInt8], Never>)
 	}
@@ -175,11 +173,6 @@ public struct LineParser:~Copyable {
 		self.init(separator:configuration, output:.nasync(output))
 	}
 
-	/// initializes the line parser with a separator and a handler to handle the parsed lines.
-	public init(separator configuration:consuming [UInt8], handler output:consuming @escaping ([UInt8]?) -> Void) {
-		self.init(separator:configuration, output:.handler(output))
-	}
-
 	/// parses through the storage buffer up to the completion of the line separator.
 	private static func processLine(separatorInfo:inout SeparatorInfo, storageBuffer:UnsafeMutableBufferPointer<UInt8>, existingSeekOffset:inout size_t, outputMode:Output) -> size_t {
 		var seekPointer = storageBuffer.baseAddress! + existingSeekOffset
@@ -192,8 +185,6 @@ public struct LineParser:~Copyable {
 					lineStart = seekPointer
 				}
 				switch outputMode {
-				case .handler(let handler):
-					handler(Array(asBuffer))
 				case .nasync(let nas):
 					nas.yield(Array(asBuffer))
 				}
@@ -218,8 +209,6 @@ public struct LineParser:~Copyable {
 			dataLogistics.process { buff in
 				let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
 				switch outMode {
-				case .handler(let handler):
-					handler(data)
 				case .nasync(let nas):
 					nas.yield(data)
 				}
@@ -243,13 +232,6 @@ public struct LineParser:~Copyable {
 	public mutating func finish() {
 		dataLogistics.process { buff in
 			switch outMode {
-			case .handler(let handler):
-				if buff.count > 0 {
-					let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
-					handler(data)
-				}
-				handler(nil)
-
 			case .nasync(let nas):
 				if buff.count > 0 {
 					let data = Array(UnsafeBufferPointer(start:buff.baseAddress!, count:buff.count))
@@ -263,8 +245,6 @@ public struct LineParser:~Copyable {
 
 	public mutating func finishDataloss() {
 		switch outMode {
-			case .handler(let handler):
-				handler(nil)
 			case .nasync(let nas):
 				nas.finish()
 		}
@@ -272,8 +252,6 @@ public struct LineParser:~Copyable {
 
 	deinit {
 		switch outMode {
-			case .handler(let handler):
-				handler(nil)
 			case .nasync(let nas):
 				nas.finish()
 		}
