@@ -30,9 +30,9 @@ extension SwiftSlashTests {
 					switch Bool.random() {
 						case true:
 							data = Array(String.random(length:Int.random(in:1..<1024)).utf8)
-							#expect(parser.handle(data) == data.count)
+							#expect(parser.intake(data) == data.count)
 						case false:
-							#expect(parser.handle([UInt8]()) == 0)
+							#expect(parser.intake([UInt8]()) == 0)
 							data = [UInt8]()
 					}
 					writeLines.append(String(bytes:data, encoding:.utf8)!)
@@ -76,7 +76,7 @@ extension SwiftSlashTests {
 						case false:
 							data = [UInt8]([])
 					}
-					#expect(parser.handle(data + [sep]) == data.count + 1)
+					#expect(parser.intake(data + [sep]) == data.count + 1)
 					writeLines.append(String(bytes:data, encoding:.utf8)!)
 				}
 				parser.finish()
@@ -97,7 +97,7 @@ extension SwiftSlashTests {
 				}
 			})
 			let data: [UInt8] = Array("Hello--sep--World".utf8)
-			#expect(parser.handle(data) == data.count)
+			#expect(parser.intake(data) == data.count)
 			parser.finish()
 			#expect(lines.count == 2, "\(lines.count) == 2")
 			#expect(lines[0] == Array("Hello".utf8), "\(lines[0]) == \(Array("Hello".utf8))")
@@ -122,10 +122,10 @@ extension SwiftSlashTests {
 				}
 			})
 			let data: [UInt8] = Array("--sep----sep----sep----sep----sep-----sep----sep----sep----sep--".utf8)
-			#expect(parser.handle(data) == data.count)
-			#expect(parser.handle(Array("--se".utf8)) == 4)
+			#expect(parser.intake(data) == data.count)
+			#expect(parser.intake(Array("--se".utf8)) == 4)
 			#expect(counter == 8, "\(counter) == 8")
-			#expect(parser.handle(Array("p--".utf8)) == 3)
+			#expect(parser.intake(Array("p--".utf8)) == 3)
 			#expect(counter == 9, "\(counter) == 9")
 			parser.finish()
 			#expect(negCounter == 1, "\(negCounter) == 1")
@@ -150,7 +150,7 @@ extension SwiftSlashTests {
 				}
 			})
 			let data: [UInt8] = Array(combinedString.utf8)
-			#expect(parser.handle(data) == data.count)
+			#expect(parser.intake(data) == data.count)
 			parser.finish()
 
 			#expect(lines.count == 10, "\(lines.count) == 10")
@@ -180,7 +180,7 @@ extension SwiftSlashTests {
 					}
 				})
 				let data: [UInt8] = Array(combinedString.utf8)
-				#expect(parser.handle(data) == data.count)
+				#expect(parser.intake(data) == data.count)
 				parser.finish()
 				#expect(lines == randomStrings.map { Array($0.utf8) }, "\(lines) == \(randomStrings.map { Array($0.utf8) })")
 			}

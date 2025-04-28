@@ -3,6 +3,7 @@ import Testing
 import __cswiftslash_posix_helpers
 import SwiftSlashFHHelpers
 import SwiftSlashFIFO
+import SwiftSlashFuture
 import class Foundation.FileManager
 
 extension Tag {
@@ -35,13 +36,13 @@ extension SwiftSlashTests {
 				case .active(stream:let curStream, separator:_):
 					let iterator = curStream.makeAsyncIterator()
 					let streamTask = Task {
-						try await process.runChildProcess()
+						return try await process.run()
 					}
 					parseLoop: while let curItem = await iterator.next() {
 						let curString = String(bytes:curItem.first!, encoding:.utf8)
 						#expect(curString == "hello world \(randomInt)")
 					}
-					_ = try await streamTask.result.get()
+					#expect(try await streamTask.result.get() == .exited(0))
 
 				default:
 					fatalError("SwiftSlash critical error :: stdout stream is not active.")
@@ -53,7 +54,7 @@ extension SwiftSlashTests {
 			.timeLimit(.minutes(1))
 		)
 		func testPwdOutput() async throws {
-			let command = Command(absolutePath:"/bin/pwd", arguments:[])
+			let command = Command(absolutePath:"/bin/pwd")
 			let process = ProcessInterface(command)
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
@@ -61,7 +62,7 @@ extension SwiftSlashTests {
 				case .active(stream:let curStream, separator:_):
 					let iterator = curStream.makeAsyncIterator()
 					let streamTask = Task {
-						try await process.runChildProcess()
+						try await process.run()
 					}
 					parseLoop: while let curItem = await iterator.next() {
 						let curString = String(bytes:curItem.first!, encoding:.utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,39 +77,83 @@ extension SwiftSlashTests {
 				
 			}
 		}
-		/*@Test("SwiftSlashProcessTests :: argument counting", 
+
+		@Test("SwiftSlashProcessTests :: exit code via piped input test (complete 0-255)", 
 			.timeLimit(.minutes(1))
 		)
-		func testArgumentCounting() async throws {
-
-			func testWithNumberOfArguments(_ count: Int) {
-				var arguments = [String]()
-				for i in 0..<count {
-					arguments.append("arg\(i)")
-				}
-				let command = Command(absolutePath:"/bin/echo", arguments:["-c", "echo $#", "dummy"] + arguments)
+		func exitCodeTest() async throws {
+			func runExitCodeProcess(expectedExitCode:UInt8) async throws {
+				// this is a special command that will read a line of input and then exit with that code. the input line must be a valid exit number.
+				let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read num && exit "$num""#])
 				let process = ProcessInterface(command)
-				let stdoutStream = await process[writer:STDOUT_FILENO]!
-				switch stdoutStream {
-					case .active(stream:let curStream, separator:let bytes):
-						let iterator = curStream.makeAsyncIterator()
+				let stdInWriteStream = await process[reader:STDIN_FILENO]!
+				switch stdInWriteStream {
+					case (.active(stream:let inputStream)):
+						// launch the child process.
 						let streamTask = Task {
-							try await process.runChildProcess()
+							try await process.run()
 						}
-						parseLoop: while let curItem = await iterator.next() {
-							let curString = String(bytes:curItem, encoding:.utf8)
-							let expectedCount = count + 1 // +1 for the "dummy" argument
-							#expect(curString == "\(expectedCount)", "Expected \(expectedCount) arguments, got \(curString)")
-						}
-						_ = try await streamTask.result.get()
+						// write a line of input to the child process.
+						let inputString = "\(expectedExitCode)\n"
+						let inputData = [UInt8](inputString.utf8)
+						let writeFuture = Future<Void, WrittenDataChannelClosureError> ()
+						inputStream.yield(inputData, future:writeFuture)
+						// wait for the input to be written
+						_ = try await writeFuture.result()!.get()
+						let exitResult = try await streamTask.result.get()
+						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ProcessInterface.ExitResult.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
 
 					default:
-						fatalError("SwiftSlash critical error :: stdout stream is not active.")
+						fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")
 				}
 			}
-			let command = Command(absolutePath:"/bin/echo", arguments:["-c", "echo $#", "dummy"])
+			for i in 0..<255 {
+				try await runExitCodeProcess(expectedExitCode:UInt8(i))
+			}
+		}
+
+		@Test("SwiftSlashProcessTests :: piped input test", 
+			.timeLimit(.minutes(1))
+		)
+		func writeInputToChildProcess() async throws {
+			// this is a special command that will read a line of input and then print it out, exiting after the line is printed.
+			let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read line && printf "%s\n" "$line"; exit 0"#])
+
 			let process = ProcessInterface(command)
-			#expect(process.command.arguments.count == 3, "Expected 3 arguments, got \(process.command.arguments.count)")
-		}*/
+			let stdInWriteStream = await process[reader:STDIN_FILENO]!
+			let stdoutStream = await process[writer:STDOUT_FILENO]!
+			switch (stdInWriteStream, stdoutStream) {
+				case (.active(stream:let inputStream), .active(stream:let outputStream, separator:_)):
+					// launch the child process.
+					let iterator = outputStream.makeAsyncIterator()
+					let streamTask = Task {
+						try await process.run()
+					}
+					// write a line of input to the child process.
+					let inputString = "Hello from parent process\n"
+					let inputData = [UInt8](inputString.utf8)
+					let writeFuture = Future<Void, WrittenDataChannelClosureError> ()
+					inputStream.yield(inputData, future:writeFuture)
+					// wait for the input to be written
+					_ = try await writeFuture.result()!.get()
+					var foundItems:size_t = 0
+					parseLoop: while let curItem = await iterator.next() {
+						guard curItem.count < 2 else {
+							break parseLoop
+						}
+						defer {
+							foundItems += 1
+						}
+						let curString = String(bytes:curItem.first!, encoding:.utf8)!
+						#expect(curString == "Hello from parent process", "expected output to match input string")
+					}
+					#expect(foundItems == 1, "expected to find exactly one output item from child process")
+					_ = try await streamTask.result.get()
+					
+
+				default:
+					fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")
+			}
+		}
 	}
 }

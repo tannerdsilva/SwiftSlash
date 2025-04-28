@@ -276,7 +276,7 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 /// - returns: the running pthread that is being launched.
 /// - throws: a LaunchFailure error if the pthread fails to launch.
 @available(*, noasync, message:"this function launches a pthread and waits for the pthread to begin working. this requires blocking, which is not allowed in swift async code.")
-fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) -> Result<Running<W>, PThreadLaunchFailure> where W:PThreadWork, W.ArgumentType == A {
+fileprivate func launchPThread<W, A>(work _:W.Type, argument:A) -> Result<Running<W>, PThreadLaunchFailure> where W:PThreadWork, W.ArgumentType == A {
 	// this is the future that represents a successful launch and configuration of a pthread. pthreads must be configured for proper handling of cancellation in order to not leak memory.
 	let configureFuture = Future<UnsafeMutableRawPointer, Never>(successfulResultDeallocator: { ptr in
 		// free the retained future from memory.
@@ -285,7 +285,7 @@ fileprivate func launchPThread<W, A>(work workType:W.Type, argument:A) -> Result
 
 	// define the memoryspace where we will store the setup structure for the pthread.
 	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
-	launchStructure.initialize(to:Setup(workType, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
+	launchStructure.initialize(to:Setup(W.self, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
 	defer {
 		launchStructure.deinitialize(count:1)
 		launchStructure.deallocate()

@@ -5,8 +5,10 @@ import SwiftSlashFuture
 /// represents a uni-directional stream of data that can exist between a parent process and a child process. A data channel can only be one of two possible types...`ChildWriteParentRead` or `ChildReadParentWrite`.
 public enum DataChannel {
 
-	case childWriting(ChildWriteParentRead.Configuration)
-	case childReading(ChildReadParentWrite.Configuration)
+	/// specifies a data channel that the child process will write to and the calling process will read from.
+	case childWriteParentRead(ChildWriteParentRead.Configuration)
+	/// specifies a data channel that the child process will read from and the calling process will write to.
+	case childReadParentWrite(ChildReadParentWrite.Configuration)
 
 	/// used for reading data that a running process writes.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
@@ -15,7 +17,6 @@ public enum DataChannel {
 	    }
 
 	    public typealias Element = [[UInt8]]
-
 
 		/// specifies a configuration for an inbound data channel.
 		public enum Configuration:Sendable {
@@ -46,11 +47,9 @@ public enum DataChannel {
 		/// AsyncIterator for consuming read data from the child process.
 		public final class AsyncIterator:AsyncIteratorProtocol {
 			private let nasync:NAsyncStream<[[UInt8]], Never>.Consumer
-
 			internal init(_ nasync:consuming NAsyncStream<[[UInt8]], Never>.Consumer) {
 				self.nasync = nasync
 			}
-
 			public borrowing func next() async -> [[UInt8]]? {
 				return await nasync.next(whenTaskCancelled:.finish)
 			}

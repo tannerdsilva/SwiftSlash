@@ -18,4 +18,5 @@ public enum PThreadCancellationFailure:Swift.Error {
 	case alreadyJoined
 }
 
+/// thrown when a pthread is unable to be joined.
 public struct PThreadJoinFailure:Swift.Error {}

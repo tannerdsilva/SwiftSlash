@@ -45,18 +45,18 @@ public struct Command:Sendable {
 
 	/// creates a new command with a relative executable name.
 	/// - parameters:
-	///		- execute: the relative path to execute.
-	/*public init(
-		_ execute:consuming Path,
+	///		- execute: name of the command to execute. this name will be searched for in the PATH environment variable.
+	public init(
+		_ execute:consuming String,
 		arguments args:consuming [String] = [],
 		environment envs:consuming [String:String] = [:],
 		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
-	) {
-		executable = execute
+	) throws(PathSearchError) {
+		executable = try CurrentProcess.searchPaths(executableName:execute)
 		arguments = args
 		environment = envs
 		workingDirectory = wd
-	}*/
+	}
 }
 
 extension Command:Hashable, Equatable {

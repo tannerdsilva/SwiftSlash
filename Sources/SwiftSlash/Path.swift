@@ -9,7 +9,7 @@ public struct Path:Sendable {
 		components = p.split(separator: "/", omittingEmptySubsequences:true).map(String.init)
 	}
 
-	public init(pathComponents:[String]) {
+	public init(pathComponents:consuming [String]) {
 		components = pathComponents
 	}
 	
@@ -45,25 +45,25 @@ public struct Path:Sendable {
 
 extension Path:ExpressibleByStringLiteral {
 	/// initialize a path by a string literal value.
-	public init(stringLiteral value: String) {
+	public init(stringLiteral value:consuming String) {
 		self.init(value)
 	}
 }
 
 extension String {
 	/// initialize a string from a system host path.
-	public init(_ p:Path) {
+	public init(_ p:consuming Path) {
 		self = p.path()
 	}
 }
 
 extension Path:Hashable, Equatable {
 	/// hashable protocol implementation
-	public func hash(into hasher:inout Hasher) {
+	public borrowing func hash(into hasher:inout Hasher) {
 		hasher.combine(components)
 	}
 	/// equatable protocol implementation
-	public static func == (lhs:Path, rhs:Path) -> Bool {
+	public static func == (lhs:consuming Path, rhs:consuming Path) -> Bool {
 		return lhs.components == rhs.components
 	}
 }

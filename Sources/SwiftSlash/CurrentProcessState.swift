@@ -7,10 +7,7 @@ import Darwin
 #endif
 
 public struct CurrentProcess {
-	public enum PathSearchError:Swift.Error {
-		case pathNotFoundInEnvironment
-		case executableNotFound([String], Path)
-	}
+	
 }
 
 extension CurrentProcess {
@@ -80,8 +77,6 @@ extension CurrentProcess {
 				// the file exists, return the path
 				return curExecutablePath
 			}
-			i = i + 1
-
 		}
 		switch foundPath {
 			case true:

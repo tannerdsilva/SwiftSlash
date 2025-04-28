@@ -35,36 +35,26 @@ public struct LineParser:~Copyable {
     private var count:size_t = 0
 
     /// the byte pattern that the line parser will use to split incoming data into lines.
-    private let separator: [UInt8]
-
-    private let handler: Output
+    private let separator:[UInt8]
+	/// the output method for the parser.
+    private let handler:Output
 
     /// - parameters:
     ///   - separator: the byte‐pattern to split on (e.g. `Array("\r\n".utf8)`)
     ///   - initialCapacity: starting buffer size; will grow as needed
-    ///   - output: `.handler` or `.nasync`
-    public init(
-        separator sepArg: [UInt8],
-        initialCapacity initCapArg: size_t,
-        output handlerArg: consuming Output
-    ) {
+    ///   - output: the output method for the parser to use as it finds matches in the input stream
+    public init(separator sepArg: [UInt8], initialCapacity initCapArg:size_t, output handlerArg: consuming Output) {
         separator = sepArg
-        capacity  = max(initCapArg, sepArg.count)
-        buffer    = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
-        handler   = handlerArg
+        capacity = max(initCapArg, sepArg.count)
+        buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
+        handler = handlerArg
     }
 
-    public init(
-        separator sepArg: [UInt8],
-        nasync output: NAsyncStream<[LineOutput], Never>
-    ) {
+    public init(separator sepArg:[UInt8], nasync output: NAsyncStream<[LineOutput], Never>) {
         self.init(separator: sepArg, initialCapacity: 4_096, output: .nasync(output))
     }
 
-    public init(
-        separator sepArg: [UInt8],
-        handler handlerArg: @escaping ([LineOutput]?) -> Void
-    ) {
+    public init(separator sepArg: [UInt8], handler handlerArg: @escaping ([LineOutput]?) -> Void) {
         self.init(separator: sepArg, initialCapacity: 4_096, output: .handler(handlerArg))
     }
 
@@ -72,28 +62,23 @@ public struct LineParser:~Copyable {
         buffer.deallocate()
     }
 
-    /// Read up to `bytes` into the parser’s buffer (or consume it immediately if no separator).
-    ///
-    /// - Parameters:
-    ///   - bytes: maximum number of bytes you will read
-    ///   - writeHandler: closure that gets a free `UnsafeMutableBufferPointer<UInt8>` of at most
-    ///                   `bytes` capacity, writes into it **up to** that many bytes, and returns
-    ///                   how many bytes were written (0 ⇒ EOF).
-    /// - Returns: the actual byte‐count read, so the caller can stop on `0`
-    /// - Throws: whatever `writeHandler` throws
-    @discardableResult
-    public mutating func intake<E>(bytes: size_t, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E: Swift.Error {
+    /// read up to `bytes` into the parser’s buffer (or consume it immediately if no separator).
+    /// - parameters:
+    /// 	- bytes: maximum number of bytes you will read
+    /// 	- writeHandler: closure that gets a free `UnsafeMutableBufferPointer<UInt8>` of at most `bytes` capacity, writes into it **up to** that many bytes, and returns how many bytes were written (0 ⇒ EOF).
+    /// - returns: the actual byte‐count read, so the caller can stop on `0`
+    /// - throws: whatever `writeHandler` throws
+    @discardableResult public mutating func intake<E>(bytes: size_t, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E: Swift.Error {
         // make room
         ensureCapacity(for: bytes)
 
         // write directly into our buffer
         let writePtr = buffer.advanced(by: count)
-        let freeBuf  = UnsafeMutableBufferPointer(start: writePtr,
-                                                  count: Int(capacity - count))
+        let freeBuf  = UnsafeMutableBufferPointer(start:writePtr, count:Int(capacity - count))
         let readCount = try writeHandler(freeBuf)
 
         // if separator is empty, emit *exactly* this slice and return
-        if separator.isEmpty {
+        guard separator.isEmpty == false else {
             let slice = Array(UnsafeBufferPointer(start: writePtr, count: Int(readCount)))
             switch handler {
                 case .nasync(let stream):
@@ -104,7 +89,6 @@ public struct LineParser:~Copyable {
             // do *not* accumulate or shift; each intake stands alone
             return readCount
         }
-
         // otherwise, normal split logic
         guard readCount > 0 else {
             // EOF or nothing read
@@ -117,7 +101,7 @@ public struct LineParser:~Copyable {
 
     /// convenience: consume a whole `[UInt8]` at once
     @discardableResult
-    public mutating func handle(_ data: consuming [UInt8]) -> size_t {
+    public mutating func intake(_ data: consuming [UInt8]) -> size_t {
         return withUnsafeMutablePointer(to: &data) { ptr in
             intake(bytes: ptr.pointee.count) { buf in
                 _ = buf.initialize(from: ptr.pointee)
@@ -151,16 +135,14 @@ public struct LineParser:~Copyable {
         }
     }
 
-    // ——— Private helpers ———
-
     private mutating func ensureCapacity(for additional: size_t) {
         guard capacity >= count + additional else {
             var newCap = capacity * 2
             while count + additional > newCap {
                 newCap *= 2
             }
-            let newBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: newCap)
-            newBuf.update(from: buffer, count: Int(count))
+            let newBuf: UnsafeMutablePointer<UInt8> = UnsafeMutablePointer<UInt8>.allocate(capacity: newCap)
+            newBuf.update(from: buffer, count:count)
             buffer.deallocate()
             buffer = newBuf
             capacity = newCap
@@ -169,13 +151,13 @@ public struct LineParser:~Copyable {
     }
 
     private mutating func emitLinesIfAny() {
-        var lines     = [LineOutput]()
+        var lines = [LineOutput]()
         var lineStart = 0
-        var pos       = 0
-        let sepCount  = separator.count
+        var pos = 0
+        let sepCount = separator.count
 
         // scan for separator
-        while sepCount > 0 && pos <= Int(count) - sepCount {
+        while sepCount > 0 && pos <= count - sepCount {
             var match = true
             for j in 0..<sepCount {
                 if buffer[pos + j] != separator[j] {

@@ -14,13 +14,17 @@ internal enum WaitPIDResult {
 }
 extension pid_t {
 	internal func waitPID() async -> WaitPIDResult {
-		let (returnValue, statusValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(pid_t, Int32), Never>) in
+		let (statusValue, errnoValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(Int32, Int32?), Never>) in
 			var statusCapture:Int32 = 0
 			let wpidReturn = waitpid(self, &statusCapture, 0)
-			continuation.resume(returning:(wpidReturn, statusCapture))
+			var errnoValue:Int32? = nil
+			if wpidReturn == -1 {
+				errnoValue = __cswiftslash_get_errno()
+			}
+			continuation.resume(returning:(statusCapture, errnoValue))
 		})
-		guard returnValue == self else {
-			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
+		guard errnoValue == nil else {
+			return WaitPIDResult.failed(errno:errnoValue!)
 		}
 		if __cswiftslash_eventtrigger_wifsignaled(statusValue) != 0 {
 			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusValue))

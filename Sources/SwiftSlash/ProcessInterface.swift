@@ -2,39 +2,59 @@ import SwiftSlashNAsyncStream
 import __cswiftslash_posix_helpers
 
 public actor ProcessInterface {
-	
+	/// thrown when the process interface is not in the expected state for the requested operation.
+	public struct InvalidProcessStateError:Swift.Error {
+		/// the state that was expected when the operation was requested.
+		public let expectedState:State
+		/// the actual state of the process when the operation was requested.
+		public let actualState:State
+	}
+
 	/// this represents the state of a process that is being managed by the ProcessInterface actor.
-	public enum State {
+	public enum State:Sendable {
 		/// the process interface is initialized but not yet launched.
 		case initialized
 		/// the process interface is in the process of launching. a pid_t is not yet available, additionally, the launch process may fail instead of returning a pid_t.
 		case launching
 		/// the process is running as the current pid_t value.
 		case running(pid_t)
-		/// the process is suspended.
-		case suspended(pid_t)
-		case signaled(Int32)
-		case exited(Int32)
-		case failed(Int32)
+		/// the process has been reaped with the specified result outcome.
+		case reaped(ExitResult)
 	}
+
 	/// the current operating state of the process. this is a primary pillar of logic for the ProcessInterface functionality.
 	public private(set) var state:State = .initialized
 
-	private let command:Command
+	/// the command that the process will execute when launched.
+	public let command:Command
 
-	public init(
-		_ command:consuming Command
-	) {
-		self.command = command
+	public init(_ cmd:consuming Command) {
+		command = cmd
+	}
+
+	public init(_ cmd:Command, dataChannels:[Int32:DataChannel]) {
+		var buildChildWriters = [Int32:DataChannel.ChildWriteParentRead.Configuration]()
+		var buildChildReaders = [Int32:DataChannel.ChildReadParentWrite.Configuration]()
+		for (fh, channel) in dataChannels {
+			switch channel {
+				case .childReadParentWrite(let config):
+					buildChildReaders[fh] = config
+				case .childWriteParentRead(let config):
+					buildChildWriters[fh] = config
+			}
+		}
+		command = cmd
+		childWriteParentRead = buildChildWriters
+		childReadParentWrite = buildChildReaders
 	}
 
 	/// stores all of the data channels that the process will write to.
-	private var outbound:[Int32:DataChannel.ChildWriteParentRead.Configuration] = [
+	private var childWriteParentRead:[Int32:DataChannel.ChildWriteParentRead.Configuration] = [
 		STDOUT_FILENO:.createActiveConfiguration(),
 		STDERR_FILENO:.createActiveConfiguration()
 	]
 	/// stores all of the data channels that the process will read from.
-	private var inbound:[Int32:DataChannel.ChildReadParentWrite.Configuration] = [
+	private var childReadParentWrite:[Int32:DataChannel.ChildReadParentWrite.Configuration] = [
 		STDIN_FILENO:.active(stream:.init())
 	]
 	/// access or assign a writable data stream to the process of a specified file handle value.
@@ -42,17 +62,17 @@ public actor ProcessInterface {
 		set {
 			switch state {
 				case .initialized:
-					guard inbound[fh] == nil else {
+					guard childReadParentWrite[fh] == nil else {
 						fatalError("SwiftSlash critical error :: cannot assign a writing data stream when a reader has already been configured for the same handle value.")
 					}
-					outbound[fh] = newValue
+					childWriteParentRead[fh] = newValue
 				default:
 					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
 			}
-			outbound[fh] = newValue
+			childWriteParentRead[fh] = newValue
 		}
 		get {
-			return outbound[fh]
+			return childWriteParentRead[fh]
 		}
 	}
 	/// access or assign a readable data stream to the process of a specified file handle value.
@@ -60,74 +80,111 @@ public actor ProcessInterface {
 		set {
 			switch state {
 				case .initialized:
-					guard outbound[fh] == nil else {
+					guard childWriteParentRead[fh] == nil else {
 						fatalError("SwiftSlash critical error :: cannot assign a reading data stream when a writer has already been configured for the same handle value.")
 					}
-					inbound[fh] = newValue
+					childReadParentWrite[fh] = newValue
 				default:
 					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
 			}
 		}
 		get {
-			return inbound[fh]
+			return childReadParentWrite[fh]
 		}
-	}
-	/// returns all of the currently configured data channels for the process. this includes both the inbound and outbound channels of the process.
-	public borrowing func allDataChannels() -> [Int32:DataChannel] {
-		var buildChannels = [Int32:DataChannel]()
-		for (fh, curOut) in outbound {
-			buildChannels[fh] = .childWriting(curOut)
-		}
-		for (fh, curIn) in inbound {
-			buildChannels[fh] = .childReading(curIn)
-		}
-		return buildChannels
 	}
 
-	public func runChildProcess() async throws {
-		// check the current state of the process.
+	public func run() async throws -> ExitResult {
+		// check the current state of the process. 
 		switch state {
 			case .initialized:
+				// the process has not been launched yet so we may proceed with the launch.
 				state = .launching
-				try await withThrowingTaskGroup(of:Void.self) { tg in
-					let preapredPackage = try await ProcessLogistics.launch(package:ProcessLogistics.LaunchPackage(exe:command.executable, arguments:command.arguments, workingDirectory:command.workingDirectory, env:command.environment, writables:inbound, readables:outbound))
+				return try await withThrowingTaskGroup(of:Void.self) { tg in
+					// create a launch package.
+					let launchPackage = ProcessLogistics.LaunchPackage(
+						exe:command.executable,
+						arguments:command.arguments,
+						workingDirectory:command.workingDirectory,
+						env:command.environment,
+						writables:childReadParentWrite,
+						readables:childWriteParentRead
+					)
+					
+					// launch the package.
+					let preapredPackage = try await ProcessLogistics.launch(package:launchPackage)
+					// update state
 					state = .running(preapredPackage.launchedPID)
+					
+					// launch the reader and writer loops that are associated with the running process.
 					for curWrite in preapredPackage.writeTasks {
 						curWrite.launch(taskGroup:&tg)
 					}
 					for curRead in preapredPackage.readTasks {
 						curRead.launch(taskGroup:&tg)
 					}
-					// try? await tg.waitForAll()
+					
+					// reap the running process
 					switch await preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
-							// fatalError("SwiftSlash critical error :: process exited with an unknown state. \(#file):\(#line) \(exitCode)")
-							guard exitCode == 0 else {
-								fatalError("SwiftSlash critical error :: process exited with an unknown state. \(#file):\(#line) \(exitCode)")
-							}
-							state = .exited(exitCode)
+							state = .reaped(.exited(exitCode))
+							try await tg.waitForAll()
+							return .exited(exitCode)
 						case .signaled(let sigCode):
-							state = .signaled(sigCode)
+							state = .reaped(.signaled(sigCode))
+							try await tg.waitForAll()
+							return .signaled(sigCode)
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
-					}
-					try await tg.waitForAll()
+					}	
 				}
-				break;
-			case .launching:
-				throw Error.processAlreadyLaunched
-			case .running(_):
-				throw Error.processAlreadyLaunched
-			case .suspended(_):
-				throw Error.processAlreadyLaunched
-			case .signaled(_):
-				throw Error.processAlreadyLaunched
-			case .exited(_):
-				throw Error.processAlreadyLaunched
-			case .failed(_):
-				throw Error.processAlreadyLaunched
+			default:
+				// the process has already been launched so we cannot proceed with the launch.
+				throw InvalidProcessStateError(expectedState:.initialized, actualState:state)
 		}
 	}
+}
+
+extension ProcessInterface {
+	/// represents the various types of ways that a process can exit.
+	public enum ExitResult:Sendable, Hashable, Equatable, CustomDebugStringConvertible {
+		/// the process exited normally with the specified exit code.
+		case exited(Int32)
+		/// the process was terminated by a signal with the specified signal code.
+		case signaled(Int32)
+		
+		/// equatable implementation
+		public static func == (lhs:ProcessInterface.ExitResult, rhs:ProcessInterface.ExitResult) -> Bool {
+			switch (lhs, rhs) {
+				case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
+					return lhsExitCode == rhsExitCode
+				case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
+					return lhsSignal == rhsSignal
+				default:
+					return false
+			}
+		}
+
+		/// hashable implementation
+		public func hash(into hasher:inout Hasher) {
+			switch self {
+				case .exited(let exitCode):
+					hasher.combine(0)
+					hasher.combine(exitCode)
+				case .signaled(let sig):
+					hasher.combine(1)
+					hasher.combine(sig)
+			}
+		}
+
+		public var debugDescription: String {
+			switch self {
+				case .exited(let exitCode):
+					return "ProcessInterface.ExitResult.exited(\(exitCode))"
+				case .signaled(let sigCode):
+					return "ProcessInterface.ExitResult.signaled(\(sigCode))"
+			}
+		}
+	}	
 }
 
 extension ProcessInterface.State:Hashable, Equatable {
@@ -139,14 +196,8 @@ extension ProcessInterface.State:Hashable, Equatable {
 				return true
 			case (.running(let lhsPID), .running(let rhsPID)):
 				return lhsPID == rhsPID
-			case (.suspended(let lhsPID), .suspended(let rhsPID)):
-				return lhsPID == rhsPID
-			case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
-				return lhsSignal == rhsSignal
-			case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
-				return lhsExitCode == rhsExitCode
-			case (.failed(let lhsError), .failed(let rhsError)):
-				return lhsError == rhsError
+			case (.reaped(let lhsResult), .reaped(let rhsResult)):
+				return lhsResult == rhsResult
 			default:
 				return false
 		}
@@ -160,18 +211,9 @@ extension ProcessInterface.State:Hashable, Equatable {
 			case .running(let pid):
 				hasher.combine(2)
 				hasher.combine(pid)
-			case .suspended(let pid):
+			case .reaped(let result):
 				hasher.combine(3)
-				hasher.combine(pid)
-			case .signaled(let sig):
-				hasher.combine(4)
-				hasher.combine(sig)
-			case .exited(let exitCode):
-				hasher.combine(5)
-				hasher.combine(exitCode)
-			case .failed(let err):
-				hasher.combine(6)
-				hasher.combine(err)
+				hasher.combine(result)
 		}
 	}
 }

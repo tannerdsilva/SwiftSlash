@@ -9,6 +9,12 @@ public enum WrittenDataChannelClosureError:Swift.Error {
     case writeLoopTaskCancelled
 }
 
+/// thrown when there is a problem with the path searching function.
+public enum PathSearchError:Swift.Error {
+	case pathNotFoundInEnvironment
+	case executableNotFound([String], Path)
+}
+
 /// the type of error that is thrown when there is a problem calling waitpid
 public struct WaitPIDError:Swift.Error {
 	/// the corresponding errno value returned by the system for this error.
@@ -49,10 +55,4 @@ public enum ProcessSpawnError:UInt8, Swift.Error {
 	case internalFailure = 0xFA
 	/// describes a failure of the fork function
 	case forkFailure = 0xFB
-}
-
-extension ProcessInterface {
-	public enum Error:Swift.Error {
-		case processAlreadyLaunched
-	}
 }
