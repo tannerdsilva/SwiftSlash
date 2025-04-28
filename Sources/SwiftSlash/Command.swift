@@ -9,6 +9,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
+/// a shell command to run.
 public struct Command:Sendable {
 	
 	/// the executable command to run. this should be an absolute path.
@@ -38,11 +39,6 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// mutate the configured environment variables to match the environment of the current process at the time of calling.
-	public mutating func inheritCurrentEnvironment() {
-		environment = CurrentProcess.environmentVariables()
-	}
-
 	/// creates a new command with a relative executable name.
 	/// - parameters:
 	///		- execute: name of the command to execute. this name will be searched for in the PATH environment variable.
@@ -57,12 +53,19 @@ public struct Command:Sendable {
 		environment = envs
 		workingDirectory = wd
 	}
+
+	/// mutate the configured environment variables to match the environment of the current process at the time of calling.
+	public mutating func inheritCurrentEnvironment() {
+		environment = CurrentProcess.environmentVariables()
+	}
 }
 
 extension Command:Hashable, Equatable {
+	/// equality operator for Command.
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return lhs.executable == rhs.executable && lhs.arguments == rhs.arguments && lhs.environment == rhs.environment && lhs.workingDirectory == rhs.workingDirectory
 	}
+	/// hash function for Command.
 	public func hash(into hasher:inout Hasher) {
 		hasher.combine(executable)
 		hasher.combine(arguments)

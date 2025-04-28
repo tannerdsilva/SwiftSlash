@@ -1,5 +1,6 @@
 import __cswiftslash_posix_helpers
 import SwiftSlashFuture
+import SwiftSlashFHHelpers
 
 /// helps to manage the state of a write operation. a write buffer may take an unknown amount of data when written to, while the amount of data we are holding are received as they are. this struct helps the two substates to work together.
 internal struct WriteStepper:~Copyable {
@@ -30,8 +31,8 @@ internal struct WriteStepper:~Copyable {
 	}
 
 	/// writes more data into the specified file handle.
-	internal mutating func write(to writerFH:Int32) throws -> Action {
-		offset += try data.withUnsafeBufferPointer { (dataBuffer:UnsafeBufferPointer<UInt8>) in
+	internal mutating func write(to writerFH:Int32) throws(FileHandleError) -> Action {
+		offset += try data.withUnsafeBufferPointer { (dataBuffer:UnsafeBufferPointer<UInt8>) throws(FileHandleError) in
 			return try writerFH.writeFH(UnsafeBufferPointer<UInt8>(start:dataBuffer.baseAddress! + offset, count:dataBuffer.count - offset))
 		}
 		if offset == data.count {

@@ -23,7 +23,7 @@ public struct GenericPThread<R:Sendable>:PThreadWork {
 	/// creates a new instance of GenericPThread.
 	/// - parameters:
 	/// 	- argument: the function to run.
-	public init(_ argument:@escaping ArgumentType) {
+	public init(_ argument:consuming @escaping ArgumentType) {
 		self.funcToRun = argument
 	}
 

@@ -1,6 +1,16 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import __cswiftslash_posix_helpers
 import __cswiftslash_eventtrigger
-import SwiftSlashNAsyncStream
 import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
 import SwiftSlashLineParser
@@ -37,6 +47,7 @@ extension pid_t {
 
 internal struct ProcessLogistics {
 
+	/// encompasses all of the variables that must be present to launch a child process.
 	internal struct LaunchPackage:Sendable {
 		/// represents the path to the executable that will be launched.
 		internal let exe:Path
@@ -51,6 +62,7 @@ internal struct ProcessLogistics {
 		/// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
 		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
 
+		/// expose all of the arguments for this launch package as c pointers that could be used to launch a child process.
 		fileprivate borrowing func exposeArguments<R>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> R) rethrows -> R {
 			let buildArgs = [exe.path()] + arguments
 			// declare the base array for the arguments. the last element of the array is nil.
@@ -72,6 +84,7 @@ internal struct ProcessLogistics {
 			return try aHandler(baseArray)
 		}
 
+		/// the configuration for a child process after it has been launched.
 		internal struct Launched {
 			internal let writeTasks:[WriteTask]
 			internal let readTasks:[ReadTask]
@@ -104,22 +117,22 @@ internal struct ProcessLogistics {
 								}
 							}
 						}
-
+						
 						// main system event loop for the file handle.
 						var currentWriteStep:WriteStepper? = nil
 						systemEventLoop: while await writeConsumer.next(whenTaskCancelled:.finish) != nil {
-							do {
-								writeAvailableLoop: repeat {
-									if currentWriteStep == nil {
-										if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
-											// apply this as the data we will step through in one or more writes.
-											currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
-										} else {
-											// user is ready for this stream to be closed.
-											break systemEventLoop
-										}
+							writeAvailableLoop: repeat {
+								if currentWriteStep == nil {
+									if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
+										// apply this as the data we will step through in one or more writes.
+										currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+									} else {
+										// user is ready for this stream to be closed.
+										break systemEventLoop
 									}
+								}
 
+								do {
 									switch try currentWriteStep!.write(to:wFH) {
 										case .retireMe:
 											currentWriteStep = nil
@@ -127,11 +140,20 @@ internal struct ProcessLogistics {
 										case .holdMe:
 											continue writeAvailableLoop
 									}
-								} while true
-							} catch FileHandleError.error_wouldblock {
-								// this is a non-blocking read, so we can ignore this error.
-								continue systemEventLoop
-							}
+								} catch FileHandleError.error_wouldblock {
+									// go back to the system event loop and wait for the file handle to be ready for more writing.
+									continue systemEventLoop
+								} catch let error as FileHandleError {
+									// this is a problem with the file handle itself. we need to close the file handle and signal to the user that this is a problem.
+									await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.systemWriteErrorThrown(error))
+									throw error
+								}
+							} while true
+						}
+						if Task.isCancelled == false {
+							
+						} else {
+
 						}
 						await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
 					}

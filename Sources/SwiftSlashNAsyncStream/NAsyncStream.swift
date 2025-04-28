@@ -16,7 +16,7 @@ import SwiftSlashIdentifiedList
 /// there is absolutely no formal ritual required to operante an NAsyncStream. simply create a new instance and start yielding data to it. consumers can be registered at any time with`makeAsyncConsumer()` and will receive all data that is yielded to the stream after their registration. objects will be buffered indefinitely until they are consumed or the Iterator is dereferenced. data is not duplicated when it is yielded to the stream. the data is stored by reference to all consumers to reference back to.
 /// NAsyncStream will buffer objects indefinitely until they are either consumed (by all registered consumers at the time of production) or the stream is dereferenced.
 public struct NAsyncStream<Element, Failure>:Sendable where Failure:Swift.Error {
-	
+	/// make a new consumer for the stream. this will guarantee that any data produced after calling this function will be sent.
 	public func makeAsyncConsumer() -> Consumer {
 		// each new consumer gets their own dedicated FIFO instance. that instance is initialized here.
 		return Consumer(il:il, fifo:FIFO<Element, Failure>())

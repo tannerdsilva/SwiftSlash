@@ -1,3 +1,14 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import SwiftSlashNAsyncStream
 import SwiftSlashFIFO
 import SwiftSlashFuture
@@ -12,10 +23,12 @@ public enum DataChannel {
 
 	/// used for reading data that a running process writes.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
+		/// returns an async iterator for this data channel.
 	    public borrowing func makeAsyncIterator() -> AsyncIterator {
 	        return AsyncIterator(nasync.makeAsyncConsumer())
 	    }
 
+		/// the type of element that this data channel will produce with each iteration.
 	    public typealias Element = [[UInt8]]
 
 		/// specifies a configuration for an inbound data channel.

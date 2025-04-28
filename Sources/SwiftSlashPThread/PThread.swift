@@ -141,7 +141,7 @@ fileprivate enum CloseOut:UInt8, AtomicRepresentable {
 	case threadJoined = 3
 }
 
-/// a noncopyable structure that safely handles a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
+/// a Sendable class that encompasses a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
 public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	// the pthread primitive
 	private let ptp:__cswiftslash_threads_t_type

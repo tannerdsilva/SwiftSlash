@@ -1,3 +1,14 @@
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
+
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
 import __cswiftslash_posix_helpers
 
 #if os(Linux)
@@ -6,12 +17,10 @@ import Glibc
 import Darwin
 #endif
 
-public struct CurrentProcess {
-	
-}
-
+public struct CurrentProcess {}
 extension CurrentProcess {
-	public static func clearEnvironmentVariables() -> Int32 {
+	/// clear all of the environment variables for the current process.
+	internal static func clearEnvironmentVariables() -> Int32 {
 		let currentEnvs = environmentVariables()
 		for (key, _) in currentEnvs {
 			guard unsetenv(key) == 0 else {
@@ -21,6 +30,7 @@ extension CurrentProcess {
 		return 0
 	}
 
+	/// returns the environment variables of the current process as a dictionary.
 	public static func environmentVariables() -> [String:String] {
 		var i = 0
 		var envs:[String:String] = [:]
@@ -49,6 +59,7 @@ extension CurrentProcess {
 		return Path(String(cString:rawPointer!))
 	}
 
+	/// returns the current working directory path of the process the function is called from.
 	public static func searchPaths(executableName:String) throws(PathSearchError) -> Path {
 		var i = 0
 		var foundPath:Bool = false
