@@ -12,7 +12,7 @@ extension Tag {
 extension SwiftSlashTests {
 	@Suite("SwiftSlashEventTrigger", 
 		.serialized,
-		.tags(.swiftSlashFIFO)
+		.tags(.swiftSlashEventTrigger)
 	)
 	struct EventTriggerTests {
 		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))

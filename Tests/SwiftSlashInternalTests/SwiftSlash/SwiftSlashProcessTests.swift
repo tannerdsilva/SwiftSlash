@@ -23,6 +23,13 @@ extension SwiftSlashTests {
 			#expect(__cswiftslash_execvp_safetycheck("/bin/echo") == 0)
 			#expect(__cswiftslash_execvp_safetycheck("/bin/.doesnotexist") != 0)
 		}
+
+		@Test("SwiftSlashProcessTests :: echo path search test", 
+			.timeLimit(.minutes(1))
+		)
+		func testPathSearch() async throws {
+			_ = try Command("echo")
+		}
 		@Test("SwiftSlashProcessTests :: echo hello world unique random int", 
 			.timeLimit(.minutes(1))
 		)
