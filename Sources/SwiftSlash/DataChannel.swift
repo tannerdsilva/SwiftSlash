@@ -95,7 +95,17 @@ public enum DataChannel {
 
 		/// create a new outbound data channel
 		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {
-			fifo.yield((element, future))
+			switch fifo.yield((element, future)) {
+				case .success:
+				break
+				case .fifoClosed:
+					// The FIFO is closed, we cannot yield any more data.
+					if future != nil {
+						try! future!.setFailure(WrittenDataChannelClosureError.dataChannelClosed)
+					}
+				case .fifoFull:
+					fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+			}
 		}
 
 		/// finish writing to the channel
