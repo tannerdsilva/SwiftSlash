@@ -13,6 +13,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import __cswiftslash_eventtrigger
 import __cswiftslash_posix_helpers
 import SwiftSlashFIFO
+import SwiftSlashFuture
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
 
@@ -29,10 +30,10 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:FIFO<size_t, Never>] = [:]
+	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:FIFO<Void, Never>] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<Register, Never>
@@ -112,12 +113,12 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
 								// readable data.
-								readersDataOut[curIdent]!.yield(currentEvent.data)
+								readersDataOut[curIdent]!.0.yield(currentEvent.data)
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writable data.
-								writersDataTrigger[curIdent]!.yield(())
+								writersDataTrigger[curIdent]!.0.yield(())
 
 							}
 						} else {
@@ -125,13 +126,17 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 
 								// reader close.
 								try Self.deregister(prim, reader:curIdent)
-								readersDataOut.removeValue(forKey:curIdent)!.finish()
+								let (fifo, future) = readersDataOut.removeValue(forKey:curIdent)!
+								fifo.finish()
+								try future.setSuccess(())
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
 								try Self.deregister(prim, writer:curIdent)
-								writersDataTrigger.removeValue(forKey:curIdent)!.finish()
+								let (fifo, future) = writersDataTrigger.removeValue(forKey:curIdent)!
+								fifo.finish()
+								try future.setSuccess(())
 							}
 						}
 					}

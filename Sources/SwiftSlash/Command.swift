@@ -23,7 +23,7 @@ public struct Command:Sendable {
 
 	/// creates a new command.
 	/// - parameters:
-	///		- execute: the absolute path to execute.
+	///		- execute: the absolute path to execute. Either an implied name or absolute pathname of the executable to run.
 	///		- arguments: the arguments to pass to the executed command. default value: no arguments.
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
 	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
@@ -50,6 +50,22 @@ public struct Command:Sendable {
 	) throws(PathSearchError) {
 		executable = try CurrentProcess.searchPaths(executableName:execute)
 		arguments = args
+		environment = envs
+		workingDirectory = wd
+	}
+
+	/// initialize a new command based on a shell command string. the command will be executed using the `/bin/sh` shell.
+	/// - parameters:
+	/// 	- sh: the shell command to run on the `sh` shell.
+	/// 	- environment: the environment variables to set for the command. default value: no environment values.
+	/// 	- workingDirectory: the working directory 
+	public init(
+		sh shCommand:String, 
+		environment envs:consuming [String:String],
+		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
+	) {
+		executable = "/bin/sh"
+		arguments = ["-c", shCommand]
 		environment = envs
 		workingDirectory = wd
 	}

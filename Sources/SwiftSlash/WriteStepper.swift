@@ -32,9 +32,10 @@ internal struct WriteStepper:~Copyable {
 
 	/// writes more data into the specified file handle.
 	internal mutating func write(to writerFH:Int32) throws(FileHandleError) -> Action {
-		offset += try data.withUnsafeBufferPointer { (dataBuffer:UnsafeBufferPointer<UInt8>) throws(FileHandleError) in
-			return try writerFH.writeFH(UnsafeBufferPointer<UInt8>(start:dataBuffer.baseAddress! + offset, count:dataBuffer.count - offset))
+		func writeData(_ dat:UnsafeMutablePointer<UInt8>, count:size_t) throws(FileHandleError) -> size_t {
+			return try writerFH.writeFH(UnsafeBufferPointer<UInt8>(start:dat + offset, count:count - offset))
 		}
+		offset += try writeData(&data, count:data.count)
 		if offset == data.count {
 			try? completeFuture?.setSuccess(())
 			return .retireMe
