@@ -14,6 +14,17 @@ import SwiftSlashContained
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
 public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swift.Error {
 	
+	/// used to convey one of the possible outcomes of consuming the next element from the FIFO.
+	public enum ConsumeResult {
+		/// the next element was successfully consumed from the FIFO.
+		case element(Element)
+		/// the FIFO was closed, and no more elements may be consumed.
+		case capped(Result<Void, Failure>)
+		/// the FIFO is currently empty, and no elements may be consumed at this time.
+		case wouldBlock
+	}
+
+	/// used to convey the various types of results that may occur when yielding an element into the FIFO.
 	public enum YieldResult {
 		/// the yield value was successfully passed into the FIFO
 		case success
@@ -186,6 +197,10 @@ extension FIFO {
 }
 
 extension FIFO.SyncConsumerNonBlocking {
+	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
+		var pointer:__cswiftslash_ptr_t? = nil
+		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
+	}
 	fileprivate borrowing func _next() -> Result<Element?, Failure>? {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
@@ -193,6 +208,10 @@ extension FIFO.SyncConsumerNonBlocking {
 }
 
 extension FIFO.SyncConsumerBlocking {
+	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
+		var pointer:__cswiftslash_ptr_t? = nil
+		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)
+	}
 	fileprivate borrowing func _next() -> Result<Element?, Failure> {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!
@@ -200,6 +219,13 @@ extension FIFO.SyncConsumerBlocking {
 }
 
 extension FIFO.AsyncConsumer {
+	fileprivate borrowing func _nextExplicit() async -> FIFO.ConsumeResult {
+		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<FIFO.ConsumeResult, Never>) in
+			var pointer:__cswiftslash_ptr_t? = nil
+			let result = FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)
+			continuation.resume(returning:result)
+		})
+	}
 	fileprivate borrowing func _next() async -> Result<Element?, Failure> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
@@ -209,6 +235,25 @@ extension FIFO.AsyncConsumer {
 }
 
 extension FIFO {
+	fileprivate static func _handleFIFOConsumeExplicit(_ ret:__cswiftslash_fifo_consume_result_t, _ pointer:__cswiftslash_ptr_t?) -> ConsumeResult {
+		switch ret {
+			case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
+				return .element(Unmanaged<Contained<Element>>.fromOpaque(pointer!).takeRetainedValue().value())
+			case  __CSWIFTSLASH_FIFO_CONSUME_CAP:
+				switch Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(pointer!).takeUnretainedValue().value() {
+					case .success:
+						return .capped(.success(()))
+					case .failure(let err):
+						return .capped(.failure(err))
+				}
+			case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
+				return .wouldBlock
+			case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
+				fatalError("SwiftSlashFIFO :: got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking. this is a critical internal error :: \(#file):\(#line)")
+			default:
+				fatalError("SwiftSlashFIFO :: unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
+		}
+	}
 	fileprivate static func _handleFIFOConsume(_ ret:__cswiftslash_fifo_consume_result_t, _ pointer:__cswiftslash_ptr_t?) -> Result<Element?, Failure>? {
 		switch ret {
 			case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
