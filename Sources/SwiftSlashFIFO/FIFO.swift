@@ -123,6 +123,27 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 }
 
 extension FIFO {
+	public func makeSyncConsumerNonblockingExplicit() -> SyncConsumerNonBlockingExplicit {
+		return SyncConsumerNonBlockingExplicit(self)
+	}
+
+	public struct SyncConsumerNonBlockingExplicit:~Copyable {
+		public enum WhenConsumingTaskCancelled {
+			case noAction
+			case finish
+		}
+		private let fifo:FIFO<Element, Failure>
+		internal init(_ fifoIn:consuming FIFO) {
+			fifo = fifoIn
+		}
+
+		public borrowing func next() -> ConsumeResult {
+			return _nextExplicit()
+		}
+	}
+}
+
+extension FIFO {
 	public func makeSyncConsumerNonBlocking() -> SyncConsumerNonBlocking {
 		return SyncConsumerNonBlocking(self)
 	}
@@ -140,6 +161,27 @@ extension FIFO {
 }
 
 extension FIFO {
+	public func makeSyncConsumerBlockingExplicit() -> SyncConsumerBlockingExplicit {
+		return SyncConsumerBlockingExplicit(self)
+	}
+
+	public struct SyncConsumerBlockingExplicit:~Copyable {
+		public enum WhenConsumingTaskCancelled {
+			case noAction
+			case finish
+		}
+		private let fifo:FIFO<Element, Failure>
+		internal init(_ fifoIn:consuming FIFO) {
+			fifo = fifoIn
+		}
+
+		public borrowing func next() -> ConsumeResult {
+			return _nextExplicit()
+		}
+	}
+}
+
+extension FIFO {
 	public func makeSyncConsumerBlocking() -> SyncConsumerBlocking {
 		return SyncConsumerBlocking(self)
 	}
@@ -152,6 +194,37 @@ extension FIFO {
 
 		public borrowing func next() throws(Failure) -> Element? {
 			return try _next().get()
+		}
+	}
+}
+
+extension FIFO {
+	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
+	public func makeAsyncConsumerExplicit() -> AsyncConsumerExplicit {
+		return AsyncConsumerExplicit(self)
+	}
+
+	/// the primary structure for consuming elements from the FIFO in an explicit way.
+	public struct AsyncConsumerExplicit:~Copyable {
+		public enum WhenConsumingTaskCancelled {
+			case noAction
+			case finish
+		}
+		private let fifo:FIFO<Element, Failure>
+		internal init(_ fifoIn:consuming FIFO) {
+			fifo = fifoIn
+		}
+		public borrowing func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async -> ConsumeResult {
+			switch cancelAction {
+				case .noAction:
+					return await _nextExplicit()
+				case .finish:
+					return await withTaskCancellationHandler(operation: {
+						await _nextExplicit()
+					}, onCancel: { [f = fifo] in
+						f.finish()
+					})
+			}
 		}
 	}
 }
@@ -196,29 +269,32 @@ extension FIFO {
 	}
 }
 
-extension FIFO.SyncConsumerNonBlocking {
+extension FIFO.SyncConsumerNonBlockingExplicit {
 	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
 	}
+}
+extension FIFO.SyncConsumerNonBlocking {
 	fileprivate borrowing func _next() -> Result<Element?, Failure>? {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
 	}
 }
 
-extension FIFO.SyncConsumerBlocking {
+extension FIFO.SyncConsumerBlockingExplicit {
 	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)
 	}
+}
+extension FIFO.SyncConsumerBlocking {
 	fileprivate borrowing func _next() -> Result<Element?, Failure> {
 		var pointer:__cswiftslash_ptr_t? = nil
 		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!
 	}
 }
-
-extension FIFO.AsyncConsumer {
+extension FIFO.AsyncConsumerExplicit {
 	fileprivate borrowing func _nextExplicit() async -> FIFO.ConsumeResult {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<FIFO.ConsumeResult, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
@@ -226,6 +302,8 @@ extension FIFO.AsyncConsumer {
 			continuation.resume(returning:result)
 		})
 	}
+}
+extension FIFO.AsyncConsumer {
 	fileprivate borrowing func _next() async -> Result<Element?, Failure> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
 			var pointer:__cswiftslash_ptr_t? = nil
