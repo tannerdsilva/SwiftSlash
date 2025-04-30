@@ -17,7 +17,6 @@ int __cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr) {
 }
 #endif
 
-
 int32_t __cswiftslash_eventtrigger_wifsignaled(const int32_t status) {
    return WIFSIGNALED(status);
 }

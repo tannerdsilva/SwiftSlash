@@ -101,6 +101,7 @@ public enum DataChannel {
 		/// the underlying nasyncstream that this struct wraps
 		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
 
+		/// initialize a new data channel that the child process will read from and the calling process will write to.
 		public init() {}
 
 		/// create a new outbound data channel
