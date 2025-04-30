@@ -85,18 +85,18 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	.target(
+	/*.target(
 		name:"SwiftSlashNAsyncStream",
 		dependencies:[
 			"SwiftSlashFIFO",
 			"SwiftSlashIdentifiedList"
 		]
-	),
+	),*/
 	.target(
 		name:"SwiftSlashLineParser",
 		dependencies:[
 			"__cswiftslash_posix_helpers",
-			"SwiftSlashNAsyncStream"	
+			"SwiftSlashFIFO"
 		]
 	),
 	.target(
@@ -121,7 +121,7 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashFuture",
 			"SwiftSlashFIFO",
 			"SwiftSlashIdentifiedList",
-			"SwiftSlashNAsyncStream",
+			// "SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
 			"SwiftSlashLineParser",
 			"SwiftSlashEventTrigger"
@@ -143,7 +143,7 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashPThread",
 		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
-		"SwiftSlashNAsyncStream",
+		// "SwiftSlashNAsyncStream",
 		"SwiftSlashLineParser",
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",

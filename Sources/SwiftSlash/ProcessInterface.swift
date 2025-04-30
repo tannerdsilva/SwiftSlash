@@ -1,4 +1,3 @@
-import SwiftSlashNAsyncStream
 import __cswiftslash_posix_helpers
 
 public actor ProcessInterface {

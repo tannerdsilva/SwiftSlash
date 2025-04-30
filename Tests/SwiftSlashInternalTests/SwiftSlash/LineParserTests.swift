@@ -1,7 +1,6 @@
 import Testing
 
 @testable import SwiftSlashLineParser
-import SwiftSlashNAsyncStream
 
 extension Tag {
 	@Tag internal static var swiftSlashLineParser:Self

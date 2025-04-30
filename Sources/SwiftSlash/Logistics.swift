@@ -174,7 +174,7 @@ internal struct ProcessLogistics {
 					}
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer()] in
 						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
-						var lineParser = LineParser(separator:separator, nasync:userDataStream.nasync)
+						var lineParser = LineParser(separator:separator, nasync:userDataStream.fifo)
 						defer {
 							// this is the only place where action happens with the file handle, 
 							try! rFH.closeFileHandle()

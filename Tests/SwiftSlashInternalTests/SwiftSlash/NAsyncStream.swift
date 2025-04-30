@@ -10,14 +10,14 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 import Testing
-@testable import SwiftSlashNAsyncStream
+// @testable import SwiftSlashNAsyncStream
 
 extension Tag {
 	@Tag internal static var swiftSlashNAsyncStream:Self
 }
 
 extension SwiftSlashTests {
-	@Suite("SwiftSlashNAsyncStream",
+	/*@Suite("SwiftSlashNAsyncStream",
 		.serialized,
 		.tags(.swiftSlashNAsyncStream)
 	)
@@ -64,5 +64,5 @@ extension SwiftSlashTests {
 				}
 			}
 		}
-	}
+	}*/
 }

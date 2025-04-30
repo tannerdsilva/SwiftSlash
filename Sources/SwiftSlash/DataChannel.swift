@@ -9,7 +9,6 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-import SwiftSlashNAsyncStream
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
@@ -24,12 +23,12 @@ public enum DataChannel {
 	/// used for reading data that a running process writes.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
 		/// returns an async iterator for this data channel.
-	    public borrowing func makeAsyncIterator() -> AsyncIterator {
-	        return AsyncIterator(nasync.makeAsyncConsumer())
-	    }
+		public borrowing func makeAsyncIterator() -> AsyncIterator {
+			return AsyncIterator(fifo.makeAsyncConsumerExplicit())
+		}
 
 		/// the type of element that this data channel will produce with each iteration.
-	    public typealias Element = [[UInt8]]
+		public typealias Element = [[UInt8]]
 
 		/// specifies a configuration for an inbound data channel.
 		public enum Configuration:Sendable {
@@ -52,30 +51,38 @@ public enum DataChannel {
 		}
 
 		/// the underlying nasyncstream that this struct wraps
-		internal let nasync:NAsyncStream<[[UInt8]], Never> = .init()
+		internal let fifo:FIFO<[[UInt8]], Never> = .init()
 
 		/// initialize a new data channel that the child process will write to and the calling process will read from.
 		public init() {}
 
 		/// AsyncIterator for consuming read data from the child process.
 		public final class AsyncIterator:AsyncIteratorProtocol {
-			private let nasync:NAsyncStream<[[UInt8]], Never>.Consumer
-			internal init(_ nasync:consuming NAsyncStream<[[UInt8]], Never>.Consumer) {
-				self.nasync = nasync
+			private let fifoC:FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
+			internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
+				fifoC = fifo
 			}
 			public borrowing func next() async -> [[UInt8]]? {
-				return await nasync.next(whenTaskCancelled:.finish)
+				switch await fifoC.next(whenTaskCancelled:.finish) {
+				case .element(let element):
+					return element
+				case .capped(_):
+					return nil
+				case .wouldBlock:
+					fatalError("SwiftSlashFIFO internal error :: AsyncConsumer would block, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+
+				}
 			}
 		}
 
 		/// used for writing data that a running process reads.
 		internal borrowing func yield(_ element:consuming [[UInt8]]) {
-			nasync.yield(element)
+			fifo.yield(element)
 		}
 
 		/// finish writing to the channel so that no more data can be sent through it.
 		internal borrowing func finish() {
-			nasync.finish()
+			fifo.finish()
 		}
 	}
 

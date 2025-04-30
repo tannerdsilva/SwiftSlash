@@ -10,7 +10,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 import __cswiftslash_posix_helpers
-import SwiftSlashNAsyncStream
+import SwiftSlashFIFO
 
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
@@ -19,7 +19,7 @@ public struct LineParser:~Copyable {
     /// the various types of output that the parser can use to produce lines.
     public enum Output {
         /// pass the lines into a `NAsyncStream` for async consumption
-        case nasync(NAsyncStream<[LineOutput], Never>)
+        case nasync(FIFO<[LineOutput], Never>)
         /// pass the lines to a function closure
         case handler(([LineOutput]?) -> Void)
     }
@@ -50,7 +50,7 @@ public struct LineParser:~Copyable {
         handler = handlerArg
     }
 
-    public init(separator sepArg:[UInt8], nasync output: NAsyncStream<[LineOutput], Never>) {
+    public init(separator sepArg:[UInt8], nasync output: FIFO<[LineOutput], Never>) {
         self.init(separator: sepArg, initialCapacity: 4_096, output: .nasync(output))
     }
 
