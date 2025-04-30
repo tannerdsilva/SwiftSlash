@@ -16,10 +16,10 @@ import SwiftSlashFHHelpers
 import SwiftSlashFuture
 
 /// used to monitor file handles for activity.
-public final class EventTrigger:Sendable {
+public final class EventTrigger<ChildReadType>:Sendable where ChildReadType:EventTriggerFinishProtocol {
 
 	#if os(Linux)
-	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger
+	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger<ChildReadType>
 	#elseif os(macOS)
 	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
 	#endif
@@ -34,14 +34,14 @@ public final class EventTrigger:Sendable {
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
 	/// the stream of registrations that are being made to the event trigger. the system kernel allows for the file handle to be registered on any thread, but the corresponding FIFO must be passed to the pthread that is triggering the events
-	private let regStream:FIFO<Register, Never>
+	private let regStream:FIFO<Register<ChildReadType>, Never>
 	/// the type of registration that is being made to the event trigger.
 	private let cancelPipe:PosixPipe
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	public init() throws {
 		cancelPipe = try PosixPipe()
-		regStream = FIFO<Register, Never>()
+		regStream = FIFO<Register<ChildReadType>, Never>()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
@@ -62,7 +62,7 @@ public final class EventTrigger:Sendable {
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	public borrowing func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
+	public borrowing func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming ChildReadType) throws(EventTriggerErrors) {
 		regStream.yield(.writer(fh:writer, (fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, writer:writer)
 	}

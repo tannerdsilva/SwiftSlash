@@ -13,18 +13,18 @@ import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
-internal enum Register:Equatable, Hashable {
+internal enum Register<ChildReadType>:Equatable, Hashable {
 
-	/// register a reader.
+	/// register a parent process reader.
 	/// - parameter 1: the file handle to register.
 	/// - parameter 2: the fifo to signal when there is data to read from the file handle.
 	case reader(fh:Int32, (FIFO<size_t, Never>, Future<Void, Never>)?)
 
 
-	/// register a writer.
+	/// register a parent process writer.
 	/// - parameter 1: the file handle to register.
 	/// - parameter 2: the fifo to signal when there is space to write more data to the file handle.
-	case writer(fh:Int32, (FIFO<Void, Never>, Future<Void, Never>)?)
+	case writer(fh:Int32, (FIFO<Void, Never>, ChildReadType)?)
 }
 
 extension Register {

@@ -18,8 +18,8 @@ import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashFuture
 
-internal final class LinuxEventTrigger:EventTriggerEngine {
-	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
+internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where ChildReadType:EventTriggerFinishProtocol {
+	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle, ChildReadType>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = epoll_event
@@ -34,10 +34,10 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, ChildReadType)] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register, Never>
+	private let registrations:FIFO<Register<ChildReadType>, Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
@@ -120,7 +120,7 @@ internal final class LinuxEventTrigger:EventTriggerEngine {
 							try Self.deregister(prim, writer:currentEvent.data.fd)
 							let (fifo, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
 							fifo.finish()
-							try! future.setSuccess(())
+							future.finish()
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
 							

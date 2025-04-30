@@ -11,6 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import SwiftSlashFIFO
 import SwiftSlashFuture
+import SwiftSlashEventTrigger
 
 /// represents a uni-directional stream of data that can exist between a parent process and a child process. A data channel can only be one of two possible types...`ChildWriteParentRead` or `ChildReadParentWrite`.
 public enum DataChannel {
@@ -87,7 +88,7 @@ public enum DataChannel {
 	}
 
 	/// used for writing data that a running process reads.
-	public struct ChildReadParentWrite:Sendable {
+	public struct ChildReadParentWrite:Sendable, EventTriggerFinishProtocol {
 
 		/// specifies a configuration for an outbound data channel.
 		public enum Configuration:Sendable {
@@ -99,6 +100,8 @@ public enum DataChannel {
 
 		/// the underlying nasyncstream that this struct wraps
 		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
+
+		public init() {}
 
 		/// create a new outbound data channel
 		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {

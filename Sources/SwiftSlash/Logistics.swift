@@ -91,15 +91,11 @@ internal struct ProcessLogistics {
 			internal let launchedPID:pid_t
 			
 			internal struct WriteTask {
-				internal let finishFuture:Future<Void, Never>
 				internal let userDataStream:DataChannel.ChildReadParentWrite
 				internal let writeConsumerFIFO:FIFO<Void, Never>
 				internal let wFH:Int32
-				internal let eventTrigger:EventTrigger
+				internal let eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
-					finishFuture.whenResult { [userData = userDataStream] _ in
-						userData.finish()
-					}
 					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumerExplicit()] in
 						defer {
 							try! wFH.closeFileHandle()
@@ -167,11 +163,8 @@ internal struct ProcessLogistics {
 				internal let userDataStream:DataChannel.ChildWriteParentRead
 				internal let systemReadEventsFIFO:FIFO<size_t, Never>
 				internal let rFH:Int32
-				internal let eventTrigger:EventTrigger
+				internal let eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
-					finishFuture.whenResult { [userData = userDataStream] _ in
-						userData.finish()
-					}
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer()] in
 						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
 						var lineParser = LineParser(separator:separator, nasync:userDataStream.fifo)
@@ -217,7 +210,7 @@ internal struct ProcessLogistics {
 	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
-	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger? = nil
+	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite>? = nil
 	@SerializedLaunch internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
@@ -235,23 +228,20 @@ internal struct ProcessLogistics {
 			// for each writer configured...
 			switch config {
 				case .active(let channel):
-
-					let finishFuture = Future<Void, Never>()
 					
 					// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildReading()
 
 					// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-					let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
+					let writerFIFO = EventTrigger<DataChannel.ChildReadParentWrite>.WriterFIFO(maximumElementCount:1)
 
 					// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
-					try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:finishFuture)
+					try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:channel)
 					
 					// this pipe needs to be further handled after the process fork so we will store it for future reference.
 					writePipes[fh] = newPipe
 
 					writeTasks.append(LaunchPackage.Launched.WriteTask(
-						finishFuture:finishFuture,
 						userDataStream:channel,
 						writeConsumerFIFO:writerFIFO,
 						wFH:newPipe.writing,
@@ -275,7 +265,7 @@ internal struct ProcessLogistics {
 
 					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 					let newPipe = try PosixPipe.forChildWriting()
-					let readerFIFO = EventTrigger.ReaderFIFO()
+					let readerFIFO = EventTrigger<DataChannel.ChildReadParentWrite>.ReaderFIFO()
 					try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:finishFuture)
 
 					// close the writing end of the pipe after fork.
