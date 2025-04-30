@@ -57,6 +57,9 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashContained"
 	),
 	.target(
+		name:"SwiftSlashGlobalSerialization"
+	),
+	.target(
 		name:"SwiftSlashFuture",
 		dependencies:[
 			"__cswiftslash_future",
@@ -124,7 +127,8 @@ fileprivate let swiftTargets:[Target] = [
 			// "SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
 			"SwiftSlashLineParser",
-			"SwiftSlashEventTrigger"
+			"SwiftSlashEventTrigger",
+			"SwiftSlashGlobalSerialization"
 		]
 	),
 ]

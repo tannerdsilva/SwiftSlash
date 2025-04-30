@@ -16,6 +16,7 @@ import SwiftSlashEventTrigger
 import SwiftSlashLineParser
 import SwiftSlashFIFO
 import SwiftSlashFuture
+import SwiftSlashGlobalSerialization
 
 internal enum WaitPIDResult {
 	case signaled(Int32)
@@ -210,8 +211,8 @@ internal struct ProcessLogistics {
 	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
-	@SerializedLaunch fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite>? = nil
-	@SerializedLaunch internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
+	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite>? = nil
+	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
 		}
@@ -326,7 +327,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SerializedLaunch fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard __cswiftslash_execvp_safetycheck(path) == 0 else {
 			throw ProcessSpawnError.execSafetyCheckFailure
