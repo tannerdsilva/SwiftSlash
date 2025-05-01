@@ -109,7 +109,7 @@ internal struct ProcessLogistics {
 						}
 
 						// this function will retrieve the next data chunk that the user wants to write.
-						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
+						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
 							switch await iterator.next(whenTaskCancelled:.noAction) {
 								case .element(let (newUserDataToWrite, writeCompleteFuture)):
 									// this is a signal that the file handle is ready for writing.
@@ -122,6 +122,7 @@ internal struct ProcessLogistics {
 							}
 						}
 
+						// this function will attempt to write the entire contents of the current write step to the file handle.
 						func flushCurrentStep(_ currentWriteStep:inout WriteStepper?) throws(FileHandleError) {
 							switch try currentWriteStep!.write(to:wFH) {
 								case .retireMe:
@@ -135,7 +136,7 @@ internal struct ProcessLogistics {
 						let userDataConsume = userDataStream.makeAsyncConsumer()
 
 						var currentWriteStepper:WriteStepper? = nil
-						// main loop
+						// main loop. if this loop is broken, it means that the termination future has been set.
 						systemEventLoopInfinite: repeat {
 							// wait for the system to indicate that the file handle is ready for writing.
 							switch await writeConsumer.next(whenTaskCancelled:.noAction) {
@@ -156,19 +157,19 @@ internal struct ProcessLogistics {
 									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						} while true
-						// final flush loop
-						currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
+						let terminationResult = await terminationFuture.result()!
 						finalFlushLoop: while currentWriteStepper != nil {
-							try flushCurrentStep(&currentWriteStepper)
-							if currentWriteStepper == nil {
-								currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
-								guard currentWriteStepper != nil else {
-									// user is ready for this stream to be closed.
+							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
+								case .element(let (newUserDataToWrite, writeCompleteFuture)):
+									try? writeCompleteFuture?.setResult(terminationResult)
+								case .capped(_):
+									// this is a signal that the file handle is not ready for writing.
 									break finalFlushLoop
-								}
+								case .wouldBlock:
+									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						}
-						return try await terminationFuture.result()!.get()
+						return try terminationResult.get()
 					}
 				}
 			}
@@ -270,7 +271,7 @@ internal struct ProcessLogistics {
 						wFH:newPipe.writing,
 						eventTrigger:eventTrigger!
 					))
-					
+					break;
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
 					writePipes[fh] = newPipe
@@ -302,7 +303,7 @@ internal struct ProcessLogistics {
 						rFH:newPipe.reading,
 						eventTrigger:eventTrigger!
 					))
-					
+					break;
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
 					readPipes[fh] = newPipe
@@ -312,9 +313,35 @@ internal struct ProcessLogistics {
 		}
 
 		// launch the application
-		let launchedPID = try package.exposeArguments({ argumentArr in
-			return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
-		})
+		let launchedPID:pid_t
+		do {
+			launchedPID = try package.exposeArguments({ argumentArr in
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
+			})
+		} catch let error {
+			// cleanup the pipes that were created.
+			// cleanup write pipes
+			for (_, possibleEnabledWriter) in writePipes {
+				if nullPipes.contains(possibleEnabledWriter) == false {
+					try! eventTrigger!.deregister(writer:possibleEnabledWriter.writing)
+				}
+
+				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+				try! possibleEnabledWriter.writing.closeFileHandle()
+				try! possibleEnabledWriter.reading.closeFileHandle()
+			}
+			// cleanup read pipes
+			for (_, possibleEnabledReader) in readPipes {
+				if nullPipes.contains(possibleEnabledReader) == false {
+					try! eventTrigger!.deregister(reader:possibleEnabledReader.reading)
+				}
+
+				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+				try! possibleEnabledReader.writing.closeFileHandle()
+				try! possibleEnabledReader.reading.closeFileHandle()
+			}
+			throw error
+		}
 		
 		// now that the child process is launched, we can close the file handles that are not intended for this process to use.
 		

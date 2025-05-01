@@ -90,7 +90,9 @@ public enum DataChannel {
 
 	/// used for writing data that a running process reads.
 	public struct ChildReadParentWrite:Sendable {
-		public enum Error:Swift.Error {}
+		public enum Error:Swift.Error {
+			case dataChannelClosed
+		}
 
 		/// specifies a configuration for an outbound data channel.
 		public enum Configuration:Sendable {
@@ -101,20 +103,21 @@ public enum DataChannel {
 		}
 
 		/// the underlying nasyncstream that this struct wraps
-		internal let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
+		internal let fifo:FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never> = .init()
 
 		/// initialize a new data channel that the child process will read from and the calling process will write to.
 		public init() {}
 
 		/// create a new outbound data channel
-		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, WrittenDataChannelClosureError>?) {
+		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, DataChannel.ChildReadParentWrite.Error>?) {
 			switch fifo.yield((element, future)) {
 				case .success:
-				break
+					// future successfully yielded, we can return.
+					break
 				case .fifoClosed:
-					// The FIFO is closed, we cannot yield any more data.
+					// the FIFO is closed, we cannot yield any more data. the future must be handled here if it is not nil.
 					if future != nil {
-						try! future!.setFailure(WrittenDataChannelClosureError.dataChannelClosed)
+						try? future!.setFailure(DataChannel.ChildReadParentWrite.Error.dataChannelClosed)
 					}
 				case .fifoFull:
 					fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
@@ -127,7 +130,7 @@ public enum DataChannel {
 		}
 
 		/// AsyncConsumer for consuming written data from the child process.
-		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumerExplicit {
+		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never>.AsyncConsumerExplicit {
 			return fifo.makeAsyncConsumerExplicit()
 		}
 	}

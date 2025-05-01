@@ -70,6 +70,19 @@ public final class Future<Produced, Failure>:@unchecked Sendable where Failure:S
 
 extension Future {
 
+	/// assign a result to the future. this function will throw if the future is already set with a result or error.
+	/// - parameters:
+	/// 	- result: the result to assign to the future.
+	/// - throws: InvalidStateError if the future is already set with a result or error.
+	public func setResult(_ result:consuming Result<Produced, Failure>) throws(InvalidFutureStateError) {
+		switch result {
+			case .success(let res):
+				try setSuccess(res)
+			case .failure(let err):
+				try setFailure(err)
+		}
+	}
+
 	/// assign a successful result to the future.
 	/// - parameters:
 	/// 	- result: the result to assign to the future.

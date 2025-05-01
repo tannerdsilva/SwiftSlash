@@ -22,10 +22,10 @@ internal struct WriteStepper:~Copyable {
 	private var offset:size_t = 0
 
 	/// an optional future that will be set as finished when the write operation is complete.
-	internal let completeFuture:Future<Void, WrittenDataChannelClosureError>?
+	internal let completeFuture:Future<Void, DataChannel.ChildReadParentWrite.Error>?
 
 	/// creates a new instance of WriteStepper.
-	internal init(_ dataIn:consuming [UInt8], writeFuture:consuming Future<Void, WrittenDataChannelClosureError>?) {
+	internal init(_ dataIn:consuming [UInt8], writeFuture:consuming Future<Void, DataChannel.ChildReadParentWrite.Error>?) {
 		data = dataIn
 		completeFuture = writeFuture
 	}
