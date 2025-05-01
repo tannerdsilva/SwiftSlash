@@ -13,18 +13,16 @@ import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
-internal enum Register<ChildReadType>:Equatable, Hashable {
+internal enum Register<DataChannelChildReadError, DataChannelChildWriteError>:Equatable, Hashable where DataChannelChildReadError:Error, DataChannelChildWriteError:Error {
 
 	/// register a parent process reader.
 	/// - parameter 1: the file handle to register.
-	/// - parameter 2: the fifo to signal when there is data to read from the file handle.
-	case reader(fh:Int32, (FIFO<size_t, Never>, Future<Void, Never>)?)
+	case reader(fh:Int32, (FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)?)
 
 
 	/// register a parent process writer.
 	/// - parameter 1: the file handle to register.
-	/// - parameter 2: the fifo to signal when there is space to write more data to the file handle.
-	case writer(fh:Int32, (FIFO<Void, Never>, ChildReadType)?)
+	case writer(fh:Int32, (FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)?)
 }
 
 extension Register {

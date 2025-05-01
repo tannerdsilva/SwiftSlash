@@ -17,9 +17,10 @@ import SwiftSlashFIFO
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashFuture
+import SwiftSlashGlobalSerialization
 
-internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where ChildReadType:EventTriggerFinishProtocol {
-	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle, ChildReadType>
+internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>:EventTriggerEngine where DataChannelChildReadError:Swift.Error, DataChannelChildWriteError:Swift.Error {
+	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle, DataChannelChildReadError, DataChannelChildWriteError>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = epoll_event
@@ -31,13 +32,13 @@ internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where C
 	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
+	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, ChildReadType)] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register<ChildReadType>, Never>
+	private let registrations:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
@@ -107,20 +108,15 @@ internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where C
 							continue resultLoop
 						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
-
 							// reading handle closed
-							try Self.deregister(prim, reader:currentEvent.data.fd)
-							let (fifo, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
-							fifo.finish()
-							try! future.setSuccess(())
+							let (_, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
+							try? future.setSuccess(())
 
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							try Self.deregister(prim, writer:currentEvent.data.fd)
-							let (fifo, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
-							fifo.finish()
-							future.finish()
+							let (_, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
+							try? future.setSuccess(())
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
 							
@@ -129,12 +125,11 @@ internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where C
 							guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
 								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
 							}
-							// fatalError("READING FD \(currentEvent.data.fd) BYTES AVAIL \(byteCount) @@ \(#file):\(#line)")
 							readersDataOut[currentEvent.data.fd]!.0.yield(Int(byteCount))
+
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available
-							// fatalError("WRITE AVAILABLE FD \(currentEvent.data.fd) @@ \(#file):\(#line)")
 							writersDataTrigger[currentEvent.data.fd]!.0.yield(())
 							
 						}
@@ -169,7 +164,7 @@ internal final class LinuxEventTrigger<ChildReadType>:EventTriggerEngine where C
 }
 
 extension LinuxEventTrigger {
-	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = epoll_event()
 		newEvent.data.fd = reader
 		newEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
@@ -178,7 +173,7 @@ extension LinuxEventTrigger {
 		}
 	}
 
-	internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = epoll_event()
 		newEvent.data.fd = writer
 		newEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
@@ -202,6 +197,17 @@ extension LinuxEventTrigger {
 		buildEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_DEL, writer, &buildEvent) == 0 else {
 			throw EventTriggerErrors.writerDeregistrationFailure(writer, __cswiftslash_get_errno())
+		}
+	}
+}
+
+extension LinuxEventTrigger {
+	internal static func _deregisterInternal(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = reader
+		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_DEL, reader, &buildEvent) == 0 else {
+			throw EventTriggerErrors.readerDeregistrationFailure(reader, __cswiftslash_get_errno())
 		}
 	}
 }

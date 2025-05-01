@@ -11,16 +11,21 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
+import SwiftSlashGlobalSerialization
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
-internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive, ChildReadType>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
-	associatedtype ChildReadType:EventTriggerFinishProtocol
+internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive, DataChannelChildReadError, DataChannelChildWriteError>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
+	/// the type of error that can close a child reading data channel.
+	associatedtype DataChannelChildReadError:Swift.Error
 
+	/// the type of error that can close a child writing data channel.
+	associatedtype DataChannelChildWriteError:Swift.Error
+	
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
-	static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
+	@SwiftSlashGlobalSerialization static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
+	@SwiftSlashGlobalSerialization static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
 	static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
@@ -39,9 +44,4 @@ internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTrig
 
 	/// closes the primitive for the event trigger.
 	static func closePrimitive(_ prim:consuming EventTriggerHandlePrimitive) throws(FileHandleError)
-}
-
-public protocol EventTriggerFinishProtocol {
-	/// finishes the event trigger, cleaning up any resources.
-	func finish()
 }

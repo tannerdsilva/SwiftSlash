@@ -18,7 +18,7 @@ extension SwiftSlashTests {
 	struct EventTriggerTests {
 		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))
 		func initializationBasics() async throws {
-			var et:EventTrigger? = try EventTrigger<DataChannel.ChildReadParentWrite>()
+			var et:EventTrigger? = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
 			#expect(et != nil)
 			et = nil
 			#expect(et == nil)
@@ -28,9 +28,12 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let readingFIFO = FIFO<size_t, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
-			let et = try EventTrigger<DataChannel.ChildReadParentWrite>()
-			let fut = Future<Void, Never>()
-			try et.register(reader:newPipe.reading, readingFIFO, finishFuture:fut)
+			let et:EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error> = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
+			let fut = Future<Void, DataChannel.ChildWriteParentRead.Error>()
+			fut.whenResult { result in
+				readingFIFO.finish()
+			}
+			try await et.register(reader:newPipe.reading, readingFIFO, finishFuture:fut)
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
 			var nextItem:size_t? = await asyncConsumer.next()
 			#expect(nextItem == 1, "readingFIFO should have 1 byte but instead found \(String(describing:nextItem))")
@@ -49,9 +52,12 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let writingFIFO = FIFO<Void, Never>()
 			let asyncConsumer: FIFO<Void, Never>.AsyncConsumer = writingFIFO.makeAsyncConsumer()
-			let et = try EventTrigger<DataChannel.ChildReadParentWrite>()
-			let chan = DataChannel.ChildReadParentWrite()
-			try et.register(writer:newPipe.writing, writingFIFO, finishFuture:chan)
+			let et = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
+			let fut = Future<Void, DataChannel.ChildReadParentWrite.Error>()
+			fut.whenResult { result in
+				writingFIFO.finish()
+			}
+			try await et.register(writer:newPipe.writing, writingFIFO, finishFuture:fut)
 			var nextItem:Void? = await asyncConsumer.next()
 			#expect(nextItem != nil, "writingFIFO should not be nil but instead found nil")
 			// #expect(fut.hasResult() == false, "writingFIFO should not have a result but instead found hasResult == \(String(describing:fut.hasResult()))")

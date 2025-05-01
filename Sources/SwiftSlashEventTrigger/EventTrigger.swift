@@ -14,12 +14,13 @@ import SwiftSlashPThread
 import SwiftSlashFIFO
 import SwiftSlashFHHelpers
 import SwiftSlashFuture
+import SwiftSlashGlobalSerialization
 
 /// used to monitor file handles for activity.
-public final class EventTrigger<ChildReadType>:Sendable where ChildReadType:EventTriggerFinishProtocol {
+public final class EventTrigger<DataChannelChildReadError, DataChannelChildWriteError>:Sendable where DataChannelChildReadError:Swift.Error, DataChannelChildWriteError:Swift.Error {
 
 	#if os(Linux)
-	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger<ChildReadType>
+	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>
 	#elseif os(macOS)
 	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
 	#endif
@@ -34,14 +35,14 @@ public final class EventTrigger<ChildReadType>:Sendable where ChildReadType:Even
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
 	/// the stream of registrations that are being made to the event trigger. the system kernel allows for the file handle to be registered on any thread, but the corresponding FIFO must be passed to the pthread that is triggering the events
-	private let regStream:FIFO<Register<ChildReadType>, Never>
+	private let regStream:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
 	/// the type of registration that is being made to the event trigger.
 	private let cancelPipe:PosixPipe
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
-	public init() throws {
+	@SwiftSlashGlobalSerialization public init() throws {
 		cancelPipe = try PosixPipe()
-		regStream = FIFO<Register<ChildReadType>, Never>()
+		regStream = FIFO<Register, Never>()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
@@ -56,13 +57,13 @@ public final class EventTrigger<ChildReadType>:Sendable where ChildReadType:Even
 	}
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
-	public borrowing func register(reader:Int32, _ fifo:consuming ReaderFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization public borrowing func register(reader:Int32, _ fifo:consuming ReaderFIFO, finishFuture:consuming Future<Void, DataChannelChildWriteError>) throws(EventTriggerErrors) {
 		regStream.yield(.reader(fh:reader, (fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, reader:reader)
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	public borrowing func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming ChildReadType) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization public func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming Future<Void, DataChannelChildReadError>) throws(EventTriggerErrors) {
 		regStream.yield(.writer(fh:writer, (fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, writer:writer)
 	}
