@@ -16,9 +16,10 @@ import SwiftSlashFIFO
 import SwiftSlashFuture
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
+import SwiftSlashGlobalSerialization
 
-internal final class MacOSEventTrigger:EventTriggerEngine {
-	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
+internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>:EventTriggerEngine where DataChannelChildReadError:Swift.Error, DataChannelChildWriteError:Swift.Error {
+	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle, DataChannelChildReadError, DataChannelChildWriteError>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = kevent
@@ -30,13 +31,13 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
+	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register, Never>
+	private let registrations:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
@@ -125,17 +126,13 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 
 								// reader close.
-								try Self.deregister(prim, reader:curIdent)
-								let (fifo, future) = readersDataOut.removeValue(forKey:curIdent)!
-								fifo.finish()
+								let (_, future) = readersDataOut.removeValue(forKey:curIdent)!
 								try future.setSuccess(())
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
-								try Self.deregister(prim, writer:curIdent)
-								let (fifo, future) = writersDataTrigger.removeValue(forKey:curIdent)!
-								fifo.finish()
+								let (_, future) = writersDataTrigger.removeValue(forKey:curIdent)!
 								try future.setSuccess(())
 							}
 						}
@@ -169,7 +166,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine {
 }
 
 extension MacOSEventTrigger {
-	internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -182,7 +179,7 @@ extension MacOSEventTrigger {
 		}
 	}
 
-	internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)

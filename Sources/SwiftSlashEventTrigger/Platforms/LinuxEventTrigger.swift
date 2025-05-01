@@ -32,10 +32,10 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 	internal let cancelPipe:PosixPipe
 
 	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)] = [:]
+	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
 
 	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)] = [:]
+	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>

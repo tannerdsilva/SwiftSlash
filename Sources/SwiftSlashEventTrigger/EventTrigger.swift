@@ -22,7 +22,7 @@ public final class EventTrigger<DataChannelChildReadError, DataChannelChildWrite
 	#if os(Linux)
 	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>
 	#elseif os(macOS)
-	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
+	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>
 	#endif
 
 	/// the type of registration that is being made to the event trigger for readers.
