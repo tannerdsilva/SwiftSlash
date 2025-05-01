@@ -98,7 +98,7 @@ internal struct ProcessLogistics {
 				internal let wFH:Int32
 				internal let eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
-					terminationFuture.whenResult({ [fh = wFH, et = eventTrigger, f = writeConsumerFIFO, uds = userDataStream] _ in
+					terminationFuture.whenResult({ [fh = wFH, et = eventTrigger, f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
 						try! et.deregister(writer:fh)
 						f.finish()
 						uds.finish()
@@ -108,59 +108,67 @@ internal struct ProcessLogistics {
 							try! wFH.closeFileHandle()
 						}
 
-						let userDataConsume = userDataStream.makeAsyncConsumer()
-
-						// the user data stream may be holding futures that need to be closed. these are the futures that a dev can use to wait for a chunk of data to be written before  this function will handle remaining futures from the user data stream.
-						func flushRemainingFuturesFromUserStream(failure error:WrittenDataChannelClosureError) async {
-							// implied task already cancelled.
-							while let (_, future) = await userDataConsume.next(whenTaskCancelled:.noAction) {
-								// if this chunk of data had a future associated with it, the future will be handled
-								if future != nil {
-									try? future!.setFailure(error)
-								}
+						// this function will retrieve the next data chunk that the user wants to write.
+						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
+							switch await iterator.next(whenTaskCancelled:.noAction) {
+								case .element(let (newUserDataToWrite, writeCompleteFuture)):
+									// this is a signal that the file handle is ready for writing.
+									return WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+								case .capped(_):
+									// this is a signal that the file handle is not ready for writing.
+									return nil
+								case .wouldBlock:
+									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						}
-						
-						// main system event loop for the file handle.
-						var currentWriteStep:WriteStepper? = nil
-						systemEventLoop: repeat {
+
+						func flushCurrentStep(_ currentWriteStep:inout WriteStepper?) throws(FileHandleError) {
+							switch try currentWriteStep!.write(to:wFH) {
+								case .retireMe:
+									currentWriteStep = nil
+									return
+								case .holdMe:
+									return
+							}
+						}
+
+						let userDataConsume = userDataStream.makeAsyncConsumer()
+
+						var currentWriteStepper:WriteStepper? = nil
+						// main loop
+						systemEventLoopInfinite: repeat {
+							// wait for the system to indicate that the file handle is ready for writing.
 							switch await writeConsumer.next(whenTaskCancelled:.noAction) {
 								case .element(_):
-									writeAvailableLoop: repeat {
-										if currentWriteStep == nil {
-											if let (newUserDataToWrite, writeCompleteFuture) = await userDataConsume.next(whenTaskCancelled:.finish) {
-												// apply this as the data we will step through in one or more writes.
-												currentWriteStep = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
-											} else {
-												// user is ready for this stream to be closed.
-												break systemEventLoop
-											}
+									if currentWriteStepper == nil {
+										// this is a signal that the file handle is ready for writing.
+										currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
+										guard currentWriteStepper != nil else {
+											// user is ready for this stream to be closed.
+											break systemEventLoopInfinite
 										}
-
-										do {
-											switch try currentWriteStep!.write(to:wFH) {
-												case .retireMe:
-													currentWriteStep = nil
-													fallthrough
-												case .holdMe:
-													continue writeAvailableLoop
-											}
-										} catch FileHandleError.error_wouldblock {
-											// go back to the system event loop and wait for the file handle to be ready for more writing.
-											continue systemEventLoop
-										} catch let error as FileHandleError {
-											// this is a problem with the file handle itself. we need to close the file handle and signal to the user that this is a problem.
-											await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.systemWriteErrorThrown(error))
-											throw error
-										}
-									} while true
+									}
+									try flushCurrentStep(&currentWriteStepper)
 								case .capped(_):
-									break systemEventLoop
+									// this is a signal that the file handle is not ready for writing.
+									break systemEventLoopInfinite
 								case .wouldBlock:
 									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						} while true
-						await flushRemainingFuturesFromUserStream(failure:WrittenDataChannelClosureError.writeLoopTaskCancelled)
+						// final flush loop
+						currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
+						finalFlushLoop: while currentWriteStepper != nil {
+							try flushCurrentStep(&currentWriteStepper)
+							if currentWriteStepper == nil {
+								currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
+								guard currentWriteStepper != nil else {
+									// user is ready for this stream to be closed.
+									break finalFlushLoop
+								}
+							}
+						}
+						return try await terminationFuture.result()!.get()
 					}
 				}
 			}

@@ -200,15 +200,4 @@ extension LinuxEventTrigger {
 		}
 	}
 }
-
-extension LinuxEventTrigger {
-	internal static func _deregisterInternal(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
-		var buildEvent = epoll_event()
-		buildEvent.data.fd = reader
-		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
-		guard epoll_ctl(ev, EPOLL_CTL_DEL, reader, &buildEvent) == 0 else {
-			throw EventTriggerErrors.readerDeregistrationFailure(reader, __cswiftslash_get_errno())
-		}
-	}
-}
 #endif

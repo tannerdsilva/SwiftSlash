@@ -83,7 +83,7 @@ public enum DataChannel {
 		}
 
 		/// finish writing to the channel so that no more data can be sent through it.
-		internal borrowing func finish() {
+		internal borrowing func closeDataChannel() {
 			fifo.finish()
 		}
 	}
@@ -101,7 +101,7 @@ public enum DataChannel {
 		}
 
 		/// the underlying nasyncstream that this struct wraps
-		private let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
+		internal let fifo:FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never> = .init()
 
 		/// initialize a new data channel that the child process will read from and the calling process will write to.
 		public init() {}
@@ -122,13 +122,13 @@ public enum DataChannel {
 		}
 
 		/// finish writing to the channel
-		public borrowing func finish() {
+		public borrowing func closeDataChannel() {
 			fifo.finish()
 		}
 
 		/// AsyncConsumer for consuming written data from the child process.
-		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumer {
-			return fifo.makeAsyncConsumer()
+		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, WrittenDataChannelClosureError>?), Never>.AsyncConsumerExplicit {
+			return fifo.makeAsyncConsumerExplicit()
 		}
 	}
 }
