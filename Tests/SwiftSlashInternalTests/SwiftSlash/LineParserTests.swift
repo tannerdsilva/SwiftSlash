@@ -1,19 +1,17 @@
 import Testing
 
-@testable import SwiftSlashLineParser
+@testable import SwiftSlash
 
 extension Tag {
 	@Tag internal static var swiftSlashLineParser:Self
 }
 
 extension SwiftSlashTests {
-	
 	@Suite("SwiftSlashLineParserTests",
 		.serialized,
 		.tags(.swiftSlashLineParser)
 	)
 	internal struct LineParserTests {
-
 		@Test("SwiftSlashLineParser :: fuzz testing random data intake with no separator", .timeLimit(.minutes(5)))
 		func noSeparatorFuzz() {
 			func runNumberOfHandleCalls(_ numberOfHandles:Int32) {
