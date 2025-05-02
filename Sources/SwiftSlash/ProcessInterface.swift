@@ -49,7 +49,7 @@ public actor ProcessInterface {
 	/// Initialize a process interface with a command.
 	/// - Parameter cmd: The command to execute.
 	public init(_ command:consuming Command) {
-		self.command = cmd
+		self.command = command
 	}
 
 	/// Initialize a process interface with a command and a set of data channels.
@@ -67,7 +67,7 @@ public actor ProcessInterface {
 					buildChildWriters[fh] = config
 			}
 		}
-		self.command = cmd
+		self.command = command
 		self.childWriteParentRead = buildChildWriters
 		self.childReadParentWrite = buildChildReaders
 	}

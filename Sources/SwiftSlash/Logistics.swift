@@ -228,6 +228,14 @@ internal struct ProcessLogistics {
 			}
 		}
 	}
+	
+	/// one of two types of pipese that are used to facilitate the IO exchange between the parent and child process.
+	fileprivate enum Pipe {
+		/// the pipe that the parent process will read from as the child process writes to it.
+		case readPipe(PosixPipe)
+		/// the pipe that the child process will read from as the parent process writes to it.
+		case writePipe(PosixPipe)
+	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>? = nil
@@ -236,6 +244,8 @@ internal struct ProcessLogistics {
 			eventTrigger = try EventTrigger()
 		}
 		// pipes that will be used to facilitate io exchange with the child process.
+		var mergePipes = [Int32:Pipe]()
+
 		var writePipes = [Int32:PosixPipe]()
 		var readPipes = [Int32:PosixPipe]()
 		var nullPipes = Set<PosixPipe>()
@@ -262,6 +272,7 @@ internal struct ProcessLogistics {
 					
 					// this pipe needs to be further handled after the process fork so we will store it for future reference.
 					writePipes[fh] = newPipe
+					mergePipes[fh] = .writePipe(newPipe)
 
 					writeTasks.append(LaunchPackage.Launched.WriteTask(
 						terminationFuture:terminationFuture,
@@ -275,6 +286,7 @@ internal struct ProcessLogistics {
 					let newPipe = try PosixPipe.createNull()
 					writePipes[fh] = newPipe
 					nullPipes.insert(newPipe)
+					mergePipes[fh] = .writePipe(newPipe)
 					break;
 			}
 		}
@@ -293,6 +305,7 @@ internal struct ProcessLogistics {
 
 					// close the writing end of the pipe after fork.
 					readPipes[fh] = newPipe
+					mergePipes[fh] = .readPipe(newPipe)
 
 					readTasks.append(LaunchPackage.Launched.ReadTask(
 						terminationFuture:terminationFuture,
@@ -306,6 +319,7 @@ internal struct ProcessLogistics {
 				case .nullPipe:
 					let newPipe = try PosixPipe.createNull()
 					readPipes[fh] = newPipe
+					mergePipes[fh] = .readPipe(newPipe)
 					nullPipes.insert(newPipe)
 					break;
 			}
@@ -315,7 +329,7 @@ internal struct ProcessLogistics {
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes, pipes:mergePipes)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
@@ -375,7 +389,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard __cswiftslash_execvp_safetycheck(path) == 0 else {
 			throw ProcessSpawnError.execSafetyCheckFailure
@@ -434,39 +448,38 @@ internal struct ProcessLogistics {
 				}
 			}
 
-			// assign the reading pipes to the child process.
-			readerPipesLoop: for (targetFH, reader) in readPipes {
-				guard dup2(reader.writing, targetFH) != -1 else {
-					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2ReaderFailure.rawValue)
-					try? internalNotify.writing.closeFileHandle()
-					exit(Int32(ProcessSpawnError.dup2ReaderFailure.rawValue))
-				}
-				do {
-					try reader.reading.closeFileHandle()
-					try reader.writing.closeFileHandle()
-				} catch {
-					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.readerPipeCleanupFailure.rawValue)
-					try? internalNotify.writing.closeFileHandle()
-					exit(Int32(ProcessSpawnError.readerPipeCleanupFailure.rawValue))
-				}
-			}
-
-			// assign the writing pipes to the child process.
-			writerPipesLoop: for (targetFH, writer) in writePipes {
-				guard dup2(writer.reading, targetFH) != -1 else {
-					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2WriterFailure.rawValue)
-					try? internalNotify.writing.closeFileHandle()
-					exit(Int32(ProcessSpawnError.dup2WriterFailure.rawValue))
-				}
-				do {
-					try writer.reading.closeFileHandle()
-					try writer.writing.closeFileHandle()
-				} catch {
-					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.writerPipeCleanupFailure.rawValue)
-					try? internalNotify.writing.closeFileHandle()
-					exit(Int32(ProcessSpawnError.writerPipeCleanupFailure.rawValue))
+			pipeLoop: for (targetFH, pipe) in pipes {
+				switch pipe {
+					case .readPipe(let reader):
+						guard dup2(reader.writing, targetFH) != -1 else {
+							// pass the error condition to the parent process.
+							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2ReaderFailure.rawValue)
+							try? internalNotify.writing.closeFileHandle()
+							exit(Int32(ProcessSpawnError.dup2ReaderFailure.rawValue))
+						}
+						do {
+							try reader.reading.closeFileHandle()
+							try reader.writing.closeFileHandle()
+						} catch {
+							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.readerPipeCleanupFailure.rawValue)
+							try? internalNotify.writing.closeFileHandle()
+							exit(Int32(ProcessSpawnError.readerPipeCleanupFailure.rawValue))
+						}
+					case .writePipe(let writer):
+						guard dup2(writer.reading, targetFH) != -1 else {
+							// pass the error condition to the parent process.
+							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2WriterFailure.rawValue)
+							try? internalNotify.writing.closeFileHandle()
+							exit(Int32(ProcessSpawnError.dup2WriterFailure.rawValue))
+						}
+						do {
+							try writer.reading.closeFileHandle()
+							try writer.writing.closeFileHandle()
+						} catch {
+							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.writerPipeCleanupFailure.rawValue)
+							try? internalNotify.writing.closeFileHandle()
+							exit(Int32(ProcessSpawnError.writerPipeCleanupFailure.rawValue))
+						}
 				}
 			}
 
