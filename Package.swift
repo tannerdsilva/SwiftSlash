@@ -147,7 +147,7 @@ let package = Package(
 	products:[
 		.library(
 			name:"SwiftSlash",
-			targets:["SwiftSlashContained"])
+			targets:["SwiftSlash"])
 	],
 	targets:ssInternalTargets,
 	cLanguageStandard:.c11

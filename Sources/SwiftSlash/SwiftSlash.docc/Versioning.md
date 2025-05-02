@@ -1,10 +1,10 @@
 # Versioning
 
-SwiftSlash follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) to ensure clarity, predictability, and compatibility across releases.
+SwiftSlash follows Semantic Versioning 2.0.0 to ensure clarity, predictability, and compatibility across releases.
 
 ## What is SemVer 2.0.0?
 
-Semantic Versioning (SemVer) is a scheme conveying meaning about a release through its version number in the format:
+[Semantic Versioning (SemVer) 2.0.0](https://semver.org/spec/v2.0.0.html) is a scheme conveying meaning about a release through its version number in the format:
 
 ```
 MAJOR.MINOR.PATCH

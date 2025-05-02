@@ -19,7 +19,9 @@ import Darwin
 
 public struct CurrentProcess {}
 extension CurrentProcess {
-	/// clear all of the environment variables for the current process.
+    /// Clears all environment variables for the current process.
+    /// Iterates over each key in the current environment and calls `unsetenv(_:)`.
+    /// - Returns: Zero on success; if any call to `unsetenv` fails, returns the corresponding `errno` value.
 	internal static func clearEnvironmentVariables() -> Int32 {
 		let currentEnvs = environmentVariables()
 		for (key, _) in currentEnvs {
@@ -30,7 +32,10 @@ extension CurrentProcess {
 		return 0
 	}
 
-	/// returns the environment variables of the current process as a dictionary.
+    /// Retrieves the environment variables of the current process.
+    /// Parses the global `environ` array into a `[String:String]` dictionary.
+    /// Keys without an explicit “=`value`” part will be mapped to an empty string.
+    /// - Returns: A dictionary mapping each environment variable name to its value.
 	public static func environmentVariables() -> [String:String] {
 		var i = 0
 		var envs:[String:String] = [:]
@@ -50,7 +55,8 @@ extension CurrentProcess {
 		return envs
 	}
 
-	/// returns the current working directory path of the process the function is called from.
+    /// Returns the current working directory of the calling process.
+    /// - Returns: A `Path` representing the process’s current working directory.
 	public static func workingDirectory() -> Path {
 		let rawPointer = getcwd(nil, 0)
 		defer {
@@ -59,7 +65,13 @@ extension CurrentProcess {
 		return Path(String(cString:rawPointer!))
 	}
 
-	/// returns the current working directory path of the process the function is called from.
+    /// Searches all directories in `path` for the given executable name.
+    /// - Parameter executablename: the name of the executable to locate.
+    /// - Throws:
+    ///   - `PathSearchError.pathNotFoundInEnvironment` if the `PATH` variable is missing.
+    ///   - `PathSearchError.executableNotFound(foundPaths: [String], executable: Path)`
+    ///     if `PATH` is present but the executable cannot be located in any listed directory.
+    /// - Returns: A `Path` pointing to the first matching executable file.
 	public static func searchPaths(executableName:String) throws(PathSearchError) -> Path {
 		var i = 0
 		var foundPath:Bool = false

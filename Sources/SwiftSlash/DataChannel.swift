@@ -12,38 +12,45 @@ copyright (c) tanner silva 2025. all rights reserved.
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
-/// represents a uni-directional stream of data that can exist between a parent process and a child process. A data channel can only be one of two possible types...`ChildWriteParentRead` or `ChildReadParentWrite`.
+/// Represents a unidirectional data channel between parent and child processes.
+/// Use `childWriteParentRead` when the child writes data and the parent reads it.
+/// Use `childReadParentWrite` when the parent writes data and the child reads it.
 public enum DataChannel {
 
-	/// specifies a data channel that the child process will write to and the calling process will read from.
+	/// Child process writes; parent process reads.
 	case childWriteParentRead(ChildWriteParentRead.Configuration)
-	/// specifies a data channel that the child process will read from and the calling process will write to.
+	/// Parent process writes; child process reads.
 	case childReadParentWrite(ChildReadParentWrite.Configuration)
 
-	/// used for reading data that a running process writes.
+    /// Asynchronous sequence of byte-array chunks from the child process.
+    ///
+    /// Each element is `[[UInt8]]`, corresponding to parsed or raw buffers.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
 		public enum Error:Swift.Error {}
 		
-		/// returns an async iterator for this data channel.
+        /// Returns an async iterator that yields data chunks as they arrive.
 		public borrowing func makeAsyncIterator() -> AsyncIterator {
 			return AsyncIterator(fifo.makeAsyncConsumerExplicit())
 		}
 
-		/// the type of element that this data channel will produce with each iteration.
+		/// The type of element that this data channel will produce with each iteration.
 		public typealias Element = [[UInt8]]
 
-		/// specifies a configuration for an inbound data channel.
+		/// Configuration for a channel where the child writes and the parent reads.
 		public enum Configuration:Sendable {
-			/// configure the child process to write to this data channel as this running process reads from it.
-			/// - parameters:
-			/// 	- parameter stream: the stream that the child process will write to.
-			/// 	- parameter separator: the byte sequence that will be used to separate the data chunks. this is used for line parsing. if this is not provided, the default value of `\n` aka `0x0A` will be used.
+			/// Active reader: child writes into this channel and the parent reads the written contents in real time.
+			/// - Parameters:
+			///   - stream: The `ChildWriteParentRead` instance to read from.
+			///   - separator: Byte sequence used to delimit data chunks.
 			case active(stream:ChildWriteParentRead, separator:[UInt8])
-			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it writes will go directly to /dev/null (never touches the parent process). as such, the parent process has no associated work to do in this configuration.
+			/// Discards all child output by piping to `/dev/null`.
+			/// The channel appears open, but data is dropped.
 			case nullPipe
 
-			/// returns a new configuration with unix-style line parsing `\n` aka `0x0A`
-			public static func createActiveConfiguration(separator:[UInt8]? = nil) -> Configuration {
+			/// Creates an active configuration using a custom or default newline separator.
+			/// - Parameter separator: Optional byte-separator (default: `[0x0A]`).
+			/// - Returns: A `.active` configuration with the specified separator.
+			public static func createActiveConfiguration(separator:[UInt8]? = [0x0A]) -> Configuration {
 				if separator != nil {
 					return .active(stream:.init(), separator:separator!)
 				} else {
@@ -55,15 +62,16 @@ public enum DataChannel {
 		/// the underlying nasyncstream that this struct wraps
 		internal let fifo:FIFO<[[UInt8]], Never> = .init()
 
-		/// initialize a new data channel that the child process will write to and the calling process will read from.
+        /// Creates a new channel for child-to-parent data streaming.
 		public init() {}
 
-		/// AsyncIterator for consuming read data from the child process.
+        /// Async iterator that consumes elements until the channel closes.
 		public final class AsyncIterator:AsyncIteratorProtocol {
 			private let fifoC:FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
 			internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
 				fifoC = fifo
 			}
+            /// Returns the next chunk of data, or `nil` if the channel is closed.
 			public borrowing func next() async -> [[UInt8]]? {
 				switch await fifoC.next(whenTaskCancelled:.finish) {
 				case .element(let element):
@@ -77,12 +85,13 @@ public enum DataChannel {
 			}
 		}
 
-		/// used for writing data that a running process reads.
+        /// Yields a new element into the channel’s FIFO.
 		internal borrowing func yield(_ element:consuming [[UInt8]]) {
 			fifo.yield(element)
 		}
 
-		/// finish writing to the channel so that no more data can be sent through it.
+        /// Finishes the channel, preventing further writes.
+		/// - NOTE: The child process may to react to this event.
 		internal borrowing func closeDataChannel() {
 			fifo.finish()
 		}
@@ -91,24 +100,31 @@ public enum DataChannel {
 	/// used for writing data that a running process reads.
 	public struct ChildReadParentWrite:Sendable {
 		public enum Error:Swift.Error {
+			/// The channel was closed before or during a write.
 			case dataChannelClosed
 		}
 
-		/// specifies a configuration for an outbound data channel.
+		/// Configuration for a channel where the parent writes and the child reads.
 		public enum Configuration:Sendable {
-			/// configure the swiftslash to write to this data channel as the running process reads from it.
+			/// Active writer: parent writes into this channel for the child to read.
+			/// - Parameter stream: The `ChildReadParentWrite` instance to write into.
 			case active(stream:ChildReadParentWrite)
-			/// configure the swiftslash to pipe this data channel to /dev/null. the running process will see the channel as open, any data it reads will come directly from /dev/null. as such, the parent process has no associated work to do in this configuration.
+			/// Provides no data (pipes from `/dev/null`).
+			/// The child sees an open channel but reads nothing.
 			case nullPipe
 		}
 
 		/// the underlying nasyncstream that this struct wraps
 		internal let fifo:FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never> = .init()
 
-		/// initialize a new data channel that the child process will read from and the calling process will write to.
+		/// Creates a new channel for parent-to-child data streaming.
 		public init() {}
 
-		/// create a new outbound data channel
+		/// Writes a byte buffer into the channel and optionally signals completion via a future.
+		///
+		/// - Parameters:
+		///   - element: The bytes to send.
+		///   - future: Optional `Future` to fulfill when the write completes, or error if closed.
 		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, DataChannel.ChildReadParentWrite.Error>?) {
 			switch fifo.yield((element, future)) {
 				case .success:
@@ -124,12 +140,13 @@ public enum DataChannel {
 			}
 		}
 
-		/// finish writing to the channel
+		/// Closes the channel, indicating no more data will be sent.
+		/// - NOTE: The child process may to react to this event.
 		public borrowing func closeDataChannel() {
 			fifo.finish()
 		}
 
-		/// AsyncConsumer for consuming written data from the child process.
+		/// Provides an asynchronous consumer for the channel’s byte buffers (internal use).
 		internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never>.AsyncConsumerExplicit {
 			return fifo.makeAsyncConsumerExplicit()
 		}

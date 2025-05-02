@@ -12,13 +12,13 @@ copyright (c) tanner silva 2025. all rights reserved.
 /// a shell command to run.
 public struct Command:Sendable {
 	
-	/// the executable command to run. this should be an absolute path.
+	/// The executable command to run. this should be an absolute path.
 	public var executable:Path
-	/// the arguments to pass to the command.
+	/// The arguments to pass to the command.
 	public var arguments:[String]
-	/// the environment variables to set for the command.
+	/// The environment variables to set for the command.
 	public var environment:[String:String]
-	/// the working directory to run the command in.
+	/// The working directory to run the command in.
 	public var workingDirectory:Path
 
 	/// creates a new command.
