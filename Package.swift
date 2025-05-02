@@ -75,13 +75,6 @@ fileprivate let swiftTargets:[Target] = [
 		]
 	),
 	.target(
-		name:"SwiftSlashIdentifiedList",
-		dependencies:[
-			"__cswiftslash_identified_list",
-			"SwiftSlashContained"
-		]
-	),
-	.target(
 		name:"SwiftSlashFIFO",
 		dependencies:[
 			"__cswiftslash_fifo",
@@ -109,7 +102,6 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashPThread",
 			"SwiftSlashFuture",
 			"SwiftSlashFIFO",
-			"SwiftSlashIdentifiedList",
 			"SwiftSlashFHHelpers",
 			"SwiftSlashEventTrigger",
 			"SwiftSlashGlobalSerialization"
@@ -129,7 +121,6 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashFuture",
 		"SwiftSlashContained",
 		"SwiftSlashPThread",
-		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",

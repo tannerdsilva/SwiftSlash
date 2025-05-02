@@ -17,6 +17,7 @@ import Glibc
 import Darwin
 #endif
 
+/// A namespace for static functions that provide information about the current process.
 public struct CurrentProcess {}
 extension CurrentProcess {
 	/// Clears all environment variables for the current process.

@@ -32,17 +32,31 @@ public actor ProcessInterface {
 		case reaped(ExitResult)
 	}
 
-	/// the current operating state of the process. this is a primary pillar of logic for the ProcessInterface functionality.
-	public private(set) var state:State = .initialized
-
-	/// the command that the process will execute when launched.
-	public let command:Command
-
-	public init(_ cmd:consuming Command) {
-		command = cmd
+	/// Represents the result of a process exit after it has been reaped with `waitpid()`.
+	public enum ExitResult:Sendable {
+		/// The process exited normally with the specified exit code.
+		case exited(Int32)
+		/// The process was terminated by a signal with the specified signal code.
+		case signaled(Int32)
 	}
 
-	public init(_ cmd:Command, dataChannels:[Int32:DataChannel]) {
+	/// The current operating state of the process. This is a primary pillar of logic for the ProcessInterface functionality.
+	public private(set) var state:State = .initialized
+
+	/// The command that the process will execute when launched.
+	public let command:Command
+
+	/// Initialize a process interface with a command.
+	/// - Parameter cmd: The command to execute.
+	public init(_ command:consuming Command) {
+		self.command = cmd
+	}
+
+	/// Initialize a process interface with a command and a set of data channels.
+	/// - Parameters:
+	/// 	- cmd: The command to execute.
+	/// 	- dataChannels: A dictionary of file handle values to data channels. The keys are the file handle values, and the values are the data channels.
+	public init(_ command:Command, dataChannels:[Int32:DataChannel]) {
 		var buildChildWriters = [Int32:DataChannel.ChildWriteParentRead.Configuration]()
 		var buildChildReaders = [Int32:DataChannel.ChildReadParentWrite.Configuration]()
 		for (fh, channel) in dataChannels {
@@ -53,9 +67,9 @@ public actor ProcessInterface {
 					buildChildWriters[fh] = config
 			}
 		}
-		command = cmd
-		childWriteParentRead = buildChildWriters
-		childReadParentWrite = buildChildReaders
+		self.command = cmd
+		self.childWriteParentRead = buildChildWriters
+		self.childReadParentWrite = buildChildReaders
 	}
 
 	/// stores all of the data channels that the process will write to.
@@ -154,47 +168,39 @@ public actor ProcessInterface {
 	}
 }
 
-extension ProcessInterface {
-	/// represents the various types of ways that a process can exit.
-	public enum ExitResult:Sendable, Hashable, Equatable, CustomDebugStringConvertible {
-		/// the process exited normally with the specified exit code.
-		case exited(Int32)
-		/// the process was terminated by a signal with the specified signal code.
-		case signaled(Int32)
-		
-		/// equatable implementation
-		public static func == (lhs:ProcessInterface.ExitResult, rhs:ProcessInterface.ExitResult) -> Bool {
-			switch (lhs, rhs) {
-				case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
-					return lhsExitCode == rhsExitCode
-				case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
-					return lhsSignal == rhsSignal
-				default:
-					return false
-			}
+extension ProcessInterface.ExitResult:Hashable, Equatable, CustomDebugStringConvertible {
+	/// equatable implementation
+	public static func == (lhs:ProcessInterface.ExitResult, rhs:ProcessInterface.ExitResult) -> Bool {
+		switch (lhs, rhs) {
+			case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
+				return lhsExitCode == rhsExitCode
+			case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
+				return lhsSignal == rhsSignal
+			default:
+				return false
 		}
+	}
 
-		/// hashable implementation
-		public func hash(into hasher:inout Hasher) {
-			switch self {
-				case .exited(let exitCode):
-					hasher.combine(0)
-					hasher.combine(exitCode)
-				case .signaled(let sig):
-					hasher.combine(1)
-					hasher.combine(sig)
-			}
+	/// hashable implementation
+	public func hash(into hasher:inout Hasher) {
+		switch self {
+			case .exited(let exitCode):
+				hasher.combine(0)
+				hasher.combine(exitCode)
+			case .signaled(let sig):
+				hasher.combine(1)
+				hasher.combine(sig)
 		}
+	}
 
-		public var debugDescription: String {
-			switch self {
-				case .exited(let exitCode):
-					return "ProcessInterface.ExitResult.exited(\(exitCode))"
-				case .signaled(let sigCode):
-					return "ProcessInterface.ExitResult.signaled(\(sigCode))"
-			}
+	public var debugDescription: String {
+		switch self {
+			case .exited(let exitCode):
+				return "ProcessInterface.ExitResult.exited(\(exitCode))"
+			case .signaled(let sigCode):
+				return "ProcessInterface.ExitResult.signaled(\(sigCode))"
 		}
-	}	
+	}
 }
 
 extension ProcessInterface.State:Hashable, Equatable {
