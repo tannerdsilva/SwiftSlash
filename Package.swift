@@ -88,20 +88,6 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashContained"
 		]
 	),
-	/*.target(
-		name:"SwiftSlashNAsyncStream",
-		dependencies:[
-			"SwiftSlashFIFO",
-			"SwiftSlashIdentifiedList"
-		]
-	),*/
-	.target(
-		name:"SwiftSlashLineParser",
-		dependencies:[
-			"__cswiftslash_posix_helpers",
-			"SwiftSlashFIFO"
-		]
-	),
 	.target(
 		name:"SwiftSlashFHHelpers",
 		dependencies:[
@@ -124,9 +110,7 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashFuture",
 			"SwiftSlashFIFO",
 			"SwiftSlashIdentifiedList",
-			// "SwiftSlashNAsyncStream",
 			"SwiftSlashFHHelpers",
-			"SwiftSlashLineParser",
 			"SwiftSlashEventTrigger",
 			"SwiftSlashGlobalSerialization"
 		]
@@ -147,125 +131,13 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashPThread",
 		"SwiftSlashIdentifiedList",
 		"SwiftSlashFIFO",
-		// "SwiftSlashNAsyncStream",
-		"SwiftSlashLineParser",
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
 
-fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets + [testTarget] /* + [
-	.target(
-		name:"SwiftSlash",
-		dependencies:[
-			"SwiftSlashPThread",
-			"SwiftSlashFuture",
-			"SwiftSlashFIFO",
-			"SwiftSlashIdentifiedList",
-			"SwiftSlashNAsyncStream",
-			"SwiftSlashFHHelpers",
-			"SwiftSlashLineParser",
-		]
-	),
-	.target(
-		name:"SwiftSlashLineParser",
-		dependencies:[
-			// "__cswiftslash",
-			"SwiftSlashNAsyncStream"	
-		]
-	),
-	.target(
-		name:"SwiftSlashNAsyncStream",
-		dependencies:[
-			"SwiftSlashFIFO",
-			"SwiftSlashIdentifiedList"
-		]
-	),
-	.target(
-		name:"SwiftSlashFHHelpers",
-		dependencies:["__cswiftslash_posix_helpers"]
-	),
-	.target(
-		name:"SwiftSlashPThread",
-		dependencies:[
-			"__cswiftslash_threads",
-			"SwiftSlashFuture"
-		]
-	),
-	.target(
-		name:"SwiftSlashFuture",
-		dependencies:[
-			"__cswiftslash_future",
-			"SwiftSlashContained"
-		]
-	),
-	.target(
-		name:"SwiftSlashContained"
-	),
-	.target(
-		name:"SwiftSlashIdentifiedList",
-		dependencies:[
-			"__cswiftslash_identified_list",
-			"SwiftSlashContained"
-		]
-	),
-	.target(
-		name:"SwiftSlashFIFO",
-		dependencies:[
-			"__cswiftslash_fifo",
-			"SwiftSlashContained"
-		]
-	),
-	.target(
-		name:"SwiftSlashEventTrigger",
-		dependencies:[
-			"__cswiftslash_eventtrigger",
-			"SwiftSlashPThread",
-			"SwiftSlashFIFO"
-		]
-	),
-	.target(
-		name:"__cswiftslash_future",
-		dependencies:[
-			"__cswiftslash_types",
-			"__cswiftslash_fifo"
-		],
-		publicHeadersPath:"."),
-	.target(
-		name:"__cswiftslash_threads",
-		dependencies:["__cswiftslash_types"],
-		publicHeadersPath:"."
-	),
-	.target(
-		name:"__cswiftslash_identified_list",
-		dependencies:["__cswiftslash_types"],
-		publicHeadersPath:"."
-	),
-	.target(
-		name:"__cswiftslash_posix_helpers",
-		dependencies:[],
-		publicHeadersPath:"."
-	),
-	// test target
-	/*.testTarget(
-		name: "InternalPrimitiveTests",
-		dependencies:[
-			"SwiftSlash",
-			"__cswiftslash",
-			"SwiftSlashPThread",
-			"SwiftSlashFuture",
-			"SwiftSlashContained",
-			"SwiftSlashIdentifiedList",
-			"SwiftSlashFIFO",
-			"SwiftSlashNAsyncStream",
-			"SwiftSlashFHHelpers",
-			"SwiftSlashLineParser",
-			"SwiftSlashEventTrigger"
-		]
-	)*/
-]*/
-
+fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets + [testTarget]
 
 let package = Package(
 	name:"SwiftSlash",

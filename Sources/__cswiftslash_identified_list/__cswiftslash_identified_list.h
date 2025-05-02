@@ -30,31 +30,20 @@ typedef void (*_Nonnull __cswiftslash_identified_list_iterator_f)(const uint64_t
 
 /// structure representing a single element within the atomic list.
 typedef struct __cswiftslash_identified_list {
-	/// unique key value associated with the data pointer.
 	const uint64_t ____k;
-	/// data pointer that the element instance is storing.
 	const __cswiftslash_ptr_t ____d;
-	/// next element that was stored in the hash table.
 	struct __cswiftslash_identified_list* _Nullable ____n;
-	/// previous element that was stored in the hash table.
 	struct __cswiftslash_identified_list* _Nullable ____p;
 } __cswiftslash_identified_list_t;
 
 /// primary storage container for the atomic list.
 typedef struct __cswiftslash_identified_list_pair {
-	/// hash table array of pointers to linked lists.
 	__cswiftslash_identified_list_ptr_t* _Nonnull ____ht;
-	/// current size of the hash table.
 	size_t ____hn;
-	/// number of elements currently stored.
 	size_t ____i;
-	/// internal value that increments with each new item added.
 	uint64_t ____idi;
-	/// the previous element that was stored in the hash table.
 	__cswiftslash_identified_list_ptr_t ____p;
-	/// stores the oldest element in the hash table.
 	__cswiftslash_identified_list_ptr_t ____o;
-	/// mutex to keep the atomic list in a consistent state.
 	pthread_mutex_t ____m;
 } __cswiftslash_identified_list_pair_t;
 

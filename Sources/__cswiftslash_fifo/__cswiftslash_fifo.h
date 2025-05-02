@@ -49,48 +49,23 @@ typedef enum __cswiftslash_fifo_consume_result {
 
 /// structure representing a single link within the fifo, stores a data item and a pointer to the next chain item.
 typedef struct __cswiftslash_fifo_link {
-
-	/// pointer to the link items stored data.
 	const __cswiftslash_ptr_t _;
-	/// pointer to the next link in the chain.
 	__cswiftslash_fifo_link_aptr_t __;
-
 } __cswiftslash_fifo_link_t;
 
 /// structure representing a pair of pointers to the head and tail of a fifo, enabling efficient management and access to both ends of the chain. stores an assortment of other metadata to facilitate efficient and safe operation of the fifo mechanism. NOTE: none of the fields in this structure need to be accessed directly by the caller.
 typedef struct __cswiftslash_fifo_linkpair {
-
-	/// pointer to the base (head) of the chain, serving as the entry point to the first element.
 	__cswiftslash_fifo_link_aptr_t ____bp;
-	/// pointer to the tail of the chain, enabling efficient addition of new elements to the end of the chain.
 	__cswiftslash_fifo_link_aptr_t ____tp;
-
-	/// atomic counter representing the number of elements stored in the chain.
 	_Atomic size_t ____ec;
-
-	/// atomic boolean flag indicating whether the fifo is capped.
 	_Atomic bool ____ic;
-	
-	/// atomic pointer to the cap pointer, which is the final element in the chain.
 	_Atomic __cswiftslash_optr_t ____cp;
-	
-	// mutex used to synchronize the internal state of the fifo. this is optional because there may be parent structures that are synchronized in the same way, therefore, can opt out of the built in synchronization to eliminate overhead.
-	/// atomic boolean flag indicating whether the chain is configured with an internal mutex.
 	const bool ____hm;
-	/// mutex used to synchronize the internal state of the fifo.
 	pthread_mutex_t ____m;
-
-	// mutex used to signal to waiting threads when a result is available again. one may argue that there are better pthread primitives to use for this, but the swift runtime only wants to operate with mutexes.
-	/// atomic boolean flag indicating whether the chain is currently locked by a waiting thread.
 	_Atomic bool ____iwlk;
-	/// mutex used to signal to waiting threads when a result is available again.
 	pthread_mutex_t ____wm;
-
-	/// atomic boolean flag indicating whether the chain is currently configured with a maximum number of elements.
 	_Atomic bool ____hme;
-	/// atomic size_t representing the maximum number of elements that can be stored in the chain.
 	_Atomic size_t ____me;
-
 } __cswiftslash_fifo_linkpair_t;
 
 /// defines a non-null pointer to a fifo pair structure, facilitating operations on the entire chain.

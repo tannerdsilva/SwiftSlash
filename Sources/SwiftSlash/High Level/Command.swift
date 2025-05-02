@@ -23,7 +23,7 @@ public struct Command:Sendable {
 
 	/// creates a new command.
 	/// - parameters:
-	///		- execute: the absolute path to execute. Either an implied name or absolute pathname of the executable to run.
+	///		- absolutePath: the absolute path to the executable to run.
 	///		- arguments: the arguments to pass to the executed command. default value: no arguments.
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
 	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
@@ -41,14 +41,19 @@ public struct Command:Sendable {
 
 	/// creates a new command with a relative executable name.
 	/// - parameters:
-	///		- execute: name of the command to execute. this name will be searched for in the PATH environment variable.
+	///		- executeRelativeName: name of the command to execute. this name will be searched for in the PATH environment variable.
+	/// 	- arguments: the arguments to pass to the executed command. default value: no arguments.
+	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
+	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
+	/// - throws: PathSearchError if the executable cannot be found in the PATH environment variable.
+	/// - note: this will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
 	public init(
-		_ execute:consuming String,
+		_ executeRelativeName:consuming String,
 		arguments args:consuming [String] = [],
 		environment envs:consuming [String:String] = [:],
 		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
 	) throws(PathSearchError) {
-		executable = try CurrentProcess.searchPaths(executableName:execute)
+		executable = try CurrentProcess.searchPaths(executableName:executeRelativeName)
 		arguments = args
 		environment = envs
 		workingDirectory = wd

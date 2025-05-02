@@ -14,10 +14,10 @@ import SwiftSlashFIFO
 
 /// a line parser.
 /// takes raw bytes as input, and passes one or lines to the configured output.
-public struct LineParser:~Copyable {
+internal struct LineParser:~Copyable {
 
     /// the various types of output that the parser can use to produce lines.
-    public enum Output {
+    internal enum Output {
         /// pass the lines into a `NAsyncStream` for async consumption
         case nasync(FIFO<[LineOutput], Never>)
         /// pass the lines to a function closure
@@ -25,7 +25,7 @@ public struct LineParser:~Copyable {
     }
 
     /// the type of output produced by the parser. output comes in the form of "lines" which is an array of bytes.
-    public typealias LineOutput = [UInt8]
+    internal typealias LineOutput = [UInt8]
 
 	/// the primary storage buffer for incoming data.
     private var buffer:UnsafeMutablePointer<UInt8>
@@ -43,18 +43,18 @@ public struct LineParser:~Copyable {
     ///   - separator: the byte‐pattern to split on (e.g. `Array("\r\n".utf8)`)
     ///   - initialCapacity: starting buffer size; will grow as needed
     ///   - output: the output method for the parser to use as it finds matches in the input stream
-    public init(separator sepArg: [UInt8], initialCapacity initCapArg:size_t, output handlerArg: consuming Output) {
+    internal init(separator sepArg: [UInt8], initialCapacity initCapArg:size_t, output handlerArg: consuming Output) {
         separator = sepArg
         capacity = max(initCapArg, sepArg.count)
         buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
         handler = handlerArg
     }
 
-    public init(separator sepArg:[UInt8], nasync output: FIFO<[LineOutput], Never>) {
+    internal init(separator sepArg:[UInt8], nasync output: FIFO<[LineOutput], Never>) {
         self.init(separator: sepArg, initialCapacity: 4_096, output: .nasync(output))
     }
 
-    public init(separator sepArg: [UInt8], handler handlerArg: @escaping ([LineOutput]?) -> Void) {
+    internal init(separator sepArg: [UInt8], handler handlerArg: @escaping ([LineOutput]?) -> Void) {
         self.init(separator: sepArg, initialCapacity: 4_096, output: .handler(handlerArg))
     }
 
@@ -68,7 +68,7 @@ public struct LineParser:~Copyable {
     /// 	- writeHandler: closure that gets a free `UnsafeMutableBufferPointer<UInt8>` of at most `bytes` capacity, writes into it **up to** that many bytes, and returns how many bytes were written (0 ⇒ EOF).
     /// - returns: the actual byte‐count read, so the caller can stop on `0`
     /// - throws: whatever `writeHandler` throws
-    @discardableResult public mutating func intake<E>(bytes: size_t, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E: Swift.Error {
+    @discardableResult internal mutating func intake<E>(bytes: size_t, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E: Swift.Error {
         // make room
         ensureCapacity(for: bytes)
 
@@ -101,7 +101,7 @@ public struct LineParser:~Copyable {
 
     /// convenience: consume a whole `[UInt8]` at once
     @discardableResult
-    public mutating func intake(_ data: consuming [UInt8]) -> size_t {
+    internal mutating func intake(_ data: consuming [UInt8]) -> size_t {
         return withUnsafeMutablePointer(to: &data) { ptr in
             intake(bytes: ptr.pointee.count) { buf in
                 _ = buf.initialize(from: ptr.pointee)
@@ -111,9 +111,9 @@ public struct LineParser:~Copyable {
     }
 
     /// emits any trailing bytes as a final slice, then signals end.
-    public mutating func finish() {
+    internal mutating func finish() {
         // if there’s leftover *and* we have a separator, emit it
-        if !separator.isEmpty && count > 0 {
+        if separator.isEmpty == false && count > 0 {
             let final = Array(UnsafeBufferPointer(start: buffer, count: Int(count)))
             switch handler {
                 case .nasync(let stream):

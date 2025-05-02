@@ -13,7 +13,6 @@ import __cswiftslash_posix_helpers
 import __cswiftslash_eventtrigger
 import SwiftSlashFHHelpers
 import SwiftSlashEventTrigger
-import SwiftSlashLineParser
 import SwiftSlashFIFO
 import SwiftSlashFuture
 import SwiftSlashGlobalSerialization
