@@ -1,4 +1,4 @@
-# Versioning
+# Project Versioning
 
 SwiftSlash follows Semantic Versioning 2.0.0 to ensure clarity, predictability, and compatibility across releases.
 

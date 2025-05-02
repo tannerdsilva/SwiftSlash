@@ -9,14 +9,14 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-/// Represents a path on the hosts filesystem.
+// Represents a path on the hosts filesystem.
 public struct Path:Sendable {
 
 	/// The individual components of the path. these are assumed to be separated by their platform specific path separator.
 	private var components:[String]
 
 	/// Initialize a Path from the contents of a string.
-	/// - {arameters:
+	/// - Parameters:
 	/// 	- pathString: the string-like object to parse into a path. this string should be a valid path on the host system.
 	public init<S>(_ pathString:consuming S) where S:StringProtocol, S.SubSequence == Substring {
 		components = pathString.split(separator: "/", omittingEmptySubsequences:true).map(String.init)

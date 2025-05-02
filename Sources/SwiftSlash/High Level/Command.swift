@@ -9,7 +9,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-/// a shell command to run.
+// a shell command to run.
 public struct Command:Sendable {
 	
 	/// The executable command to run. this should be an absolute path.
@@ -23,10 +23,10 @@ public struct Command:Sendable {
 
 	/// Creates a new command.
 	/// - Parameters:
-	///		- absolutePath: the absolute path to the executable to run.
-	///		- arguments: the arguments to pass to the executed command. default value: no arguments.
-	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
-	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
+	///		- execute: the absolute path to the executable to run.
+	///		- args: the arguments to pass to the executed command. default value: no arguments.
+	///		- envs: the environment variables to set for the command. default vaule: no environment variables.
+	///		- wd: the working directory to run the command in. default value: the current working directory of the launching process.
 	public init(
 		absolutePath execute:consuming Path,
 		arguments args:consuming [String] = [],
@@ -39,14 +39,13 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// Creates a new command with a relative executable name.
+	/// Creates a new command with a relative executable name. This will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
 	/// - Parameters:
-	///		- executeRelativeName: name of the command to execute. this name will be searched for in the PATH environment variable.
-	/// 	- arguments: the arguments to pass to the executed command. default value: no arguments.
-	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
-	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
+	/// 	- executeRelativeName: name of the command to execute. this name will be searched for in the PATH environment variable.
+	/// 	- args: the arguments to pass to the executed command. default value: no arguments.
+	/// 	- envs: the environment variables to set for the command. default vaule: no environment variables.
+	/// 	- wd: the working directory to run the command in. default value: the current working directory of the launching process.
 	/// - Throws: PathSearchError if the executable cannot be found in the PATH environment variable.
-	/// - NOTE: this will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
 	public init(
 		_ executeRelativeName:consuming String,
 		arguments args:consuming [String] = [],
@@ -61,9 +60,9 @@ public struct Command:Sendable {
 
 	/// Initialize a new command based on a shell command string. the command will be executed using the `/bin/sh` shell.
 	/// - Parameters:
-	/// 	- sh: the shell command to run on the `sh` shell.
-	/// 	- environment: the environment variables to set for the command. default value: no environment values.
-	/// 	- workingDirectory: the working directory 
+	/// 	- shCommand: the shell command to run on the `sh` shell.
+	/// 	- envs: the environment variables to set for the command. default value: no environment values.
+	/// 	- wd: the working directory 
 	public init(
 		sh shCommand:String, 
 		environment envs:consuming [String:String],
