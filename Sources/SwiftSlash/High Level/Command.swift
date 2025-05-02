@@ -21,8 +21,8 @@ public struct Command:Sendable {
 	/// The working directory to run the command in.
 	public var workingDirectory:Path
 
-	/// creates a new command.
-	/// - parameters:
+	/// Creates a new command.
+	/// - Parameters:
 	///		- absolutePath: the absolute path to the executable to run.
 	///		- arguments: the arguments to pass to the executed command. default value: no arguments.
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
@@ -39,14 +39,14 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// creates a new command with a relative executable name.
-	/// - parameters:
+	/// Creates a new command with a relative executable name.
+	/// - Parameters:
 	///		- executeRelativeName: name of the command to execute. this name will be searched for in the PATH environment variable.
 	/// 	- arguments: the arguments to pass to the executed command. default value: no arguments.
 	///		- environment: the environment variables to set for the command. default vaule: no environment variables.
 	///		- workingDirectory: the working directory to run the command in. default value: the current working directory of the launching process.
-	/// - throws: PathSearchError if the executable cannot be found in the PATH environment variable.
-	/// - note: this will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
+	/// - Throws: PathSearchError if the executable cannot be found in the PATH environment variable.
+	/// - NOTE: this will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
 	public init(
 		_ executeRelativeName:consuming String,
 		arguments args:consuming [String] = [],
@@ -59,8 +59,8 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// initialize a new command based on a shell command string. the command will be executed using the `/bin/sh` shell.
-	/// - parameters:
+	/// Initialize a new command based on a shell command string. the command will be executed using the `/bin/sh` shell.
+	/// - Parameters:
 	/// 	- sh: the shell command to run on the `sh` shell.
 	/// 	- environment: the environment variables to set for the command. default value: no environment values.
 	/// 	- workingDirectory: the working directory 
@@ -75,18 +75,18 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// mutate the configured environment variables to match the environment of the current process at the time of calling.
+	/// Mutate the configured environment variables to match the environment of the current process at the time of calling.
 	public mutating func inheritCurrentEnvironment() {
 		environment = CurrentProcess.environmentVariables()
 	}
 }
 
 extension Command:Hashable, Equatable {
-	/// equality operator for Command.
+	/// Equality operator for Command.
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return lhs.executable == rhs.executable && lhs.arguments == rhs.arguments && lhs.environment == rhs.environment && lhs.workingDirectory == rhs.workingDirectory
 	}
-	/// hash function for Command.
+	/// Hash function for Command.
 	public func hash(into hasher:inout Hasher) {
 		hasher.combine(executable)
 		hasher.combine(arguments)

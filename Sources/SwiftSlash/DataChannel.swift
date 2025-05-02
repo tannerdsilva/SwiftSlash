@@ -22,13 +22,13 @@ public enum DataChannel {
 	/// Parent process writes; child process reads.
 	case childReadParentWrite(ChildReadParentWrite.Configuration)
 
-    /// Asynchronous sequence of byte-array chunks from the child process.
-    ///
-    /// Each element is `[[UInt8]]`, corresponding to parsed or raw buffers.
+	/// Asynchronous sequence of byte-array chunks from the child process.
+	///
+	/// Each element is `[[UInt8]]`, corresponding to parsed or raw buffers.
 	public struct ChildWriteParentRead:Sendable, AsyncSequence {
 		public enum Error:Swift.Error {}
 		
-        /// Returns an async iterator that yields data chunks as they arrive.
+		/// Returns an async iterator that yields data chunks as they arrive.
 		public borrowing func makeAsyncIterator() -> AsyncIterator {
 			return AsyncIterator(fifo.makeAsyncConsumerExplicit())
 		}
@@ -62,16 +62,16 @@ public enum DataChannel {
 		/// the underlying nasyncstream that this struct wraps
 		internal let fifo:FIFO<[[UInt8]], Never> = .init()
 
-        /// Creates a new channel for child-to-parent data streaming.
+		/// Creates a new channel for child-to-parent data streaming.
 		public init() {}
 
-        /// Async iterator that consumes elements until the channel closes.
+		/// Async iterator that consumes elements until the channel closes.
 		public final class AsyncIterator:AsyncIteratorProtocol {
 			private let fifoC:FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
 			internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
 				fifoC = fifo
 			}
-            /// Returns the next chunk of data, or `nil` if the channel is closed.
+			/// Returns the next chunk of data, or `nil` if the channel is closed.
 			public borrowing func next() async -> [[UInt8]]? {
 				switch await fifoC.next(whenTaskCancelled:.finish) {
 				case .element(let element):
@@ -85,19 +85,19 @@ public enum DataChannel {
 			}
 		}
 
-        /// Yields a new element into the channel’s FIFO.
+		/// Yields a new element into the channel’s FIFO.
 		internal borrowing func yield(_ element:consuming [[UInt8]]) {
 			fifo.yield(element)
 		}
 
-        /// Finishes the channel, preventing further writes.
+		/// Finishes the channel, preventing further writes.
 		/// - NOTE: The child process may to react to this event.
 		internal borrowing func closeDataChannel() {
 			fifo.finish()
 		}
 	}
 
-	/// used for writing data that a running process reads.
+	/// Used for writing data that a running process reads.
 	public struct ChildReadParentWrite:Sendable {
 		public enum Error:Swift.Error {
 			/// The channel was closed before or during a write.
@@ -114,7 +114,7 @@ public enum DataChannel {
 			case nullPipe
 		}
 
-		/// the underlying nasyncstream that this struct wraps
+		/// The underlying nasyncstream that this struct wraps
 		internal let fifo:FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never> = .init()
 
 		/// Creates a new channel for parent-to-child data streaming.

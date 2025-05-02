@@ -22,7 +22,7 @@ int32_t __cswiftslash_eventtrigger_wifsignaled(const int32_t status) {
 }
 
 int32_t __cswiftslash_eventtrigger_wifexited(const int32_t status) {
-   return WIFEXITED(status);
+	return WIFEXITED(status);
 }
 
 int32_t __cswiftslash_eventtrigger_wtermsig(const int32_t status) {
@@ -30,6 +30,6 @@ int32_t __cswiftslash_eventtrigger_wtermsig(const int32_t status) {
 }
 
 int32_t __cswiftslash_eventtrigger_wexitstatus(const int32_t status) {
-   return WEXITSTATUS(status);
+	return WEXITSTATUS(status);
 }
 

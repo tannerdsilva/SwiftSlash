@@ -200,21 +200,21 @@ void __cswiftslash_identified_list_iterate(
 }
 
 void __cswiftslash_identified_list_close(
-        const __cswiftslash_identified_list_pair_ptr_t _,
-        const __cswiftslash_identified_list_iterator_f __,
-        const __cswiftslash_optr_t ___
+		const __cswiftslash_identified_list_pair_ptr_t _,
+		const __cswiftslash_identified_list_iterator_f __,
+		const __cswiftslash_optr_t ___
 ) {
-        pthread_mutex_lock(&_->____m);
-        __cswiftslash_identified_list_ptr_t __0 = _->____o;
-        while (__0 != NULL) {
+		pthread_mutex_lock(&_->____m);
+		__cswiftslash_identified_list_ptr_t __0 = _->____o;
+		while (__0 != NULL) {
 			__(__0->____k, __0->____d, ___);
 			__cswiftslash_identified_list_ptr_t __1 = __0;
 			__0 = __0->____n;
 			free(__1);
-        }
-        free(_->____ht);
-        pthread_mutex_unlock(&_->____m);
-        pthread_mutex_destroy(&_->____m);
+		}
+		free(_->____ht);
+		pthread_mutex_unlock(&_->____m);
+		pthread_mutex_destroy(&_->____m);
 }
 
 void __cswiftslash_identified_list_iterate_consume_zero(

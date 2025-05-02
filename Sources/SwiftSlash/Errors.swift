@@ -20,7 +20,7 @@ public enum PathSearchError:Swift.Error {
 /// the type of error that is thrown when there is a problem calling waitpid.
 public struct WaitPIDError:Swift.Error {
 	/// the corresponding errno value returned by the system for this error.
-    public let errnoValue:Int32
+	public let errnoValue:Int32
 }
 
 /// Describes an error in the process spawning function. These are generally considered to be errors that can be thrown after the child process has been launched but before it has finished configuring itself for the specified work.

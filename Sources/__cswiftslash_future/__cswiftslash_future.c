@@ -442,7 +442,7 @@ bool __cswiftslash_future_t_broadcast_res_val(
 	const __cswiftslash_optr_t ___
 ) {
 	pthread_mutex_lock(&_->____m);
-    uint8_t expected_complete = __CSWIFTSLASH_FUTURE_STATUS_PEND;
+	uint8_t expected_complete = __CSWIFTSLASH_FUTURE_STATUS_PEND;
 	if (atomic_compare_exchange_strong_explicit(&_->____s, &expected_complete, __CSWIFTSLASH_FUTURE_STATUS_RESULT, memory_order_acq_rel, memory_order_relaxed) == false) {
 		pthread_mutex_unlock(&_->____m);
 		return false;
