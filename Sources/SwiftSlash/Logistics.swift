@@ -329,29 +329,30 @@ internal struct ProcessLogistics {
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, writePipes:writePipes, readPipes:readPipes, pipes:mergePipes)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:mergePipes)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
 			// cleanup write pipes
-			for (_, possibleEnabledWriter) in writePipes {
-				if nullPipes.contains(possibleEnabledWriter) == false {
-					try! eventTrigger!.deregister(writer:possibleEnabledWriter.writing)
-				}
+			for curPipe in mergePipes {
+				switch curPipe.value {
+					case .readPipe(let possibleEnabledReader):
+						if nullPipes.contains(possibleEnabledReader) == false {
+							try! eventTrigger!.deregister(reader:possibleEnabledReader.reading)
+						}
 
-				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-				try! possibleEnabledWriter.writing.closeFileHandle()
-				try! possibleEnabledWriter.reading.closeFileHandle()
-			}
-			// cleanup read pipes
-			for (_, possibleEnabledReader) in readPipes {
-				if nullPipes.contains(possibleEnabledReader) == false {
-					try! eventTrigger!.deregister(reader:possibleEnabledReader.reading)
-				}
+						// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+						try! possibleEnabledReader.writing.closeFileHandle()
+						try! possibleEnabledReader.reading.closeFileHandle()
+					case .writePipe(let possibleEnabledWriter):
+						if nullPipes.contains(possibleEnabledWriter) == false {
+							try! eventTrigger!.deregister(writer:possibleEnabledWriter.writing)
+						}
 
-				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-				try! possibleEnabledReader.writing.closeFileHandle()
-				try! possibleEnabledReader.reading.closeFileHandle()
+						// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+						try! possibleEnabledWriter.writing.closeFileHandle()
+						try! possibleEnabledWriter.reading.closeFileHandle()
+				}
 			}
 			throw error
 		}
@@ -389,7 +390,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], writePipes:[Int32:PosixPipe], readPipes:[Int32:PosixPipe], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard __cswiftslash_execvp_safetycheck(path) == 0 else {
 			throw ProcessSpawnError.execSafetyCheckFailure
@@ -504,7 +505,7 @@ internal struct ProcessLogistics {
 					let fdString = String(cString:UnsafeRawPointer(newPointer).assumingMemoryBound(to:CChar.self))
 					if fdString.contains(".") == false {
 						let curFh = atoi(fdString)
-						if writePipes[curFh] == nil && readPipes[curFh] == nil && curFh != dirFD && curFh != internalNotify.writing {
+						if pipes[curFh] == nil && curFh != dirFD && curFh != internalNotify.writing {
 							do {
 								try curFh.closeFileHandle()
 							} catch {
