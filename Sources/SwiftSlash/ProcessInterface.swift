@@ -62,17 +62,17 @@ public actor ProcessInterface {
 	}
 
 	private var dataChannels:[Int32:DataChannel] = [
-		STDOUT_FILENO:.childWriteParentRead(.createActiveConfiguration()),
-		STDERR_FILENO:.childWriteParentRead(.createActiveConfiguration()),
-		STDIN_FILENO:.childReadParentWrite(.activeParent(stream:.init()))
+		STDOUT_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDERR_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDIN_FILENO:.read(.fromParentProcess(stream:.init()))
 	]
 	/// access or assign a writable data stream to the process of a specified file handle value.
-	public subscript(writer fh:Int32) -> DataChannel.ChildWrite.Configuration? {
+	public subscript(writer fh:Int32) -> DataChannel.ChildWrite? {
 		set {
 			switch state {
 				case .initialized:
 					if newValue != nil {
-						dataChannels[fh] = .childWriteParentRead(newValue!)
+						dataChannels[fh] = .write(newValue!)
 					} else {
 						dataChannels[fh] = nil
 					}
@@ -82,7 +82,7 @@ public actor ProcessInterface {
 		}
 		get {
 			switch dataChannels[fh] {
-				case .childWriteParentRead(let config):
+				case .write(let config):
 					return config
 				default:
 					return nil
@@ -90,12 +90,12 @@ public actor ProcessInterface {
 		}
 	}
 	/// access or assign a readable data stream to the process of a specified file handle value.
-	public subscript(reader fh:Int32) -> DataChannel.ChildRead.Configuration? {
+	public subscript(reader fh:Int32) -> DataChannel.ChildRead? {
 		set {
 			switch state {
 				case .initialized:
 					if newValue != nil {
-						dataChannels[fh] = .childReadParentWrite(newValue!)
+						dataChannels[fh] = .read(newValue!)
 					} else {
 						dataChannels[fh] = nil
 					}
@@ -105,7 +105,7 @@ public actor ProcessInterface {
 		}
 		get {
 			switch dataChannels[fh] {
-				case .childReadParentWrite(let config):
+				case .read(let config):
 					return config
 				default:
 					return nil

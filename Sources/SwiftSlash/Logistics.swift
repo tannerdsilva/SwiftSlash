@@ -103,11 +103,11 @@ internal struct ProcessLogistics {
 			internal let launchedPID:pid_t
 			
 			internal struct WriteTask {
-				internal let terminationFuture:Future<Void, DataChannel.ChildRead.Error>
-				internal let userDataStream:DataChannel.ChildRead
+				internal let terminationFuture:Future<Void, DataChannel.ChildRead.ParentWrite.Error>
+				internal let userDataStream:DataChannel.ChildRead.ParentWrite
 				internal let writeConsumerFIFO:FIFO<Void, Never>
 				internal let wFH:Int32
-				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>
+				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [fh = wFH, et = eventTrigger, f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
 						try! et.deregister(writer:fh)
@@ -120,7 +120,7 @@ internal struct ProcessLogistics {
 						}
 
 						// this function will retrieve the next data chunk that the user wants to write.
-						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, DataChannel.ChildRead.Error>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
+						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, DataChannel.ChildRead.ParentWrite.Error>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
 							switch await iterator.next(whenTaskCancelled:.noAction) {
 								case .element(let (newUserDataToWrite, writeCompleteFuture)):
 									// this is a signal that the file handle is ready for writing.
@@ -185,12 +185,12 @@ internal struct ProcessLogistics {
 				}
 			}
 			internal struct ReadTask {
-				internal let terminationFuture:Future<Void, DataChannel.ChildWrite.Error>
+				internal let terminationFuture:Future<Void, DataChannel.ChildWrite.ParentRead.Error>
 				internal let separator:[UInt8]
-				internal let userDataStream:DataChannel.ChildWrite
+				internal let userDataStream:DataChannel.ChildWrite.ParentRead
 				internal let systemReadEventsFIFO:FIFO<size_t, Never>
 				internal let rFH:Int32
-				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>
+				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [et = eventTrigger, f = systemReadEventsFIFO] _ in
 						try! et.deregister(reader:rFH)
@@ -250,7 +250,7 @@ internal struct ProcessLogistics {
 	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
-	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>? = nil
+	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>? = nil
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
@@ -264,17 +264,17 @@ internal struct ProcessLogistics {
 
 		for (fh, config) in package.dataChannels {
 			switch config {
-				case .childReadParentWrite(let writable):
+				case .read(let writable):
 					switch writable {
-						case .activeParent(let channel):
+						case .fromParentProcess(let channel):
 
-							let terminationFuture = Future<Void, DataChannel.ChildRead.Error>()
+							let terminationFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error>()
 							
 							// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildReading()
 
 							// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-							let writerFIFO = EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>.WriterFIFO(maximumElementCount:1)
+							let writerFIFO = EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>.WriterFIFO(maximumElementCount:1)
 
 							// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
 							try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
@@ -289,20 +289,20 @@ internal struct ProcessLogistics {
 								wFH:newPipe.writing,
 								eventTrigger:eventTrigger!
 							))
-						case .nullPipe:
+						case .fromNull:
 							let newPipe = try PosixPipe.createNull()
 							nullPipes.insert(newPipe)
 							processPipes[fh] = .writePipe(newPipe)
 					}
-				case .childWriteParentRead(let readable):
+				case .write(let readable):
 					switch readable {
-						case .activeParent(let channel, let sep):
+						case .toParentProcess(let channel, let sep):
 
-							let terminationFuture = Future<Void, DataChannel.ChildWrite.Error>()
+							let terminationFuture = Future<Void, DataChannel.ChildWrite.ParentRead.Error>()
 
 							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildWriting()
-							let readerFIFO = EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>.ReaderFIFO()
+							let readerFIFO = EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>.ReaderFIFO()
 							try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
 
 							// close the writing end of the pipe after fork.
@@ -317,7 +317,7 @@ internal struct ProcessLogistics {
 								eventTrigger:eventTrigger!
 							))
 							break;
-						case .nullPipe:
+						case .toNull:
 							let newPipe = try PosixPipe.createNull()
 							processPipes[fh] = .readPipe(newPipe)
 							nullPipes.insert(newPipe)

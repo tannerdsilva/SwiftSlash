@@ -4,10 +4,13 @@
 
 ### Types of Data Channels
 
-- ``SwiftSlash/DataChannel/childReadParentWrite(_:)``
-- ``SwiftSlash/DataChannel/childReadParentWrite(_:)``
+- ``SwiftSlash/DataChannel/read(_:)``
+- ``SwiftSlash/DataChannel/write(_:)``
 
-### Passing Data Through Data Channels
+### Configuring Readable Data Channels
 
 - ``SwiftSlash/DataChannel/ChildRead``
+
+### Configuring Writable Data Channels
+
 - ``SwiftSlash/DataChannel/ChildWrite``

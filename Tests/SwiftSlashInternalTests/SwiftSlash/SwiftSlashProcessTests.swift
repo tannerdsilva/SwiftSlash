@@ -40,7 +40,7 @@ extension SwiftSlashTests {
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
-				case .active(stream:let curStream, separator:_):
+				case .toParentProcess(stream:let curStream, separator:_):
 					let iterator = curStream.makeAsyncIterator()
 					let streamTask = Task {
 						return try await process.run()
@@ -65,7 +65,7 @@ extension SwiftSlashTests {
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
-				case .active(stream:let curStream, separator:_):
+				case .toParentProcess(stream:let curStream, separator:_):
 					let iterator = curStream.makeAsyncIterator()
 					let streamTask = Task {
 						try await process.run()
@@ -94,7 +94,7 @@ extension SwiftSlashTests {
 				let process = ProcessInterface(command)
 				let stdInWriteStream = await process[reader:STDIN_FILENO]!
 				switch stdInWriteStream {
-					case (.active(stream:let inputStream)):
+					case (.fromParentProcess(stream:let inputStream)):
 						// launch the child process.
 						let streamTask = Task {
 							try await process.run()
@@ -102,7 +102,7 @@ extension SwiftSlashTests {
 						// write a line of input to the child process.
 						let inputString = "\(expectedExitCode)\n"
 						let inputData = [UInt8](inputString.utf8)
-						let writeFuture = Future<Void, DataChannel.ChildRead.Error> ()
+						let writeFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error> ()
 						inputStream.yield(inputData, future:writeFuture)
 						// wait for the input to be written
 						_ = try await writeFuture.result()!.get()
@@ -129,7 +129,7 @@ extension SwiftSlashTests {
 			let stdInWriteStream = await process[reader:STDIN_FILENO]!
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 			switch (stdInWriteStream, stdoutStream) {
-				case (.active(stream:let inputStream), .active(stream:let outputStream, separator:_)):
+				case (.fromParentProcess(stream:let inputStream), .toParentProcess(stream:let outputStream, separator:_)):
 					// launch the child process.
 					let iterator = outputStream.makeAsyncIterator()
 					let streamTask = Task {
@@ -138,7 +138,7 @@ extension SwiftSlashTests {
 					// write a line of input to the child process.
 					let inputString = "Hello from parent process\n"
 					let inputData = [UInt8](inputString.utf8)
-					let writeFuture = Future<Void, DataChannel.ChildRead.Error> ()
+					let writeFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error> ()
 					inputStream.yield(inputData, future:writeFuture)
 					// wait for the input to be written
 					_ = try await writeFuture.result()!.get()
