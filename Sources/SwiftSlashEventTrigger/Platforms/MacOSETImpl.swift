@@ -30,27 +30,19 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 	// the pipe that is used to cancel the event trigger.
 	internal let cancelPipe:PosixPipe
 
-	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)] = [:]
-
-	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)] = [:]
+	/// the file handle registrations that are currently active.
+	private var activeTriggers:[Int32:Register<DataChannelChildReadError, DataChannelChildWriteError>] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
+	private let registrations:FIFO<(Int32, Register<DataChannelChildReadError, DataChannelChildWriteError>?), Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
 			switch getIterator.next() {
-				case .some(let reg):
-					switch reg {
-						case .reader(let i, let f):
-							readersDataOut[i] = f
-						case .writer(let i, let f):
-							writersDataTrigger[i] = f
-					}
-				case .none:
-					return
+				case .some(let (handle, register)):
+					activeTriggers[handle] = register
+				case nil:
+					break infiniteLoop
 			}
 		} while true
 	}
@@ -114,26 +106,46 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
 								// readable data.
-								readersDataOut[curIdent]!.0.yield(currentEvent.data)
+								switch activeTriggers[curIdent]! {
+									case .reader(let fifo, _):
+										fifo.yield(currentEvent.data)
+									default:
+										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+								}
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writable data.
-								writersDataTrigger[curIdent]!.0.yield(())
+								switch activeTriggers[curIdent]! {
+									case .writer(let fifo, _):
+										fifo.yield(())
+									default:
+										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+								}
 
 							}
 						} else {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 
 								// reader close.
-								let (_, future) = readersDataOut.removeValue(forKey:curIdent)!
-								try future.setSuccess(())
+								let removedValue = activeTriggers.removeValue(forKey:curIdent)!
+								switch removedValue {
+									case .reader(_, let future):
+										try future.setSuccess(())
+									default:
+										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+								}
 
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
-								let (_, future) = writersDataTrigger.removeValue(forKey:curIdent)!
-								try future.setSuccess(())
+								let removedValue = activeTriggers.removeValue(forKey:curIdent)!
+								switch removedValue {
+									case .writer(_, let future):
+										try future.setSuccess(())
+									default:
+										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+								}
 							}
 						}
 					}

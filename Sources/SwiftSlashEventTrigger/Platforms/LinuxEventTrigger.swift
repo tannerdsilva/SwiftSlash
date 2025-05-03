@@ -101,8 +101,6 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 							// reading handle closed
-							// let (_, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
-							// try? future.setSuccess(())
 							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
 							switch removedValue {
 								case .reader(_, let future):
@@ -114,8 +112,6 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							// let (_, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
-							// try? future.setSuccess(())
 							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
 							switch removedValue {
 								case .writer(_, let future):
@@ -131,7 +127,6 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 							guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
 								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
 							}
-							// readersDataOut[currentEvent.data.fd]!.0.yield(Int(byteCount))
 							switch activeTriggers[currentEvent.data.fd]! {
 								case .reader(let fifo, _):
 									fifo.yield(Int(byteCount))
@@ -142,7 +137,6 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available
-							// writersDataTrigger[currentEvent.data.fd]!.0.yield(())
 							switch activeTriggers[currentEvent.data.fd]! {
 								case .writer(let fifo, _):
 									fifo.yield(())
