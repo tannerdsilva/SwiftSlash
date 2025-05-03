@@ -17,7 +17,7 @@ public struct EventTriggerSetup<HP, DataChannelChildReadError, DataChannelChildW
 	// the primitive handle type that is used to handle the event trigger.
 	internal let handle:HP
 	// the FIFO that is used to pass registrations to the event trigger to the pthread that is handling the event trigger.
-	internal let registersIn:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
+	internal let registersIn:FIFO<(Int32, Register<DataChannelChildReadError, DataChannelChildWriteError>?), Never>
 	// the cancellation pipe that is registered with the event trigger to assist in shutting down the event trigger when it needs to be cancelled.
 	internal let cancelPipe:PosixPipe
 }

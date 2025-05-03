@@ -35,14 +35,14 @@ public final class EventTrigger<DataChannelChildReadError, DataChannelChildWrite
 	/// the running pthread that is handling the event trigger.
 	private let launchedThread:Running<PlatformSpecificETImplementation>
 	/// the stream of registrations that are being made to the event trigger. the system kernel allows for the file handle to be registered on any thread, but the corresponding FIFO must be passed to the pthread that is triggering the events
-	private let regStream:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
+	private let regStream:FIFO<(Int32, Register<DataChannelChildReadError, DataChannelChildWriteError>?), Never>
 	/// the type of registration that is being made to the event trigger.
 	private let cancelPipe:PosixPipe
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	@SwiftSlashGlobalSerialization public init() throws {
 		cancelPipe = try PosixPipe()
-		regStream = FIFO<Register, Never>()
+		regStream = FIFO()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>
@@ -58,26 +58,26 @@ public final class EventTrigger<DataChannelChildReadError, DataChannelChildWrite
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
 	@SwiftSlashGlobalSerialization public borrowing func register(reader:Int32, _ fifo:consuming ReaderFIFO, finishFuture:consuming Future<Void, DataChannelChildWriteError>) throws(EventTriggerErrors) {
-		regStream.yield(.reader(fh:reader, (fifo, finishFuture)))
+		regStream.yield((reader, .reader(fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, reader:reader)
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
 	@SwiftSlashGlobalSerialization public func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming Future<Void, DataChannelChildReadError>) throws(EventTriggerErrors) {
-		regStream.yield(.writer(fh:writer, (fifo, finishFuture)))
+		regStream.yield((writer, .writer(fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, writer:writer)
 	}
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
 	public borrowing func deregister(reader:Int32) throws {
 		try PlatformSpecificETImplementation.deregister(prim, reader:reader)
-		regStream.yield(.reader(fh:reader, nil))
+		regStream.yield((reader, nil))
 	}
 
 	/// deregisters a file handle. the handle must be of writer variant. if the handle is not of writer variant, behavior is undefined.
 	public borrowing func deregister(writer:Int32) throws {
 		try PlatformSpecificETImplementation.deregister(prim, writer:writer)
-		regStream.yield(.writer(fh:writer, nil))
+		regStream.yield((writer, nil))
 	}
 
 	deinit {

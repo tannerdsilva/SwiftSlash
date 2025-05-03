@@ -31,27 +31,19 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 	// the pipe that is used to cancel the event trigger.
 	internal let cancelPipe:PosixPipe
 
-	/// stores the fifo's that read data is passed into.
-	private var readersDataOut:[Int32:(FIFO<size_t, Never>, Future<Void, Never>)] = [:]
-
-	/// the fifo that indicates to writing tasks that they can push more data.
-	private var writersDataTrigger:[Int32:(FIFO<Void, Never>, Future<Void, Never>)] = [:]
+	/// the file handle registrations that are currently active.
+	private var activeTriggers:[Int32:Register<DataChannelChildReadError, DataChannelChildWriteError>] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<Register<DataChannelChildReadError, DataChannelChildWriteError>, Never>
+	private let registrations:FIFO<(Int32, Register<DataChannelChildReadError, DataChannelChildWriteError>?), Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
 			switch getIterator.next() {
-				case .some(let reg):
-					switch reg {
-						case .reader(let i, let f):
-							readersDataOut[i] = f
-						case .writer(let i, let f):
-							writersDataTrigger[i] = f
-					}
-				case .none:
-					return
+				case .some(let (handle, register)):
+					activeTriggers[handle] = register
+				case nil:
+					break infiniteLoop
 			}
 		} while true
 	}
@@ -109,14 +101,28 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 							// reading handle closed
-							let (_, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
-							try? future.setSuccess(())
+							// let (_, future) = readersDataOut.removeValue(forKey:currentEvent.data.fd)!
+							// try? future.setSuccess(())
+							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
+							switch removedValue {
+								case .reader(_, let future):
+									try? future.setSuccess(())
+								default:
+									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+							}
 
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							let (_, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
-							try? future.setSuccess(())
+							// let (_, future) = writersDataTrigger.removeValue(forKey:currentEvent.data.fd)!
+							// try? future.setSuccess(())
+							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
+							switch removedValue {
+								case .writer(_, let future):
+									try? future.setSuccess(())
+								default:
+									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+							}
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
 							
@@ -125,12 +131,24 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 							guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
 								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
 							}
-							readersDataOut[currentEvent.data.fd]!.0.yield(Int(byteCount))
+							// readersDataOut[currentEvent.data.fd]!.0.yield(Int(byteCount))
+							switch activeTriggers[currentEvent.data.fd]! {
+								case .reader(let fifo, _):
+									fifo.yield(Int(byteCount))
+								default:
+									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+							}
 
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available
-							writersDataTrigger[currentEvent.data.fd]!.0.yield(())
+							// writersDataTrigger[currentEvent.data.fd]!.0.yield(())
+							switch activeTriggers[currentEvent.data.fd]! {
+								case .writer(let fifo, _):
+									fifo.yield(())
+								default:
+									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+							}
 							
 						}
 					}
