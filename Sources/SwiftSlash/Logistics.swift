@@ -41,7 +41,7 @@ extension pid_t {
 		} else if __cswiftslash_eventtrigger_wifexited(statusValue) != 0 {
 			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusValue))
 		}
-		fatalError("swiftslash - internal error \(#file):\(#line)")
+		fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
 	}
 }
 
@@ -57,10 +57,22 @@ internal struct ProcessLogistics {
 		internal let workingDirectory:Path
 		/// represents the environment variables that will be assigned to the child process.
 		internal let env:[String:String]
-		/// represents a mapping of the file handles of the child process. each file handle is written to by the parent process and read from by the child process.
-		internal let writables:[Int32:DataChannel.ChildReadParentWrite.Configuration]
-		/// represents a mapping of the file handles of the child process. each file handle is read from by the parent process and written to by the child process.
-		internal let readables:[Int32:DataChannel.ChildWriteParentRead.Configuration]
+		/// represents a mapping of the data channels with the file handles of the child process.
+		internal let dataChannels:[Int32:DataChannel]
+
+		internal init(
+			exe:Path,
+			arguments:[String],
+			workingDirectory:Path,
+			env:[String:String],
+			dataChannels:[Int32:DataChannel]
+		) {
+			self.exe = exe
+			self.arguments = arguments
+			self.workingDirectory = workingDirectory
+			self.env = env
+			self.dataChannels = dataChannels
+		}
 
 		/// expose all of the arguments for this launch package as c pointers that could be used to launch a child process.
 		fileprivate borrowing func exposeArguments<R, E>(_ aHandler:(UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws(E) -> R) throws(E) -> R where E:Swift.Error {
@@ -159,7 +171,7 @@ internal struct ProcessLogistics {
 						let terminationResult = await terminationFuture.result()!
 						finalFlushLoop: while currentWriteStepper != nil {
 							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
-								case .element(let (newUserDataToWrite, writeCompleteFuture)):
+								case .element(let (_, writeCompleteFuture)):
 									try? writeCompleteFuture?.setResult(terminationResult)
 								case .capped(_):
 									// this is a signal that the file handle is not ready for writing.
@@ -244,84 +256,73 @@ internal struct ProcessLogistics {
 			eventTrigger = try EventTrigger()
 		}
 		// pipes that will be used to facilitate io exchange with the child process.
-		var mergePipes = [Int32:Pipe]()
-
-		var writePipes = [Int32:PosixPipe]()
-		var readPipes = [Int32:PosixPipe]()
+		var processPipes = [Int32:Pipe]()
 		var nullPipes = Set<PosixPipe>()
 
 		var writeTasks = [LaunchPackage.Launched.WriteTask]()
 		var readTasks = [LaunchPackage.Launched.ReadTask]()
 
-		// configure the file handles that we will write to (process will read)
-		for (fh, config) in package.writables {
-			// for each writer configured...
+		for (fh, config) in package.dataChannels {
 			switch config {
-				case .active(let channel):
+				case .childReadParentWrite(let writable):
+					switch writable {
+						case .active(let channel):
 
-					let terminationFuture = Future<Void, DataChannel.ChildReadParentWrite.Error>()
-					
-					// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
-					let newPipe = try PosixPipe.forChildReading()
+							let terminationFuture = Future<Void, DataChannel.ChildReadParentWrite.Error>()
+							
+							// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
+							let newPipe = try PosixPipe.forChildReading()
 
-					// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-					let writerFIFO = EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>.WriterFIFO(maximumElementCount:1)
+							// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
+							let writerFIFO = EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>.WriterFIFO(maximumElementCount:1)
 
-					// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
-					try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
-					
-					// this pipe needs to be further handled after the process fork so we will store it for future reference.
-					writePipes[fh] = newPipe
-					mergePipes[fh] = .writePipe(newPipe)
+							// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
+							try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
+							
+							// this pipe needs to be further handled after the process fork so we will store it for future reference.
+							processPipes[fh] = .writePipe(newPipe)
 
-					writeTasks.append(LaunchPackage.Launched.WriteTask(
-						terminationFuture:terminationFuture,
-						userDataStream:channel,
-						writeConsumerFIFO:writerFIFO,
-						wFH:newPipe.writing,
-						eventTrigger:eventTrigger!
-					))
-					break;
-				case .nullPipe:
-					let newPipe = try PosixPipe.createNull()
-					writePipes[fh] = newPipe
-					nullPipes.insert(newPipe)
-					mergePipes[fh] = .writePipe(newPipe)
-					break;
-			}
-		}
+							writeTasks.append(LaunchPackage.Launched.WriteTask(
+								terminationFuture:terminationFuture,
+								userDataStream:channel,
+								writeConsumerFIFO:writerFIFO,
+								wFH:newPipe.writing,
+								eventTrigger:eventTrigger!
+							))
+						case .nullPipe:
+							let newPipe = try PosixPipe.createNull()
+							nullPipes.insert(newPipe)
+							processPipes[fh] = .writePipe(newPipe)
+					}
+				case .childWriteParentRead(let readable):
+					switch readable {
+						case .active(let channel, let sep):
 
-		// configure the file handles that we will read from
-		for (fh, config) in package.readables {
-			switch config {
-				case .active(let channel, let sep):
+							let terminationFuture = Future<Void, DataChannel.ChildWriteParentRead.Error>()
 
-					let terminationFuture = Future<Void, DataChannel.ChildWriteParentRead.Error>()
+							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
+							let newPipe = try PosixPipe.forChildWriting()
+							let readerFIFO = EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>.ReaderFIFO()
+							try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
 
-					// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
-					let newPipe = try PosixPipe.forChildWriting()
-					let readerFIFO = EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>.ReaderFIFO()
-					try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
+							// close the writing end of the pipe after fork.
+							processPipes[fh] = .readPipe(newPipe)
 
-					// close the writing end of the pipe after fork.
-					readPipes[fh] = newPipe
-					mergePipes[fh] = .readPipe(newPipe)
-
-					readTasks.append(LaunchPackage.Launched.ReadTask(
-						terminationFuture:terminationFuture,
-						separator:sep,
-						userDataStream:channel,
-						systemReadEventsFIFO:readerFIFO,
-						rFH:newPipe.reading,
-						eventTrigger:eventTrigger!
-					))
-					break;
-				case .nullPipe:
-					let newPipe = try PosixPipe.createNull()
-					readPipes[fh] = newPipe
-					mergePipes[fh] = .readPipe(newPipe)
-					nullPipes.insert(newPipe)
-					break;
+							readTasks.append(LaunchPackage.Launched.ReadTask(
+								terminationFuture:terminationFuture,
+								separator:sep,
+								userDataStream:channel,
+								systemReadEventsFIFO:readerFIFO,
+								rFH:newPipe.reading,
+								eventTrigger:eventTrigger!
+							))
+							break;
+						case .nullPipe:
+							let newPipe = try PosixPipe.createNull()
+							processPipes[fh] = .readPipe(newPipe)
+							nullPipes.insert(newPipe)
+							break;
+					}
 			}
 		}
 
@@ -329,12 +330,11 @@ internal struct ProcessLogistics {
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:mergePipes)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
-			// cleanup write pipes
-			for curPipe in mergePipes {
+			for curPipe in processPipes {
 				switch curPipe.value {
 					case .readPipe(let possibleEnabledReader):
 						if nullPipes.contains(possibleEnabledReader) == false {
@@ -359,30 +359,28 @@ internal struct ProcessLogistics {
 		
 		// now that the child process is launched, we can close the file handles that are not intended for this process to use.
 		
-		// handle the write pipes
-		for (_, possibleEnabledWriter) in writePipes {
-			if nullPipes.contains(possibleEnabledWriter) == false {
-				// the user configured this pipe to be "enabled" so we must close the reading end of the pipe
-				try! possibleEnabledWriter.reading.closeFileHandle()
-			} else {
-				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-				try! possibleEnabledWriter.writing.closeFileHandle()
-				try! possibleEnabledWriter.reading.closeFileHandle()
+		for curPipe in processPipes {
+			switch curPipe.value {
+				case .readPipe(let possibleEnabledReader):
+					if nullPipes.contains(possibleEnabledReader) == false {
+						// the user configured this pipe to be "enabled" so we must close the writing end of the pipe
+						try! possibleEnabledReader.writing.closeFileHandle()
+					} else {
+						// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+						try! possibleEnabledReader.writing.closeFileHandle()
+						try! possibleEnabledReader.reading.closeFileHandle()
+					}
+				case .writePipe(let possibleEnabledWriter):
+					if nullPipes.contains(possibleEnabledWriter) == false {
+						// the user configured this pipe to be "enabled" so we must close the reading end of the pipe
+						try! possibleEnabledWriter.reading.closeFileHandle()
+					} else {
+						// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
+						try! possibleEnabledWriter.writing.closeFileHandle()
+						try! possibleEnabledWriter.reading.closeFileHandle()
+					}
 			}
 		}
-
-		// handle the read pipes
-		for (_, possibleEnabledReader) in readPipes {
-			if nullPipes.contains(possibleEnabledReader) == false {
-				// the user configured this pipe to be "enabled" so we must close the writing end of the pipe
-				try! possibleEnabledReader.writing.closeFileHandle()
-			} else {
-				// the user configured this pipe to be "null piped" so we must close both ends of the pipe. this is a pipe that goes to /dev/null and our process has nothing to do with it.
-				try! possibleEnabledReader.writing.closeFileHandle()
-				try! possibleEnabledReader.reading.closeFileHandle()
-			}
-		}
-
 		return LaunchPackage.Launched(
 			writeTasks:writeTasks,
 			readTasks:readTasks,

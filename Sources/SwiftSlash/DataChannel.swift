@@ -15,7 +15,7 @@ import SwiftSlashFuture
 /// Represents a unidirectional data channel between parent and child processes.
 /// Use `childWriteParentRead` when the child writes data and the parent reads it.
 /// Use `childReadParentWrite` when the parent writes data and the child reads it.
-public enum DataChannel {
+public enum DataChannel:Sendable {
 
 	/// Child process writes; parent process reads.
 	case childWriteParentRead(ChildWriteParentRead.Configuration)

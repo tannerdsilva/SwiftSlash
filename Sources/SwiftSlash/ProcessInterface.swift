@@ -57,46 +57,36 @@ public actor ProcessInterface {
 	/// 	- cmd: The command to execute.
 	/// 	- dataChannels: A dictionary of file handle values to data channels. The keys are the file handle values, and the values are the data channels.
 	public init(_ command:Command, dataChannels:[Int32:DataChannel]) {
-		var buildChildWriters = [Int32:DataChannel.ChildWriteParentRead.Configuration]()
-		var buildChildReaders = [Int32:DataChannel.ChildReadParentWrite.Configuration]()
-		for (fh, channel) in dataChannels {
-			switch channel {
-				case .childReadParentWrite(let config):
-					buildChildReaders[fh] = config
-				case .childWriteParentRead(let config):
-					buildChildWriters[fh] = config
-			}
-		}
 		self.command = command
-		self.childWriteParentRead = buildChildWriters
-		self.childReadParentWrite = buildChildReaders
+		self.dataChannels = dataChannels
 	}
 
-	/// stores all of the data channels that the process will write to.
-	private var childWriteParentRead:[Int32:DataChannel.ChildWriteParentRead.Configuration] = [
-		STDOUT_FILENO:.createActiveConfiguration(),
-		STDERR_FILENO:.createActiveConfiguration()
-	]
-	/// stores all of the data channels that the process will read from.
-	private var childReadParentWrite:[Int32:DataChannel.ChildReadParentWrite.Configuration] = [
-		STDIN_FILENO:.active(stream:.init())
+	private var dataChannels:[Int32:DataChannel] = [
+		STDOUT_FILENO:.childWriteParentRead(.createActiveConfiguration()),
+		STDERR_FILENO:.childWriteParentRead(.createActiveConfiguration()),
+		STDIN_FILENO:.childReadParentWrite(.active(stream:.init()))
 	]
 	/// access or assign a writable data stream to the process of a specified file handle value.
 	public subscript(writer fh:Int32) -> DataChannel.ChildWriteParentRead.Configuration? {
 		set {
 			switch state {
 				case .initialized:
-					guard childReadParentWrite[fh] == nil else {
-						fatalError("SwiftSlash critical error :: cannot assign a writing data stream when a reader has already been configured for the same handle value.")
+					if newValue != nil {
+						dataChannels[fh] = .childWriteParentRead(newValue!)
+					} else {
+						dataChannels[fh] = nil
 					}
-					childWriteParentRead[fh] = newValue
 				default:
 					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
 			}
-			childWriteParentRead[fh] = newValue
 		}
 		get {
-			return childWriteParentRead[fh]
+			switch dataChannels[fh] {
+				case .childWriteParentRead(let config):
+					return config
+				default:
+					return nil
+			}
 		}
 	}
 	/// access or assign a readable data stream to the process of a specified file handle value.
@@ -104,16 +94,22 @@ public actor ProcessInterface {
 		set {
 			switch state {
 				case .initialized:
-					guard childWriteParentRead[fh] == nil else {
-						fatalError("SwiftSlash critical error :: cannot assign a reading data stream when a writer has already been configured for the same handle value.")
+					if newValue != nil {
+						dataChannels[fh] = .childReadParentWrite(newValue!)
+					} else {
+						dataChannels[fh] = nil
 					}
-					childReadParentWrite[fh] = newValue
 				default:
 					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
 			}
 		}
 		get {
-			return childReadParentWrite[fh]
+			switch dataChannels[fh] {
+				case .childReadParentWrite(let config):
+					return config
+				default:
+					return nil
+			}
 		}
 	}
 
@@ -130,8 +126,7 @@ public actor ProcessInterface {
 						arguments:command.arguments,
 						workingDirectory:command.workingDirectory,
 						env:command.environment,
-						writables:childReadParentWrite,
-						readables:childWriteParentRead
+						dataChannels:dataChannels
 					)
 					
 					// launch the package.

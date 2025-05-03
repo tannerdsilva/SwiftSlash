@@ -40,16 +40,16 @@ internal struct LineParser:~Copyable {
 	private let handler:Output
 
 	/// - parameters:
-	///   - separator: the byte‐pattern to split on (e.g. `Array("\r\n".utf8)`)
-	///   - initialCapacity: starting buffer size; will grow as needed
-	///   - output: the output method for the parser to use as it finds matches in the input stream
+	/// 	- separator: the byte‐pattern to split on (e.g. `Array("\r\n".utf8)`)
+	/// 	- initialCapacity: starting buffer size; will grow as needed
+	/// 	- output: the output method for the parser to use as it finds matches in the input stream
 	internal init(separator sepArg: [UInt8], initialCapacity initCapArg:size_t, output handlerArg: consuming Output) {
 		separator = sepArg
 		capacity = max(initCapArg, sepArg.count)
 		buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
 		handler = handlerArg
 	}
-
+	
 	internal init(separator sepArg:[UInt8], nasync output: FIFO<[LineOutput], Never>) {
 		self.init(separator: sepArg, initialCapacity: 4_096, output: .nasync(output))
 	}

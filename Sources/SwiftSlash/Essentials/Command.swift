@@ -23,10 +23,10 @@ public struct Command:Sendable {
 
 	/// Creates a new command.
 	/// - Parameters:
-	///		- execute: the absolute path to the executable to run.
-	///		- args: the arguments to pass to the executed command. default value: no arguments.
-	///		- envs: the environment variables to set for the command. default vaule: no environment variables.
-	///		- wd: the working directory to run the command in. default value: the current working directory of the launching process.
+	/// 	- execute: the absolute path to the executable to run.
+	/// 	- args: the arguments to pass to the executed command. default value: no arguments.
+	/// 	- envs: the environment variables to set for the command. default vaule: no environment variables.
+	/// 	- wd: the working directory to run the command in. default value: the current working directory of the launching process.
 	public init(
 		absolutePath execute:consuming Path,
 		arguments args:consuming [String] = [],
