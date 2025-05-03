@@ -64,7 +64,7 @@ public struct Command:Sendable {
 	/// 	- envs: the environment variables to set for the command. default value: no environment values.
 	/// 	- wd: the working directory 
 	public init(
-		sh shCommand:String, 
+		sh shCommand:consuming String, 
 		environment envs:consuming [String:String],
 		workingDirectory wd:consuming Path = CurrentProcess.workingDirectory()
 	) {
