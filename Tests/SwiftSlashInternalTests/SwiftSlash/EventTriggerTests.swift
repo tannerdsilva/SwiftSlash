@@ -18,7 +18,7 @@ extension SwiftSlashTests {
 	struct EventTriggerTests {
 		@Test("SwiftSlashEventTrigger :: initialization", .timeLimit(.minutes(1)))
 		func initializationBasics() async throws {
-			var et:EventTrigger? = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
+			var et:EventTrigger? = try await EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>()
 			#expect(et != nil)
 			et = nil
 			#expect(et == nil)
@@ -28,8 +28,8 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let readingFIFO = FIFO<size_t, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
-			let et:EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error> = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
-			let fut = Future<Void, DataChannel.ChildWriteParentRead.Error>()
+			let et:EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error> = try await EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>()
+			let fut = Future<Void, DataChannel.ChildWrite.Error>()
 			fut.whenResult { result in
 				readingFIFO.finish()
 			}
@@ -52,8 +52,8 @@ extension SwiftSlashTests {
 			let newPipe = try PosixPipe()
 			let writingFIFO = FIFO<Void, Never>()
 			let asyncConsumer: FIFO<Void, Never>.AsyncConsumer = writingFIFO.makeAsyncConsumer()
-			let et = try await EventTrigger<DataChannel.ChildReadParentWrite.Error, DataChannel.ChildWriteParentRead.Error>()
-			let fut = Future<Void, DataChannel.ChildReadParentWrite.Error>()
+			let et = try await EventTrigger<DataChannel.ChildRead.Error, DataChannel.ChildWrite.Error>()
+			let fut = Future<Void, DataChannel.ChildRead.Error>()
 			fut.whenResult { result in
 				writingFIFO.finish()
 			}

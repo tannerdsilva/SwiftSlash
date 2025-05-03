@@ -18,14 +18,14 @@ import SwiftSlashFuture
 public enum DataChannel:Sendable {
 
 	/// Child writes into this channel; parent (or another consumer) may read.
-	case childWriteParentRead(ChildWriteParentRead.Configuration)
+	case childWriteParentRead(ChildWrite.Configuration)
 	/// Parent (or another producer) writes into this channel; child reads.
-	case childReadParentWrite(ChildReadParentWrite.Configuration)
+	case childReadParentWrite(ChildRead.Configuration)
 
 	/// Asynchronous sequence of byte-array chunks produced by a child process.
 	///
 	/// Each `Element` is a `[[UInt8]]`, representing one or more raw data buffers.
-	public struct ChildWriteParentRead: Sendable, AsyncSequence {
+	public struct ChildWrite:Sendable, AsyncSequence {
 		public enum Error:Swift.Error {}
 
 		public typealias Element = [[UInt8]]
@@ -40,12 +40,12 @@ public enum DataChannel:Sendable {
 
 		/// Configuration options for this data channel.
 		public enum Configuration:Sendable {
-			/// Active channel: child writes into `stream` and data is delivered (to parent or other consumer).
+			/// Parent will actively capture the written contents of the child process and parse it by a predetermined separator.
 			///
 			/// - Parameters:
-			/// 	- stream: The `ChildWriteParentRead` instance to receive data.
+			/// 	- stream: The `ChildWrite` instance to consume the written data.
 			/// 	- separator: Byte sequence used to delimit chunks (e.g. `[0x0A]` for newline).
-			case active(stream:ChildWriteParentRead, separator:[UInt8])
+			case activeParent(stream:ChildWrite, separator:[UInt8])
 
 			/// Discards all child output by piping it to `/dev/null`.
 			/// The child sees an open channel, but no data is delivered to any consumer.
@@ -96,10 +96,8 @@ public enum DataChannel:Sendable {
 		}
 	}
 
-	// MARK: - ChildReadParentWrite
-
 	/// Channel for sending data into a child process’s stdin (or another consumer).
-	public struct ChildReadParentWrite:Sendable {
+	public struct ChildRead:Sendable {
 		public enum Error:Swift.Error {
 			/// The channel was closed before or during a write.
 			case dataChannelClosed
@@ -109,8 +107,8 @@ public enum DataChannel:Sendable {
 		public enum Configuration:Sendable {
 			/// Active channel: parent (or other producer) writes into `stream`, child reads.
 			///
-			/// - Parameter stream: The `ChildReadParentWrite` instance to send data into.
-			case active(stream:ChildReadParentWrite)
+			/// - Parameter stream: The `ChildRead` instance to send data into.
+			case active(stream:ChildRead)
 
 			/// Provides no data by piping from `/dev/null`.
 			/// The child sees an open channel but reads nothing.
@@ -118,7 +116,7 @@ public enum DataChannel:Sendable {
 		}
 
 		/// Internal FIFO for buffering outgoing data and completion futures.
-		internal let fifo:FIFO<([UInt8], Future<Void, DataChannel.ChildReadParentWrite.Error>?), Never> = .init()
+		internal let fifo:FIFO<([UInt8], Future<Void, DataChannel.ChildRead.Error>?), Never> = .init()
 
 		/// Initializes a new parent-to-child data channel.
 		public init() {}
@@ -126,16 +124,16 @@ public enum DataChannel:Sendable {
 		/// Writes a byte buffer into the channel and optionally signals completion.
 		///
 		/// - Parameters:
-		///   - element: The bytes to send.
-		///   - future: Optional `Future` to fulfill on write completion or failure.
-		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, DataChannel.ChildReadParentWrite.Error>?) {
+		/// 	- element: The bytes to send.
+		/// 	- future: Optional `Future` to fulfill on write completion or failure.
+		public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, DataChannel.ChildRead.Error>?) {
 			switch fifo.yield((element, future)) {
 				case .success:
 					break
 				case .fifoClosed:
 					// Channel closed; report error if a future was provided.
 					if future != nil {
-						try? future!.setFailure(DataChannel.ChildReadParentWrite.Error.dataChannelClosed)
+						try? future!.setFailure(DataChannel.ChildRead.Error.dataChannelClosed)
 					}
 				case .fifoFull:
 					fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")

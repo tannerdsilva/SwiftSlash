@@ -67,7 +67,7 @@ public actor ProcessInterface {
 		STDIN_FILENO:.childReadParentWrite(.active(stream:.init()))
 	]
 	/// access or assign a writable data stream to the process of a specified file handle value.
-	public subscript(writer fh:Int32) -> DataChannel.ChildWriteParentRead.Configuration? {
+	public subscript(writer fh:Int32) -> DataChannel.ChildWrite.Configuration? {
 		set {
 			switch state {
 				case .initialized:
@@ -90,7 +90,7 @@ public actor ProcessInterface {
 		}
 	}
 	/// access or assign a readable data stream to the process of a specified file handle value.
-	public subscript(reader fh:Int32) -> DataChannel.ChildReadParentWrite.Configuration? {
+	public subscript(reader fh:Int32) -> DataChannel.ChildRead.Configuration? {
 		set {
 			switch state {
 				case .initialized:

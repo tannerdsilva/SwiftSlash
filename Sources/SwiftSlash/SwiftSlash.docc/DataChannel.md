@@ -9,5 +9,5 @@
 
 ### Passing Data Through Data Channels
 
-- ``SwiftSlash/DataChannel/ChildReadParentWrite``
-- ``SwiftSlash/DataChannel/ChildWriteParentRead``
+- ``SwiftSlash/DataChannel/ChildRead``
+- ``SwiftSlash/DataChannel/ChildWrite``

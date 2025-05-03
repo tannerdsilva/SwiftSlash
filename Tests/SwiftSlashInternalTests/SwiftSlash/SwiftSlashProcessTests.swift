@@ -102,7 +102,7 @@ extension SwiftSlashTests {
 						// write a line of input to the child process.
 						let inputString = "\(expectedExitCode)\n"
 						let inputData = [UInt8](inputString.utf8)
-						let writeFuture = Future<Void, DataChannel.ChildReadParentWrite.Error> ()
+						let writeFuture = Future<Void, DataChannel.ChildRead.Error> ()
 						inputStream.yield(inputData, future:writeFuture)
 						// wait for the input to be written
 						_ = try await writeFuture.result()!.get()
@@ -138,7 +138,7 @@ extension SwiftSlashTests {
 					// write a line of input to the child process.
 					let inputString = "Hello from parent process\n"
 					let inputData = [UInt8](inputString.utf8)
-					let writeFuture = Future<Void, DataChannel.ChildReadParentWrite.Error> ()
+					let writeFuture = Future<Void, DataChannel.ChildRead.Error> ()
 					inputStream.yield(inputData, future:writeFuture)
 					// wait for the input to be written
 					_ = try await writeFuture.result()!.get()
