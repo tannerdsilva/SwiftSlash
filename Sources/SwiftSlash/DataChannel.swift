@@ -134,7 +134,9 @@ public enum DataChannel:Sendable {
 					break
 				case .fifoClosed:
 					// Channel closed; report error if a future was provided.
-					future?.tryFailure(.dataChannelClosed)
+					if future != nil {
+						try? future!.setFailure(DataChannel.ChildReadParentWrite.Error.dataChannelClosed)
+					}
 				case .fifoFull:
 					fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
 			}
