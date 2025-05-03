@@ -64,7 +64,7 @@ public actor ProcessInterface {
 	private var dataChannels:[Int32:DataChannel] = [
 		STDOUT_FILENO:.childWriteParentRead(.createActiveConfiguration()),
 		STDERR_FILENO:.childWriteParentRead(.createActiveConfiguration()),
-		STDIN_FILENO:.childReadParentWrite(.active(stream:.init()))
+		STDIN_FILENO:.childReadParentWrite(.activeParent(stream:.init()))
 	]
 	/// access or assign a writable data stream to the process of a specified file handle value.
 	public subscript(writer fh:Int32) -> DataChannel.ChildWrite.Configuration? {

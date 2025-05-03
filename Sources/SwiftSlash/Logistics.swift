@@ -266,7 +266,7 @@ internal struct ProcessLogistics {
 			switch config {
 				case .childReadParentWrite(let writable):
 					switch writable {
-						case .active(let channel):
+						case .activeParent(let channel):
 
 							let terminationFuture = Future<Void, DataChannel.ChildRead.Error>()
 							
@@ -296,7 +296,7 @@ internal struct ProcessLogistics {
 					}
 				case .childWriteParentRead(let readable):
 					switch readable {
-						case .active(let channel, let sep):
+						case .activeParent(let channel, let sep):
 
 							let terminationFuture = Future<Void, DataChannel.ChildWrite.Error>()
 

@@ -56,7 +56,7 @@ public enum DataChannel:Sendable {
 			/// - Parameter separator: Optional byte-separator (default: `[0x0A]`).
 			/// - Returns: A `.active` configuration with the specified or default separator.
 			public static func createActiveConfiguration(separator:[UInt8]? = nil) -> Configuration {
-				return .active(stream:.init(), separator:separator ?? [0x0A])
+				return .activeParent(stream:.init(), separator:separator ?? [0x0A])
 			}
 		}
 
@@ -105,10 +105,10 @@ public enum DataChannel:Sendable {
 
 		/// Configuration options for this outbound data channel.
 		public enum Configuration:Sendable {
-			/// Active channel: parent (or other producer) writes into `stream`, child reads.
+			/// The parent process will be engaged with this data channel with the ability to freely write data for the child to read.
 			///
 			/// - Parameter stream: The `ChildRead` instance to send data into.
-			case active(stream:ChildRead)
+			case activeParent(stream:ChildRead)
 
 			/// Provides no data by piping from `/dev/null`.
 			/// The child sees an open channel but reads nothing.
