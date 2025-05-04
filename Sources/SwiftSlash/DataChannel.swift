@@ -23,14 +23,14 @@ public enum DataChannel:Sendable {
 	case read(ChildRead)
 
 	/// Represents the various ways that a child process can be configured to write data.
+	/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
 	public enum ChildWrite:Sendable {
 	
-		/// Asynchronous sequence of byte-array chunks produced by a child process.
-		///
-		/// Each `Element` is a `[[UInt8]]`, representing one or more raw data buffers.
+		/// Primary interface for consuming bytes written by child processes.
 		public struct ParentRead:Sendable, AsyncSequence {
 			public enum Error:Swift.Error {}
 			
+			/// Multiple lines or segments are grouped into a single array to reduce async context switching and ensure timely delivery of data.
 			public typealias Element = [[UInt8]]
 			
 			/// Create a new data channel for child-to-parent streaming.
@@ -57,15 +57,13 @@ public enum DataChannel:Sendable {
 	
 			/// AsyncIterator for consuming data until the channel finishes.
 			public final class AsyncIterator: AsyncIteratorProtocol {
-				private let fifoC: FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
-	
-				internal init(_ fifo: consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
-					fifoC = fifo
+				internal let fifo: FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
+				internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
+					self.fifo = fifo
 				}
-	
 				/// Returns the next chunk of data, or `nil` when the channel is closed.
 				public borrowing func next() async -> [[UInt8]]? {
-					switch await fifoC.next(whenTaskCancelled:.finish) {
+					switch await fifo.next(whenTaskCancelled:.finish) {
 					case .element(let element):
 						return element
 					case .capped(_):
@@ -85,11 +83,12 @@ public enum DataChannel:Sendable {
 		case toParentProcess(stream:ParentRead, separator:[UInt8])
 		
 		/// Discards child output on this data channel by piping it to `/dev/null`.
-		/// The written data from the child process never touches the parent process.
+		/// The written data from the child process never reaches the parent process.
 		case toNull
 	}
 
 	/// Represents the various ways that a child process can be configured to read data.
+	/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
 	public enum ChildRead:Sendable {
 		/// A writable channel that the parent process can use to send data for the child process to read.
 		public struct ParentWrite:Sendable {
@@ -103,44 +102,57 @@ public enum DataChannel:Sendable {
 			/// Initializes a new parent-to-child data channel.
 			public init() {}
 			
-			/// Writes a byte buffer into the channel and optionally signals completion.
-			///
+			/// Yields a sequence of bytes to be written for the child process to read. This function will return immediately and does not wait for the data to be flushed.
 			/// - Parameters:
-			/// 	- element: The bytes to send.
-			/// 	- future: Optional `Future` to fulfill on write completion or failure.
-			public borrowing func yield(_ element:consuming [UInt8], future:Future<Void, Error>?) {
-				switch fifo.yield((element, future)) {
+			/// 	- bytes: The bytes to send.
+			/// - Throws: This function throws ``SwiftSlash/DataChannel/ChildRead/ParentWrite/Error`` if the data channel has already been closed.
+			/// - NOTE: This function returns immediately.
+			public borrowing func yield(_ bytes:consuming [UInt8]) throws(Error) {
+				switch fifo.yield((bytes, nil)) {
 					case .success:
-						break
+						break;
 					case .fifoClosed:
-						// Channel closed; report error if a future was provided.
-						if future != nil {
-							try? future!.setFailure(DataChannel.ChildRead.ParentWrite.Error.dataChannelClosed)
-						}
+						throw Error.dataChannelClosed
+					case .fifoFull:
+						fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+				}
+			}
+			
+			/// Writes a sequence of bytes for the child process to read. This function will not return until that data has been successfully flushed to the child process.
+			/// - Pararmeters:
+			/// 	- bytes: The bytes to send.
+			/// - Throws: This function throws ``SwiftSlash/DataChannel/ChildRead/ParentWrite/Error`` if the data channel has already been closed.
+			/// - NOTE: This function will not return until the data has been successfully flushed to the child process.
+			public borrowing func write(_ bytes:consuming [UInt8]) async throws(Error) {
+				let newFuture = Future<Void, Error>()
+				switch fifo.yield((bytes, newFuture)) {
+					case .success:
+						try await newFuture.result()!.get()
+					case .fifoClosed:
+						throw Error.dataChannelClosed
 					case .fifoFull:
 						fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
 				}
 			}
 	
 			/// Closes the channel, indicating no further writes.
-			/// - Note: child (or other consumer) will see EOF.
+			/// - Note: child process will receive `EOF` and may react to this event.
 			public borrowing func closeDataChannel() {
 				fifo.finish()
 			}
 	
-			/// Provides an async consumer for the buffered data (internal use).
+			/// Provides an async consumer for the buffered data to be consumed.
 			internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, Error>?), Never>.AsyncConsumerExplicit {
 				fifo.makeAsyncConsumerExplicit()
 			}
 		}
 		
-		/// The parent process will be engaged with this data channel with the ability to write data for the child to read.
+		/// The parent process will be bound to this data channel, having the ability to write data for the child to read.
 		///
-		/// - Parameter stream: The `ChildRead` instance to send data into.
+		/// - Parameter stream: The `ParentWrite` instance to send data into.
 		case fromParentProcess(stream:ParentWrite)
 
-		/// Provides no data by piping from `/dev/null`.
-		/// The child sees an open channel but reads nothing.
+		/// Child reads data sourced directly from `/dev/null` or equivalent source.
 		case fromNull
 	}
 }

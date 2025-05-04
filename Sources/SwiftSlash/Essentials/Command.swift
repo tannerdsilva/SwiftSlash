@@ -39,7 +39,7 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// Creates a new command with a relative executable name. This will search the PATH environment variable for the executable. if the executable is not found, a PathSearchError will be thrown.
+	/// Creates a new command with a relative executable name. This will search the PATH environment variable for the executable.
 	/// - Parameters:
 	/// 	- executeRelativeName: name of the command to execute. this name will be searched for in the PATH environment variable.
 	/// 	- args: the arguments to pass to the executed command. default value: no arguments.
@@ -74,7 +74,7 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// Mutate the configured environment variables to match the environment of the current process at the time of calling.
+	/// Mutate the current instance to mirror the environment variables of the calling process.
 	public mutating func inheritCurrentEnvironment() {
 		environment = CurrentProcess.environmentVariables()
 	}

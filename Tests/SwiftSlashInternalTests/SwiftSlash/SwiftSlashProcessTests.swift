@@ -96,17 +96,13 @@ extension SwiftSlashTests {
 				switch stdInWriteStream {
 					case (.fromParentProcess(stream:let inputStream)):
 						// launch the child process.
-						let streamTask = Task {
-							try await process.run()
-						}
+						async let processResult = process.run()
 						// write a line of input to the child process.
 						let inputString = "\(expectedExitCode)\n"
 						let inputData = [UInt8](inputString.utf8)
-						let writeFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error> ()
-						inputStream.yield(inputData, future:writeFuture)
+						try inputStream.yield(inputData)
 						// wait for the input to be written
-						_ = try await writeFuture.result()!.get()
-						let exitResult = try await streamTask.result.get()
+						let exitResult = try await processResult
 						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ProcessInterface.ExitResult.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
 
 					default:
@@ -138,10 +134,7 @@ extension SwiftSlashTests {
 					// write a line of input to the child process.
 					let inputString = "Hello from parent process\n"
 					let inputData = [UInt8](inputString.utf8)
-					let writeFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error> ()
-					inputStream.yield(inputData, future:writeFuture)
-					// wait for the input to be written
-					_ = try await writeFuture.result()!.get()
+					try inputStream.yield(inputData)
 					var foundItems:size_t = 0
 					parseLoop: while let curItem = await iterator.next() {
 						guard curItem.count < 2 else {

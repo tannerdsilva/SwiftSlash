@@ -56,7 +56,11 @@ public actor ProcessInterface {
 	/// - Parameters:
 	/// 	- cmd: The command to execute.
 	/// 	- dataChannels: A dictionary of file handle values to data channels. The keys are the file handle values, and the values are the data channels.
-	public init(_ command:Command, dataChannels:[Int32:DataChannel]) {
+	public init(_ command:Command, dataChannels:[Int32:DataChannel] = [
+		STDOUT_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDERR_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDIN_FILENO:.read(.fromParentProcess(stream:.init()))
+	]) {
 		self.command = command
 		self.dataChannels = dataChannels
 	}

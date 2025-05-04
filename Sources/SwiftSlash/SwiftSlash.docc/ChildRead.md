@@ -2,13 +2,12 @@
 
 ## Topics
 
-### Configuration Options
-
-- ``SwiftSlash/DataChannel/ChildRead/fromNull``
+### Configure Child to Read...
 
 - ``SwiftSlash/DataChannel/ChildRead/fromParentProcess(stream:)``
 
+- ``SwiftSlash/DataChannel/ChildRead/fromNull``
 
-### Interface for Written Data
+### Interface for Writing Data
 
 - ``SwiftSlash/DataChannel/ChildRead/ParentWrite``

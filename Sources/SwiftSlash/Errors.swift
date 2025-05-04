@@ -13,8 +13,10 @@ public struct InternalLaunchError:Swift.Error {}
 
 /// Thrown when there is a problem with the path searching function.
 public enum PathSearchError:Swift.Error {
+	/// Thrown when the `PATH` key is not found in the current environment variable set.
 	case pathNotFoundInEnvironment
-	case executableNotFound([String], Path)
+	/// Thrown when the specified name is not found within the configured environment paths.
+	case executableNotFound(currentPaths:[String], name:String)
 }
 
 /// the type of error that is thrown when there is a problem calling waitpid.

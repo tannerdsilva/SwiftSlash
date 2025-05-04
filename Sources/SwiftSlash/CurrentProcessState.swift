@@ -105,7 +105,7 @@ extension CurrentProcess {
 		switch foundPath {
 			case true:
 				// if we found the PATH variable but did not find the executable, throw an error
-				throw PathSearchError.executableNotFound(Array(environmentVariables().keys), Path(executableName))
+				throw PathSearchError.executableNotFound(currentPaths:Array(environmentVariables().keys), name:executableName)
 			case false:
 				throw PathSearchError.pathNotFoundInEnvironment
 		}
