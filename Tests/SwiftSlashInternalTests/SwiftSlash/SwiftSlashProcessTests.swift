@@ -36,7 +36,7 @@ extension SwiftSlashTests {
 		func testSwiftSlashProcess() async throws {
 			let randomInt = Int.random(in: 0...Int.max)
 			let command = Command(absolutePath:"/bin/echo", arguments:["hello world \(randomInt)"])
-			let process = ProcessInterface(command)
+			let process = ChildProcess(command)
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
@@ -61,7 +61,7 @@ extension SwiftSlashTests {
 		)
 		func testPwdOutput() async throws {
 			let command = Command(absolutePath:"/bin/pwd")
-			let process = ProcessInterface(command)
+			let process = ChildProcess(command)
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
@@ -91,7 +91,7 @@ extension SwiftSlashTests {
 			func runExitCodeProcess(expectedExitCode:UInt8) async throws {
 				// this is a special command that will read a line of input and then exit with that code. the input line must be a valid exit number.
 				let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read num && exit "$num""#])
-				let process = ProcessInterface(command)
+				let process = ChildProcess(command)
 				let stdInWriteStream = await process[reader:STDIN_FILENO]!
 				switch stdInWriteStream {
 					case (.fromParentProcess(stream:let inputStream)):
@@ -103,7 +103,7 @@ extension SwiftSlashTests {
 						try inputStream.yield(inputData)
 						// wait for the input to be written
 						let exitResult = try await processResult
-						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ProcessInterface.ExitResult.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
+						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ChildProcess.ExitResult.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
 
 					default:
 						fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")
@@ -121,7 +121,7 @@ extension SwiftSlashTests {
 			// this is a special command that will read a line of input and then print it out, exiting after the line is printed.
 			let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read line && printf "%s\n" "$line"; exit 0"#])
 
-			let process = ProcessInterface(command)
+			let process = ChildProcess(command)
 			let stdInWriteStream = await process[reader:STDIN_FILENO]!
 			let stdoutStream = await process[writer:STDOUT_FILENO]!
 			switch (stdInWriteStream, stdoutStream) {

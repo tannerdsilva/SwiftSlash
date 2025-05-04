@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import __cswiftslash_posix_helpers
 
-public actor ProcessInterface {
+public actor ChildProcess {
 	/// thrown when the process interface is not in the expected state for the requested operation.
 	public struct InvalidProcessStateError:Swift.Error {
 		/// the state that was expected when the operation was requested.
@@ -20,7 +20,7 @@ public actor ProcessInterface {
 		public let actualState:State
 	}
 
-	/// this represents the state of a process that is being managed by the ProcessInterface actor.
+	/// this represents the state of a process that is being managed by the ChildProcess actor.
 	public enum State:Sendable {
 		/// the process interface is initialized but not yet launched.
 		case initialized
@@ -40,7 +40,7 @@ public actor ProcessInterface {
 		case signaled(Int32)
 	}
 
-	/// The current operating state of the process. This is a primary pillar of logic for the ProcessInterface functionality.
+	/// The current operating state of the process. This is a primary pillar of logic for the ChildProcess functionality.
 	public private(set) var state:State = .initialized
 
 	/// The command that the process will execute when launched.
@@ -178,9 +178,9 @@ public actor ProcessInterface {
 	}
 }
 
-extension ProcessInterface.ExitResult:Hashable, Equatable, CustomDebugStringConvertible {
-	/// equatable implementation
-	public static func == (lhs:ProcessInterface.ExitResult, rhs:ProcessInterface.ExitResult) -> Bool {
+extension ChildProcess.ExitResult:Hashable, Equatable, CustomDebugStringConvertible {
+	/// `Equatable` implementation
+	public static func == (lhs:ChildProcess.ExitResult, rhs:ChildProcess.ExitResult) -> Bool {
 		switch (lhs, rhs) {
 			case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
 				return lhsExitCode == rhsExitCode
@@ -191,7 +191,7 @@ extension ProcessInterface.ExitResult:Hashable, Equatable, CustomDebugStringConv
 		}
 	}
 
-	/// hashable implementation
+	/// `Hashable` implementation
 	public func hash(into hasher:inout Hasher) {
 		switch self {
 			case .exited(let exitCode):
@@ -202,19 +202,19 @@ extension ProcessInterface.ExitResult:Hashable, Equatable, CustomDebugStringConv
 				hasher.combine(sig)
 		}
 	}
-
+	/// `CustomDebugStringConvertible` implementation
 	public var debugDescription: String {
 		switch self {
 			case .exited(let exitCode):
-				return "ProcessInterface.ExitResult.exited(\(exitCode))"
+				return "ChildProcess.ExitResult.exited(\(exitCode))"
 			case .signaled(let sigCode):
-				return "ProcessInterface.ExitResult.signaled(\(sigCode))"
+				return "ChildProcess.ExitResult.signaled(\(sigCode))"
 		}
 	}
 }
 
-extension ProcessInterface.State:Hashable, Equatable {
-	public static func == (lhs: ProcessInterface.State, rhs: ProcessInterface.State) -> Bool {
+extension ChildProcess.State:Hashable, Equatable {
+	public static func == (lhs: ChildProcess.State, rhs: ChildProcess.State) -> Bool {
 		switch (lhs, rhs) {
 			case (.initialized, .initialized):
 				return true

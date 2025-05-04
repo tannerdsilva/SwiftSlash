@@ -49,7 +49,7 @@ import SwiftSlash
 
 task {
     let cmd = Command("my-radical-tool", arguments: ["--mode", "parallel"]);
-    let proc = ProcessInterface(
+    let proc = ChildProcess(
         command: cmd,
         stdin: .active(.raw),
         stdout: .active(.lineDelimited),
@@ -73,14 +73,14 @@ task {
 }
 ```
 
-For fine-grained control over I/O, timeouts, and concurrency, use `ProcessInterface`:
+For fine-grained control over I/O, timeouts, and concurrency, use `ChildProcess`:
 
 ```swift
 import SwiftSlash
 
 task {
     let cmd = Command("zfs", arguments: ["list", "-t", "dataset"]);
-    let proc = ProcessInterface(
+    let proc = ChildProcess(
         command: cmd,
         stdout: .active(.lineDelimited),
         stderr: .active(.raw)
