@@ -24,17 +24,18 @@ import SwiftSlash
 A `Command` represents an external executable plus its arguments:
 
 ```swift
-let processStatus = try Command("ps", arguments: ["aux"])
+// this initializer throws because SwiftSlash may theoretically fail to find the "ps" executable
+let commandToLaunch = try Command("ps", arguments:["aux"])
 ```
 
-This will list all running processes on macOS or Linux.
+This `Command` will list all currently running processes on the host system.
 
 ## Running a Command
 
-To execute a `Command` and wait for its completion, use the async `runSync()` method:
+To execute a `Command` and wait for its completion, use the `runSync()` function:
 
 ```swift
-let result = try await processStatus.runSync()
+let result = try await commandToLaunch.runSync()
 ```
 
 `runSync()` returns a `CommandResult` containing:

@@ -9,7 +9,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-// Represents a path on the hosts filesystem.
+/// Used to express system paths.
 public struct Path:Sendable {
 
 	/// The individual components of the path. these are assumed to be separated by their platform specific path separator.

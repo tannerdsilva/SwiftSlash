@@ -13,7 +13,7 @@ import SwiftSlashFIFO
 import SwiftSlashFuture
 
 /// Represents a unidirectional data channel that will connect to the launched process.
-/// Channels can be fully handled by SwiftSlash, or delivered to `/dev/null`.
+/// Data channels must be prepared for a child process **before** the process is launched.
 /// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
 public enum DataChannel:Sendable {
 

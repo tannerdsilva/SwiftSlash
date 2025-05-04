@@ -1,15 +1,15 @@
-# ``SwiftSlash/CurrentProcess``
+# ``SwiftSlash/CurrentEnvironment``
 
 ## Topics
 
 ### Current Working Directory
 
-- ``SwiftSlash/CurrentProcess/workingDirectory()``
+- ``SwiftSlash/CurrentEnvironment/workingDirectory()``
 
 ### Retrieve Environment Variables
 
-- ``SwiftSlash/CurrentProcess/environmentVariables()``
+- ``SwiftSlash/CurrentEnvironment/environmentVariables()``
 
 ### Environment Path Searching
 
-- ``SwiftSlash/CurrentProcess/searchPaths(executableName:)``
+- ``SwiftSlash/CurrentEnvironment/searchPaths(executableName:)``

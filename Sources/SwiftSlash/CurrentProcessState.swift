@@ -18,8 +18,14 @@ import Darwin
 #endif
 
 /// A namespace for static functions that provide information about the current process.
-public struct CurrentProcess {}
-extension CurrentProcess {
+public struct CurrentEnvironment {
+	/// Thrown when there is a problem with the path searching function.
+	public enum PathSearchError:Swift.Error {
+		/// Thrown when the `PATH` key is not found in the current environment variable set.
+		case pathNotFoundInEnvironment
+		/// Thrown when the specified name is not found within the configured environment paths.
+		case executableNotFound(currentPaths:[String], name:String)
+	}
 	/// Clears all environment variables for the current process.
 	/// Iterates over each key in the current environment and calls `unsetenv(_:)`.
 	/// - Returns: Zero on success; if any call to `unsetenv` fails, returns the corresponding `errno` value.
@@ -32,7 +38,6 @@ extension CurrentProcess {
 		}
 		return 0
 	}
-
 	/// Retrieves the environment variables of the current process.
 	/// Parses the global `environ` array into a `[String:String]` dictionary.
 	/// Keys without an explicit “=`value`” part will be mapped to an empty string.

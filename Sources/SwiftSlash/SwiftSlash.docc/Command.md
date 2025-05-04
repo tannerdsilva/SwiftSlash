@@ -4,17 +4,6 @@
 
 The `Command` structure encapsulates the configuration required to launch an external process from Swift. It defines the executable path, arguments, environment variables, and working directory without performing execution itself.
 
-## Declaration
-
-```swift
-public struct Command:Sendable {
-	public let executable:Path
-	public let arguments:[String]
-	public let environment:[String:String]
-	public let workingDirectory:Path
-}
-```
-
 ## Topics
 
 ### Core Initializers

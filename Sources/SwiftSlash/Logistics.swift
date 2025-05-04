@@ -430,7 +430,7 @@ internal struct ProcessLogistics {
 			}
 
 			// clear the environment variables inherited from the parent process.
-			guard CurrentProcess.clearEnvironmentVariables() == 0 else {
+			guard CurrentEnvironment.clearEnvironmentVariables() == 0 else {
 				// pass the error condition to the parent process.
 				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.envClearFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
