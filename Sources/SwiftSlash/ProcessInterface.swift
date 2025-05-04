@@ -46,31 +46,40 @@ public actor ProcessInterface {
 	/// The command that the process will execute when launched.
 	public let command:Command
 
-	/// Initialize a process interface with a command.
-	/// - Parameter cmd: The command to execute.
-	public init(_ command:consuming Command) {
-		self.command = command
-	}
+	/// The data channels that will be launched.
+	private var dataChannels:[Int32:DataChannel]
 
 	/// Initialize a process interface with a command and a set of data channels.
 	/// - Parameters:
-	/// 	- cmd: The command to execute.
-	/// 	- dataChannels: A dictionary of file handle values to data channels. The keys are the file handle values, and the values are the data channels.
+	/// 	- command: The command to execute.
+	/// 	- dataChannels: A dictionary of file handle values to data channels. The keys are the file handle values that will be assigned to the child process (values of `stdin`, `stdout`, etc), and the values are the data channels.
 	public init(_ command:Command, dataChannels:[Int32:DataChannel] = [
-		STDOUT_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
-		STDERR_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
-		STDIN_FILENO:.read(.fromParentProcess(stream:.init()))
+		STDOUT_FILENO : .write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDERR_FILENO : .write(.toParentProcess(stream:.init(), separator:[0x0A])),
+		STDIN_FILENO : .read(.fromParentProcess(stream:.init()))
 	]) {
 		self.command = command
 		self.dataChannels = dataChannels
 	}
-
-	private var dataChannels:[Int32:DataChannel] = [
-		STDOUT_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
-		STDERR_FILENO:.write(.toParentProcess(stream:.init(), separator:[0x0A])),
-		STDIN_FILENO:.read(.fromParentProcess(stream:.init()))
-	]
-	/// access or assign a writable data stream to the process of a specified file handle value.
+	
+	/// Access or assign a data stream to the process of a specified file handle value.
+	/// - WARNING: Calling this method after the process has been launched will result in a fatal error that will crash the parent process.
+	public subscript(channel fh:Int32) -> DataChannel? {
+		set {
+			switch state {
+				case .initialized:
+					dataChannels[fh] = newValue
+				default:
+					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
+			}
+		}
+		get {
+			return dataChannels[fh]
+		}
+	}
+	
+	/// Convenience subscript for accessing the data channel that is already known to be a writable stream. In some cases, this can save a bit of ritual to access the data channel.
+	/// - WARNING: This subscript will throw a fatal error (crashing the parent process) if the data channel is found to be a readable stream.
 	public subscript(writer fh:Int32) -> DataChannel.ChildWrite? {
 		set {
 			switch state {
@@ -88,12 +97,15 @@ public actor ProcessInterface {
 			switch dataChannels[fh] {
 				case .write(let config):
 					return config
-				default:
+				case .read(_):
+					fatalError("SwiftSlash critical error :: attempted to access a writable data stream but the data channel is configured as a readable stream. \(#file):\(#line)")
+				case .none:
 					return nil
 			}
 		}
 	}
-	/// access or assign a readable data stream to the process of a specified file handle value.
+	/// Convenience subscript for accessing the data channel that is already known to be a readable stream. In some cases, this can save a bit of ritual to access the data channel.
+	/// - WARNING: This subscript will throw a fatal error (crashing the parent process) if the data channel is found to be a writable stream.
 	public subscript(reader fh:Int32) -> DataChannel.ChildRead? {
 		set {
 			switch state {
@@ -111,12 +123,13 @@ public actor ProcessInterface {
 			switch dataChannels[fh] {
 				case .read(let config):
 					return config
-				default:
+				case .write(_):
+					fatalError("SwiftSlash critical error :: attempted to access a readable data stream but the data channel is configured as a writable stream. \(#file):\(#line)")
+				case .none:
 					return nil
 			}
 		}
 	}
-
 	public func run() async throws -> ExitResult {
 		// check the current state of the process. 
 		switch state {
@@ -132,7 +145,6 @@ public actor ProcessInterface {
 						env:command.environment,
 						dataChannels:dataChannels
 					)
-					
 					// launch the package.
 					let preapredPackage = try await ProcessLogistics.launch(package:launchPackage)
 					// update state
@@ -145,7 +157,6 @@ public actor ProcessInterface {
 					for curRead in preapredPackage.readTasks {
 						curRead.launch(taskGroup:&tg)
 					}
-					
 					// reap the running process
 					switch await preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
@@ -158,7 +169,7 @@ public actor ProcessInterface {
 							return .signaled(sigCode)
 						default:
 							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
-					}	
+					}
 				}
 			default:
 				// the process has already been launched so we cannot proceed with the launch.
@@ -232,33 +243,3 @@ extension ProcessInterface.State:Hashable, Equatable {
 		}
 	}
 }
-
-/*extension ProcessInterface {
-	/// convenience variable that returns access to the stdin stream of the process. this is the equivalent of referencing `instance.inbound[STDIN_FILENO]`.
-	public var stdin:NAsyncStream<[UInt8], Never>? {
-		set {
-			inbound[STDIN_FILENO] = newValue
-		}
-		get {
-			return inbound[STDIN_FILENO]
-		}
-	}
-	/// convenience variable that returns access to the stdout stream of the process. this is the equivalent of referencing `instance.outbound[STDOUT_FILENO]`.
-	public var stdout:NAsyncStream<[UInt8], Never>? {
-		set {
-			outbound[STDOUT_FILENO] = newValue
-		}
-		get {
-			return outbound[STDOUT_FILENO]
-		}
-	}
-	/// convenience variable that returns access to the stderr stream of the process. this is the equivalent of referencing `instance.outbound[STDERR_FILENO]`.
-	public var stderr:NAsyncStream<[UInt8], Never>? {
-		set {
-			outbound[STDERR_FILENO] = newValue
-		}
-		get {
-			return outbound[STDERR_FILENO]
-		}
-	}
-}*/
