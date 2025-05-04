@@ -12,7 +12,7 @@
 - ``SwiftSlash/Command``
 - ``SwiftSlash/Path``
 
-### Advanced API Usage
+### Advanced Usage
 
 - ``SwiftSlash/ChildProcess``
 - ``SwiftSlash/DataChannel``

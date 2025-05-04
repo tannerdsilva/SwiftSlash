@@ -58,12 +58,11 @@ public struct Command:Sendable {
 		workingDirectory = wd
 	}
 
-	/// Initialize a new command based on a shell command string. The command will be executed using the `/bin/sh` shell.
+	/// Initialize a new command based on a shell command string. The command will be executed using shell found at `/bin/sh`.
 	/// - Parameters:
 	/// 	- shCommand: the shell command to run on the `sh` shell.
 	/// 	- envs: the environment variables to set for the command. *Default value*: no environment values.
 	/// 	- wd: The working directory to run the command in. *Default value*: 
-	/// - NOTE: This initializer assumes that the `sh` executable can be found at `/bin`.
 	public init(
 		sh shCommand:consuming String, 
 		environment envs:consuming [String:String],
@@ -82,11 +81,9 @@ public struct Command:Sendable {
 }
 
 extension Command:Hashable, Equatable {
-	/// Equality operator for Command.
 	public static func == (lhs:Command, rhs:Command) -> Bool {
 		return lhs.executable == rhs.executable && lhs.arguments == rhs.arguments && lhs.environment == rhs.environment && lhs.workingDirectory == rhs.workingDirectory
 	}
-	/// Hash function for Command.
 	public func hash(into hasher:inout Hasher) {
 		hasher.combine(executable)
 		hasher.combine(arguments)

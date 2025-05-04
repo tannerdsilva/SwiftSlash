@@ -66,7 +66,6 @@ public struct Path:Sendable {
 }
 
 extension Path:CustomStringConvertible {
-	/// Returns the path as a string.
 	public var description:String {
 		return path()
 	}
@@ -79,25 +78,21 @@ extension Path:CustomDebugStringConvertible {
 }
 
 extension Path:ExpressibleByStringLiteral {
-	/// Initialize a path by a string literal value.
 	public init(stringLiteral value:consuming String) {
 		self.init(value)
 	}
 }
 
 extension String {
-	/// Initialize a string from a system host path.
 	public init(_ p:consuming Path) {
 		self = p.path()
 	}
 }
 
 extension Path:Hashable, Equatable {
-	/// hashable protocol implementation
 	public borrowing func hash(into hasher:inout Hasher) {
 		hasher.combine(components)
 	}
-	/// equatable protocol implementation
 	public static func == (lhs:consuming Path, rhs:consuming Path) -> Bool {
 		return lhs.components == rhs.components
 	}
