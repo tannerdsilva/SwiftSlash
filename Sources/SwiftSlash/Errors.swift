@@ -47,8 +47,8 @@ public enum ProcessSpawnError:UInt8, Swift.Error {
 	case posixPipeInitialCleanupFailure = 0xEB
 	/// Describes a failure to complete the final clean up of the internal posix pipe that is used to facilitate the logistics between the parent and child process.
 	case posixPipeFinalCleanupFailure = 0xEC
-	/// describes an internal failure of the spawn function.
+	/// Describes an internal failure of the spawn function.
 	case internalFailure = 0xFA
-	/// describes a failure of the fork function.
+	/// Describes a failure of the fork function.
 	case forkFailure = 0xFB
 }

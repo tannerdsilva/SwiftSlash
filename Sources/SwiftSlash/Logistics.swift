@@ -388,7 +388,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<CChar>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
 			throw ProcessSpawnError.precheckExecutableFailure

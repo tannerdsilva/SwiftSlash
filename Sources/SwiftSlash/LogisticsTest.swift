@@ -12,7 +12,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import __cswiftslash_posix_helpers
 
 /// check if a path is a file and is accessible for execution.
-internal func precheckExecute(_ p:UnsafePointer<CChar>) -> Bool {
+internal func precheckExecute(_ p:UnsafePointer<UInt8>) -> Bool {
 	var s = stat()
 	#if os(macOS)
 	guard stat(p, &s) == 0, UInt16(s.st_mode) & S_IFMT == S_IFREG else {
@@ -30,7 +30,7 @@ internal func precheckExecute(_ p:UnsafePointer<CChar>) -> Bool {
 }
 
 /// check if a path is a directory and is accessible for execution.
-internal func precheckDirectory(_ p:UnsafePointer<CChar>) -> Bool {
+internal func precheckDirectory(_ p:UnsafePointer<UInt8>) -> Bool {
 	var s = stat()
 	#if os(macOS)
 	guard stat(p, &s) == 0, UInt16(s.st_mode) & S_IFMT == S_IFDIR else {
