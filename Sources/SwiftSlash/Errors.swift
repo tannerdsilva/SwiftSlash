@@ -9,16 +9,18 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-/// The type of error that is thrown when there is a problem calling waitpid.
-public struct WaitPIDError:Swift.Error {
+/// Thrown when a critical part of the process lifecycle fails: process reaping. Process reaping ususally happens by way of the `waitpid` system call.
+public struct ReapError:Swift.Error {
 	/// The corresponding errno value returned by the system for this error.
 	public let errnoValue:Int32
 }
 
 /// Describes an error in the process spawning function. These are generally considered to be errors that can be thrown after the child process has been launched but before it has finished configuring itself for the specified work.
 public enum ProcessSpawnError:UInt8, Swift.Error {
-	/// Thrown when the specified command is not a valid executable that can be run as a child process.
-	case execSafetyCheckFailure = 0x00
+	/// Thrown when the prescribed executable path is not a valid executable that can be run as a child process.
+	case precheckExecutableFailure = 0x0A
+	/// Thrown when the prescribed working directory does not pass the pre-launch check.
+	case precheckWorkingDirectoryFailure = 0x0B
 	/// Describes a failure to change the working directory of the child process.
 	case chdirFailure = 0xAA
 	/// Describes a failure to clear the environment variables of the child process.

@@ -103,7 +103,7 @@ extension SwiftSlashTests {
 						try inputStream.yield(inputData)
 						// wait for the input to be written
 						let exitResult = try await processResult
-						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ChildProcess.ExitResult.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
+						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ChildProcess.Exit.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
 
 					default:
 						fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")

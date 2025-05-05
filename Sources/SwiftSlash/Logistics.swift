@@ -388,10 +388,15 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<Int8>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<CChar>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<CChar>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
-		guard __cswiftslash_execvp_safetycheck(path) == 0 else {
-			throw ProcessSpawnError.execSafetyCheckFailure
+		guard precheckExecute(path) == true else {
+			throw ProcessSpawnError.precheckExecutableFailure
+		}
+
+		// verify that the working directory is a valid value.
+		guard precheckDirectory(wd) == true else {
+			throw ProcessSpawnError.precheckWorkingDirectoryFailure
 		}
 		
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
