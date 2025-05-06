@@ -16,8 +16,24 @@
 - ``SwiftSlash/ChildProcess/State``
 - ``SwiftSlash/ChildProcess/state``
 
-### Accessing Data Channels
+### Other Instance Properties
+
+- ``SwiftSlash/ChildProcess/command``
+
+### Accessing Data Channels (Convenient)
+
+- ``SwiftSlash/ChildProcess/stdin``
+- ``SwiftSlash/ChildProcess/stdout``
+- ``SwiftSlash/ChildProcess/stderr``
+
+### Accessing Data Channels (Explicit)
 
 - ``SwiftSlash/ChildProcess/subscript(channel:)``
 - ``SwiftSlash/ChildProcess/subscript(writer:)``
 - ``SwiftSlash/ChildProcess/subscript(reader:)``
+
+### Errors Regarding Child Processes
+
+- ``SwiftSlash/ChildProcess/InvalidProcessStateError``
+- ``SwiftSlash/ChildProcess/ReapError``
+- ``SwiftSlash/ChildProcess/SpawnError``

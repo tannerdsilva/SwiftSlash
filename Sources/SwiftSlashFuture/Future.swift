@@ -119,8 +119,8 @@ extension Future {
 extension Future {
 
 	/// wait for the result of the future. specify an error to throw if the current task is canceled.
-	/// - parameters:
-	///		- throwing: the type of error to throw if the current task is canceled.
+	/// - Parameters:
+	///		- taskThrowType: the type of error to throw if the current task is canceled.
 	/// 	- taskCancellationError: an autoclosure that returns an error to throw when the current task is canceled. the closure is not called if the task is not canceled.
 	/// - returns: a result structure representing the result of the future. `nil` is returned if the future was canceled.
 	/// - throws: this function will run the @autoclosure argument from `taskCancellationError` and throw the corresponding result if the current task was canceled while waiting for the result.

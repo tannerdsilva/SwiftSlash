@@ -297,9 +297,9 @@ internal struct ProcessLogistics {
 				case .write(let readable):
 					switch readable {
 						case .toParentProcess(let channel, let sep):
-
+							
 							let terminationFuture = Future<Void, DataChannel.ChildWrite.ParentRead.Error>()
-
+							
 							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildWriting()
 							let readerFIFO = EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>.ReaderFIFO()
@@ -388,15 +388,15 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ProcessSpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ChildProcess.SpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
-			throw ProcessSpawnError.precheckExecutableFailure
+			throw ChildProcess.SpawnError.precheckExecutableFailure
 		}
 
 		// verify that the working directory is a valid value.
 		guard precheckDirectory(wd) == true else {
-			throw ProcessSpawnError.precheckWorkingDirectoryFailure
+			throw ChildProcess.SpawnError.precheckWorkingDirectoryFailure
 		}
 		
 		// open an internal posix pipe to coordinate with the child process during configuration. this function should not return until the child process has been configured.
@@ -404,7 +404,7 @@ internal struct ProcessLogistics {
 		do {
 			internalNotify = try PosixPipe(nonblockingReads:false, nonblockingWrites:true)
 		} catch {
-			throw ProcessSpawnError.posixPipeCreateFailure
+			throw ChildProcess.SpawnError.posixPipeCreateFailure
 		}
 
 
@@ -421,34 +421,34 @@ internal struct ProcessLogistics {
 			do {
 				try internalNotify.reading.closeFileHandle()
 			} catch {
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.posixPipeInitialCleanupFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.posixPipeInitialCleanupFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.posixPipeInitialCleanupFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.posixPipeInitialCleanupFailure.rawValue))
 			}
 
 			// change the working directory.
 			guard chdir(wd) == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.chdirFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.chdirFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.chdirFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.chdirFailure.rawValue))
 			}
 
 			// clear the environment variables inherited from the parent process.
 			guard CurrentEnvironment.clearEnvironmentVariables() == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.envClearFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.envClearFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.envClearFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.envClearFailure.rawValue))
 			}
 
 			// assign the new environment variables.
 			envVarsLoop: for (key, value) in env {
 				guard setenv(key, value, 1) == 0 else {
 					// pass the error condition to the parent process.
-					_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.envSetFailure.rawValue)
+					_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.envSetFailure.rawValue)
 					try? internalNotify.writing.closeFileHandle()
-					exit(Int32(ProcessSpawnError.envSetFailure.rawValue))
+					exit(Int32(ChildProcess.SpawnError.envSetFailure.rawValue))
 				}
 			}
 
@@ -457,32 +457,32 @@ internal struct ProcessLogistics {
 					case .readPipe(let reader):
 						guard dup2(reader.writing, targetFH) != -1 else {
 							// pass the error condition to the parent process.
-							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2ReaderFailure.rawValue)
+							_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.dup2ReaderFailure.rawValue)
 							try? internalNotify.writing.closeFileHandle()
-							exit(Int32(ProcessSpawnError.dup2ReaderFailure.rawValue))
+							exit(Int32(ChildProcess.SpawnError.dup2ReaderFailure.rawValue))
 						}
 						do {
 							try reader.reading.closeFileHandle()
 							try reader.writing.closeFileHandle()
 						} catch {
-							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.readerPipeCleanupFailure.rawValue)
+							_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.readerPipeCleanupFailure.rawValue)
 							try? internalNotify.writing.closeFileHandle()
-							exit(Int32(ProcessSpawnError.readerPipeCleanupFailure.rawValue))
+							exit(Int32(ChildProcess.SpawnError.readerPipeCleanupFailure.rawValue))
 						}
 					case .writePipe(let writer):
 						guard dup2(writer.reading, targetFH) != -1 else {
 							// pass the error condition to the parent process.
-							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.dup2WriterFailure.rawValue)
+							_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.dup2WriterFailure.rawValue)
 							try? internalNotify.writing.closeFileHandle()
-							exit(Int32(ProcessSpawnError.dup2WriterFailure.rawValue))
+							exit(Int32(ChildProcess.SpawnError.dup2WriterFailure.rawValue))
 						}
 						do {
 							try writer.reading.closeFileHandle()
 							try writer.writing.closeFileHandle()
 						} catch {
-							_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.writerPipeCleanupFailure.rawValue)
+							_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.writerPipeCleanupFailure.rawValue)
 							try? internalNotify.writing.closeFileHandle()
-							exit(Int32(ProcessSpawnError.writerPipeCleanupFailure.rawValue))
+							exit(Int32(ChildProcess.SpawnError.writerPipeCleanupFailure.rawValue))
 						}
 				}
 			}
@@ -498,9 +498,9 @@ internal struct ProcessLogistics {
 			#endif
 			guard let openFileHandlesPointer = opendir(fdPath) else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupDirOpenFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.fhCleanupDirOpenFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.fhCleanupDirOpenFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.fhCleanupDirOpenFailure.rawValue))
 			}
 			let dirFD = dirfd(openFileHandlesPointer)
 			openFHsLoop: while let curPointer = readdir(openFileHandlesPointer) {
@@ -513,9 +513,9 @@ internal struct ProcessLogistics {
 								try curFh.closeFileHandle()
 							} catch {
 								// pass the error condition to the parent process.
-								_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupCloseFailure.rawValue)
+								_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.fhCleanupCloseFailure.rawValue)
 								try? internalNotify.writing.closeFileHandle()
-								exit(Int32(ProcessSpawnError.fhCleanupCloseFailure.rawValue))
+								exit(Int32(ChildProcess.SpawnError.fhCleanupCloseFailure.rawValue))
 							}
 						}
 					}
@@ -523,18 +523,18 @@ internal struct ProcessLogistics {
 			}
 			guard closedir(openFileHandlesPointer) == 0 else {
 				// pass the error condition to the parent process.
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.fhCleanupDirCloseFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.fhCleanupDirCloseFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.fhCleanupDirCloseFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.fhCleanupDirCloseFailure.rawValue))
 			}
 			
 			// clean up the internal pipe
 			do {
 				try internalNotify.writing.closeFileHandle()
 			} catch {
-				_ = try? internalNotify.writing.writeFH(singleByte:ProcessSpawnError.posixPipeFinalCleanupFailure.rawValue)
+				_ = try? internalNotify.writing.writeFH(singleByte:ChildProcess.SpawnError.posixPipeFinalCleanupFailure.rawValue)
 				try? internalNotify.writing.closeFileHandle()
-				exit(Int32(ProcessSpawnError.posixPipeFinalCleanupFailure.rawValue))
+				exit(Int32(ChildProcess.SpawnError.posixPipeFinalCleanupFailure.rawValue))
 			}
 			// run the process
 			__cswiftslash_execvp(path, arguments)
@@ -548,7 +548,7 @@ internal struct ProcessLogistics {
 				// in parent: failed fork
 				try! internalNotify.writing.closeFileHandle()
 				try! internalNotify.reading.closeFileHandle()
-				throw ProcessSpawnError.forkFailure
+				throw ChildProcess.SpawnError.forkFailure
 			case 0:
 				// in child: successful fork
 				prepareLaunch()
@@ -570,7 +570,7 @@ internal struct ProcessLogistics {
 						guard byte != 0 else {
 							fatalError("swiftslash - internal error \(#file):\(#line)")
 						}
-						throw ProcessSpawnError(rawValue:byte)!
+						throw ChildProcess.SpawnError(rawValue:byte)!
 					default:
 						fatalError("swiftslash - internal error \(#file) \(#line)")
 				}

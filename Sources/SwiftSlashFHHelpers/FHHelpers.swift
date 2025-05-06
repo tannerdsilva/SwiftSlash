@@ -44,6 +44,7 @@ extension Int32 {
 
 	/// reads data from self (represented as a system file handle) into the buffer provided.
 	/// - parameter dataBuffer: the buffer to read the data into.
+	/// - parameter readSize: the size of data to read.
 	/// - returns: the number of bytes read.
 	public func readFH(into dataBuffer:UnsafeMutablePointer<UInt8>, size readSize:size_t) throws(FileHandleError) -> size_t {
 		infiniteLoop: repeat {

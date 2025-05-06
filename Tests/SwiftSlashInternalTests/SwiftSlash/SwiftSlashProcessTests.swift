@@ -37,7 +37,7 @@ extension SwiftSlashTests {
 			let randomInt = Int.random(in: 0...Int.max)
 			let command = Command(absolutePath:"/bin/echo", arguments:["hello world \(randomInt)"])
 			let process = ChildProcess(command)
-			let stdoutStream = await process[writer:STDOUT_FILENO]!
+			let stdoutStream = process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
 				case .toParentProcess(stream:let curStream, separator:_):
@@ -49,7 +49,7 @@ extension SwiftSlashTests {
 						let curString = String(bytes:curItem.first!, encoding:.utf8)
 						#expect(curString == "hello world \(randomInt)")
 					}
-					#expect(try await streamTask.result.get() == .exited(0))
+					#expect(try await streamTask.result.get() == .code(0))
 
 				default:
 					fatalError("SwiftSlash critical error :: stdout stream is not active.")
@@ -103,7 +103,7 @@ extension SwiftSlashTests {
 						try inputStream.yield(inputData)
 						// wait for the input to be written
 						let exitResult = try await processResult
-						#expect(exitResult == .exited(Int32(expectedExitCode)), "expected child process to exit with code \(ChildProcess.Exit.exited(Int32(expectedExitCode))) but instead exited with \(exitResult)")
+						#expect(exitResult == .code(Int32(expectedExitCode)), "expected child process to exit with code \(ChildProcess.Exit.code(Int32(expectedExitCode))) but instead exited with \(exitResult)")
 
 					default:
 						fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")
@@ -153,6 +153,26 @@ extension SwiftSlashTests {
 				default:
 					fatalError("SwiftSlash critical error :: stdin or stdout stream is not active.")
 			}
+		}
+
+		@Test("SwiftSlashProcessTests :: piped input test with exit code", 
+			.timeLimit(.minutes(1))
+		)
+		func testRunSync() async throws {
+			let newCommand = Command(absolutePath:"/bin/pwd")
+			// let newCommand = Command(absolutePath:"/bin/sh", arguments:["-c", #"i=0; while [ "$i" -lt 10 ]; do echo "your string"; i=$((i+1)); done; exit 0"#])
+			let result = try await newCommand.runSync()
+			// #expect(result.exit == .code(0), "expected exit code to be 0, but got \(result.exit)")
+			// #expect(result.stdout.count == 10, "expected 10 lines of output, but got \(result.stdout.count)")
+			// for line in result.stdout {
+			// 	let curString = String(bytes:line, encoding:.utf8)
+			// 	#expect(curString != nil, "expected non-nil output from command")
+			// 	if let curString = curString {
+			// 		#expect(curString == "Hello from the other shell!", "expected output to match input string")
+			// 	} else {
+			// 		fatalError("SwiftSlash critical error :: stdout stream is not active.")
+			// 	}
+			// }
 		}
 	}
 }

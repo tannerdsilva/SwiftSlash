@@ -11,17 +11,18 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import __cswiftslash_posix_helpers
 
-/// ``SwiftSlash/ChildProcess`` is the key to managing the lifecycle of any command that needs to be executed. 
+/// Comprehensive tool for launching `Command`s.
+/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
 public actor ChildProcess {
-	/// thrown when the process interface is not in the expected state for the requested operation.
+	/// Thrown when the process interface is not in the expected state for the requested operation.
 	public struct InvalidProcessStateError:Swift.Error {
-		/// the state that was expected when the operation was requested.
+		/// The state that was expected when the operation was requested.
 		public let expectedState:State
-		/// the actual state of the process when the operation was requested.
+		/// The actual state of the process when the operation was requested.
 		public let actualState:State
 	}
 
-	/// Represents the various states that a ``SwiftSlash/ChildProcess`` may be in while managing a process through its lifecycle.
+	/// Represents the various states that a child process may be in while going through its lifecycle.
 	public enum State:Sendable {
 		/// The process interface is initialized, but not yet launched.
 		case initialized
@@ -36,9 +37,9 @@ public actor ChildProcess {
 	/// Represents the result of a process exit after it has been reaped with `waitpid()`.
 	public enum Exit:Sendable {
 		/// The process exited normally with the specified exit code.
-		case exited(Int32)
+		case code(Int32)
 		/// The process was terminated by a signal with the specified signal code.
-		case signaled(Int32)
+		case signal(Int32)
 	}
 
 	/// The current operating state of the process. This is a primary pillar of logic for the ChildProcess functionality.
@@ -48,7 +49,7 @@ public actor ChildProcess {
 	public let command:Command
 
 	/// The data channels that will be launched.
-	private var dataChannels:[Int32:DataChannel]
+	private let dataChannels:[Int32:DataChannel]
 
 	/// Initialize a process interface with a command and a set of data channels.
 	/// - Parameters:
@@ -63,38 +64,18 @@ public actor ChildProcess {
 		self.dataChannels = dataChannels
 	}
 	
-	/// Access or assign a data stream to the process of a specified file handle value.
-	/// - WARNING: Calling this subscript **setter** after the process has been launched will result in a fatal error that will crash the parent process.
-	public subscript(channel fh:Int32) -> DataChannel? {
-		set {
-			switch state {
-				case .initialized:
-					dataChannels[fh] = newValue
-				default:
-					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
-			}
-		}
+	/// Access a data stream to the process of a specified file handle value.
+	/// - Returns: The data channel for the specified file handle, or `nil` if none was found.
+	public nonisolated subscript(channel fh:Int32) -> DataChannel? {
 		get {
 			return dataChannels[fh]
 		}
 	}
 	
-	/// Convenience subscript for accessing the data channel that is already known to be a writable stream. In some cases, this can save a bit of ritual to access the data channel.
-	/// - WARNING: Calling this subscript **setter** after the process has been launched will result in a fatal error that will crash the parent process.
+	/// Convenience subscript for accessing the data channel that is already known to be a writable stream.
 	/// - WARNING: This subscript will throw a fatal error (crashing the parent process) if the data channel is found to be a ``SwiftSlash/DataChannel/ChildRead`` stream.
-	public subscript(writer fh:Int32) -> DataChannel.ChildWrite? {
-		set {
-			switch state {
-				case .initialized:
-					if newValue != nil {
-						dataChannels[fh] = .write(newValue!)
-					} else {
-						dataChannels[fh] = nil
-					}
-				default:
-					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
-			}
-		}
+	/// - Returns: The writing interface to the child process, or `nil` if the file handle is not configured.
+	public nonisolated subscript(writer fh:Int32) -> DataChannel.ChildWrite? {
 		get {
 			switch dataChannels[fh] {
 				case .write(let config):
@@ -106,22 +87,10 @@ public actor ChildProcess {
 			}
 		}
 	}
-	/// Convenience subscript for accessing the data channel that is already known to be a readable stream. In some cases, this can save a bit of ritual to access the data channel.
-	/// - WARNING: Calling this subscript **setter** after the process has been launched will result in a fatal error that will crash the parent process.
+	/// Convenience subscript for accessing the data channel that is already known to be a readable stream.
 	/// - WARNING: This subscript will throw a fatal error (crashing the parent process) if the data channel is found to be a ``SwiftSlash/DataChannel/ChildWrite`` stream.
-	public subscript(reader fh:Int32) -> DataChannel.ChildRead? {
-		set {
-			switch state {
-				case .initialized:
-					if newValue != nil {
-						dataChannels[fh] = .read(newValue!)
-					} else {
-						dataChannels[fh] = nil
-					}
-				default:
-					fatalError("SwiftSlash critical error :: cannot modify the data streams of a process after it has been launched.")
-			}
-		}
+	/// - Returns: The reading interface bound to the child process, or `nil` if the file handle is not configured.
+	public nonisolated subscript(reader fh:Int32) -> DataChannel.ChildRead? {
 		get {
 			switch dataChannels[fh] {
 				case .read(let config):
@@ -172,15 +141,15 @@ public actor ChildProcess {
 					// reap the running process
 					switch await preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
-							state = .reaped(.exited(exitCode))
+							state = .reaped(.code(exitCode))
 							try await tg.waitForAll()
-							return .exited(exitCode)
+							return .code(exitCode)
 						case .signaled(let sigCode):
-							state = .reaped(.signaled(sigCode))
+							state = .reaped(.signal(sigCode))
 							try await tg.waitForAll()
-							return .signaled(sigCode)
-						default:
-							fatalError("SwiftSlash critical error :: process exited with an unknown state.")
+							return .signal(sigCode)
+						case .failed(let err):
+							throw ReapError(errnoValue:err)
 					}
 				}
 			default:
@@ -190,12 +159,48 @@ public actor ChildProcess {
 	}
 }
 
+extension ChildProcess {
+	/// Convenience variable that returns access to the stdin stream of the process.
+	public nonisolated var stdin:DataChannel.ChildRead.ParentWrite {
+		get {
+			switch self[reader:STDIN_FILENO] {
+				case .fromParentProcess(stream:let strm):
+					return strm
+				default:
+					fatalError("SwiftSlash ChildProces fatal error :: STDIN_FILENO has a non-standard configuration, therefore, the convenience variables cannot be used. This is a user error. \(#file):\(#line)")
+			}
+		}
+	}
+	/// Convenience variable that returns access to the stdout stream of the process.
+	public nonisolated var stdout:DataChannel.ChildWrite.ParentRead {
+		get {
+			switch self[writer:STDOUT_FILENO] {
+				case .toParentProcess(stream:let strm, separator:_):
+					return strm
+				default:
+					fatalError("SwiftSlash ChildProces fatal error :: STDOUT_FILENO has a non-standard configuration, therefore, the convenience variables cannot be used. This is a user error. \(#file):\(#line)")
+			}
+		}
+	}
+	/// Convenience variable that returns access to the stderr stream of the process.
+	public nonisolated var stderr:DataChannel.ChildWrite.ParentRead {
+		get {
+			switch self[writer:STDOUT_FILENO] {
+				case .toParentProcess(stream:let strm, separator:_):
+					return strm
+				default:
+					fatalError("SwiftSlash ChildProces fatal error :: STDERR_FILENO has a non-standard configuration, therefore, the convenience variables cannot be used. This is a user error. \(#file):\(#line)")
+			}
+		}
+	}
+}
+
 extension ChildProcess.Exit:Hashable, Equatable, CustomDebugStringConvertible {
 	public static func == (lhs:ChildProcess.Exit, rhs:ChildProcess.Exit) -> Bool {
 		switch (lhs, rhs) {
-			case (.exited(let lhsExitCode), .exited(let rhsExitCode)):
+			case (.code(let lhsExitCode), .code(let rhsExitCode)):
 				return lhsExitCode == rhsExitCode
-			case (.signaled(let lhsSignal), .signaled(let rhsSignal)):
+			case (.signal(let lhsSignal), .signal(let rhsSignal)):
 				return lhsSignal == rhsSignal
 			default:
 				return false
@@ -203,19 +208,19 @@ extension ChildProcess.Exit:Hashable, Equatable, CustomDebugStringConvertible {
 	}
 	public func hash(into hasher:inout Hasher) {
 		switch self {
-			case .exited(let exitCode):
+			case .code(let exitCode):
 				hasher.combine(0)
 				hasher.combine(exitCode)
-			case .signaled(let sig):
+			case .signal(let sig):
 				hasher.combine(1)
 				hasher.combine(sig)
 		}
 	}
 	public var debugDescription: String {
 		switch self {
-			case .exited(let exitCode):
+			case .code(let exitCode):
 				return "ChildProcess.Exit.exited(\(exitCode))"
-			case .signaled(let sigCode):
+			case .signal(let sigCode):
 				return "ChildProcess.Exit.signaled(\(sigCode))"
 		}
 	}

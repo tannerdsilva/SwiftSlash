@@ -78,6 +78,64 @@ public struct Command:Sendable {
 	public mutating func inheritCurrentEnvironment() {
 		environment = CurrentEnvironment.environmentVariables()
 	}
+	
+	/// Encapsulates the result of a Command that was run using the convenience function ``SwiftSlash/Command/runSync()`.
+	public struct SyncResult:Sendable {
+		/// The exit code of the process.
+		let exit:ChildProcess.Exit
+		/// The data that was written to `STDERR` while the child process was running.
+		let stderr:[[UInt8]]
+		/// The data that was written to `STDOUT` while the child process was running.
+		let stdout:[[UInt8]]
+		/// A convenience boolean that is set to `true` when `exit == .code(0)`
+		let succeeded:Bool
+	}
+	
+	/// Run a command synchronously.
+	public func runSync() async throws -> SyncResult {
+		enum StandardOutputVariant {
+			case stdout([[UInt8]])
+			case stderr([[UInt8]])
+		}
+		let processInterface = ChildProcess(self)
+		return try await withThrowingTaskGroup(of:StandardOutputVariant.self, returning:SyncResult.self) { [pi = processInterface] tg in
+			tg.addTask { [stdoutStream = pi.stdout] in
+				var buildLines = [[UInt8]]()
+				for await nextLine in stdoutStream {
+					buildLines.append(contentsOf:nextLine)
+				}
+				return .stdout(buildLines)
+			}
+			
+			tg.addTask { [stderrStream = pi.stderr] in
+				var buildLines = [[UInt8]]()
+				for await nextLine in stderrStream {
+					buildLines.append(contentsOf:nextLine)
+				}
+				return .stderr(buildLines)
+			}
+			
+			let exitResult = try await pi.run()
+			var assembleOut = [[UInt8]]()
+			var assembleErr = [[UInt8]]()
+			for try await childTaskResult in tg {
+				switch childTaskResult {
+					case .stderr(let err):
+						assembleErr = err
+					case .stdout(let out):
+						assembleOut = out
+				}
+			}
+			let isSuccessful:Bool
+			switch exitResult {
+				case .code(let exitValue):
+					isSuccessful = true
+				default:
+					isSuccessful = false
+			}
+			return SyncResult(exit:exitResult, stderr:assembleErr, stdout:assembleOut, succeeded:isSuccessful)
+		}
+	}
 }
 
 extension Command:Hashable, Equatable {

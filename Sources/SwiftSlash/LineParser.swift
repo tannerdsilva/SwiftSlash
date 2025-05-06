@@ -18,8 +18,8 @@ internal struct LineParser:~Copyable {
 
 	/// the various types of output that the parser can use to produce lines.
 	internal enum Output {
-		/// pass the lines into a `NAsyncStream` for async consumption
-		case nasync(FIFO<[LineOutput], Never>)
+		/// pass the lines into a `FIFO` for async consumption
+		case fifo(FIFO<[LineOutput], Never>)
 		/// pass the lines to a function closure
 		case handler(([LineOutput]?) -> Void)
 	}
@@ -51,7 +51,7 @@ internal struct LineParser:~Copyable {
 	}
 	
 	internal init(separator sepArg:[UInt8], nasync output: FIFO<[LineOutput], Never>) {
-		self.init(separator: sepArg, initialCapacity: 4_096, output: .nasync(output))
+		self.init(separator: sepArg, initialCapacity: 4_096, output: .fifo(output))
 	}
 
 	internal init(separator sepArg: [UInt8], handler handlerArg: @escaping ([LineOutput]?) -> Void) {
@@ -81,7 +81,7 @@ internal struct LineParser:~Copyable {
 		guard separator.isEmpty == false else {
 			let slice = Array(UnsafeBufferPointer(start: writePtr, count: Int(readCount)))
 			switch handler {
-				case .nasync(let stream):
+				case .fifo(let stream):
 					stream.yield([slice])
 				case .handler(let h):
 					h([slice])
@@ -116,7 +116,7 @@ internal struct LineParser:~Copyable {
 		if separator.isEmpty == false && count > 0 {
 			let final = Array(UnsafeBufferPointer(start: buffer, count: Int(count)))
 			switch handler {
-				case .nasync(let stream):
+				case .fifo(let stream):
 					stream.yield([final])
 					stream.finish()
 				case .handler(let h):
@@ -127,7 +127,7 @@ internal struct LineParser:~Copyable {
 		} else {
 			// nothing to emit, just signal end
 			switch handler {
-				case .nasync(let stream):
+				case .fifo(let stream):
 					stream.finish()
 				case .handler(let h):
 					h(nil)
@@ -190,7 +190,7 @@ internal struct LineParser:~Copyable {
 
 		if !lines.isEmpty {
 			switch handler {
-				case .nasync(let stream):
+				case .fifo(let stream):
 					stream.yield(lines)
 				case .handler(let h):
 					h(lines)

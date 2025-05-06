@@ -7,16 +7,20 @@
 - <doc:Getting-Started>
 - <doc:Versioning>
 
-### Basic Usage
+### Core API Usage
 
 - ``SwiftSlash/Command``
 - ``SwiftSlash/Path``
+- ``SwiftSlash/ChildProcess``
 
 ### Advanced Usage
 
-- ``SwiftSlash/ChildProcess``
 - ``SwiftSlash/DataChannel``
 
 ### Working with the Existing Environment
 
 - ``SwiftSlash/CurrentEnvironment``
+
+### Swift Language Extensions
+
+- ``Swift``

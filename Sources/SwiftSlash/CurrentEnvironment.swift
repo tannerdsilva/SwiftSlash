@@ -60,7 +60,6 @@ public struct CurrentEnvironment {
 		}
 		return envs
 	}
-
 	/// Returns the current working directory of the calling process.
 	/// - Returns: A `Path` representing the process’s current working directory.
 	public static func workingDirectory() -> Path {
