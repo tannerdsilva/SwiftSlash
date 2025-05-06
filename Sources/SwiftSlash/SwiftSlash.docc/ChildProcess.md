@@ -22,13 +22,13 @@
 - ``SwiftSlash/ChildProcess/state``
 - ``SwiftSlash/ChildProcess/InvalidProcessStateError``
 
-### Accessing Data Channels (Convenient)
+### Accessing Default Data Channels (Convenient)
 
 - ``SwiftSlash/ChildProcess/stdin``
 - ``SwiftSlash/ChildProcess/stdout``
 - ``SwiftSlash/ChildProcess/stderr``
 
-### Accessing Data Channels (Explicit)
+### Accessing Any Data Channel (Explicit)
 
 - ``SwiftSlash/ChildProcess/subscript(channel:)``
 - ``SwiftSlash/ChildProcess/subscript(writer:)``

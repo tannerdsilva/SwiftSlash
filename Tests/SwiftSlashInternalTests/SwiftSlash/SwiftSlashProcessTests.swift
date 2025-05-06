@@ -157,20 +157,23 @@ extension SwiftSlashTests {
 			.timeLimit(.minutes(1))
 		)
 		func testRunSync() async throws {
-			let newCommand = Command(absolutePath:"/bin/pwd")
-			// let newCommand = Command(absolutePath:"/bin/sh", arguments:["-c", #"i=0; while [ "$i" -lt 10 ]; do echo "your string"; i=$((i+1)); done; exit 0"#])
+			// let newCommand = Command(absolutePath:"/bin/pwd")
+			let newCommand = Command(absolutePath:"/bin/sh", arguments:["-c", #"i=0; while [ "$i" -lt 10 ]; do echo "Hello from the other shell!"; i=$((i+1)); done; exit 0"#])
 			let result = try await newCommand.runSync()
-			// #expect(result.exit == .code(0), "expected exit code to be 0, but got \(result.exit)")
-			// #expect(result.stdout.count == 10, "expected 10 lines of output, but got \(result.stdout.count)")
-			// for line in result.stdout {
-			// 	let curString = String(bytes:line, encoding:.utf8)
-			// 	#expect(curString != nil, "expected non-nil output from command")
-			// 	if let curString = curString {
-			// 		#expect(curString == "Hello from the other shell!", "expected output to match input string")
-			// 	} else {
-			// 		fatalError("SwiftSlash critical error :: stdout stream is not active.")
-			// 	}
-			// }
+			#expect(result.exit == .code(0), "expected exit code to be 0, but got \(result.exit)")
+			#expect(result.stdout.count == 10, "expected 10 lines of output, but got \(result.stdout.count)")
+			var foundItems:size_t = 0
+			for line in result.stdout {
+				let curString = String(bytes:line, encoding:.utf8)
+				#expect(curString != nil, "expected non-nil output from command")
+				if let curString = curString {
+					#expect(curString == "Hello from the other shell!", "expected output to match input string")
+					foundItems += 1
+				} else {
+					fatalError("SwiftSlash critical error :: stdout stream is not active.")
+				}
+			}
+			#expect(foundItems == 10, "expected to find exactly 10 output items from child process")
 		}
 	}
 }

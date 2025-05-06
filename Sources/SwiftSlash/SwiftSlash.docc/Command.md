@@ -1,9 +1,5 @@
 # ``SwiftSlash/Command``
 
-## Overview
-
-The `Command` structure encapsulates the configuration required to launch an external process from Swift. It defines the executable path, arguments, environment variables, and working directory without performing execution itself.
-
 ## Topics
 
 ### Core Initializers

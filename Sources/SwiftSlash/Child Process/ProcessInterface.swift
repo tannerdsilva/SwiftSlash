@@ -23,9 +23,12 @@ public actor ChildProcess {
 	}
 	
 	/// Thrown when a signal code failed send to the child process.
-	public struct SignalError:Swift.Error {
-		/// The system `errno` that was returned in correspondence with the failure.
-		public let systemErrorCode:Int32
+	public enum SignalError:Swift.Error {
+		/// Thrown when the the host system kernel is unsuccessful at sending the signal to the child process.
+		/// - Parameter errno: The system `errno` that was returned in correspondence with the failure.
+		case systemSignalError(errno:Int32)
+		/// Thrown when the process was found to be at an incorrect lifecycle state to send a signal. This means the process has either not launched, or has already exited.
+		case invalidState(InvalidProcessStateError)
 	}
 
 	/// Represents the various states that a child process may be in while going through its lifecycle.
@@ -165,17 +168,17 @@ public actor ChildProcess {
 	}
 	
 	/// Send a signal to the child process.
+	/// - Parameter code: The signal code to send to the child process.
 	/// - Throws: `InvalidProcessStateError` is thrown if the process is not running.
-	/// - 
-	public func signal(_ code:Int32) throws {
+	public func signal(_ code:Int32) throws(SignalError) {
 		switch state {
 			case .running(let pid):
 				let killReturnValue = kill(pid, code)
 				guard killReturnValue == 0 else {
-					throw SignalError(systemErrorCode:__cswiftslash_get_errno())
+					throw .systemSignalError(errno:__cswiftslash_get_errno())
 				}
 			default:
-				throw InvalidProcessStateError(expectedState:.running(-1), actualState:state)
+				throw .invalidState(InvalidProcessStateError(expectedState:.running(0), actualState:state))
 		}
 	}
 }
