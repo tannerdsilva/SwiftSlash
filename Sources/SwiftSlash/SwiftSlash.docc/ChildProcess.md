@@ -11,14 +11,16 @@
 - ``SwiftSlash/ChildProcess/run()``
 - ``SwiftSlash/ChildProcess/Exit``
 
+### Signaling a Running Process
+
+- ``SwiftSlash/ChildProcess/signal(_:)``
+- ``SwiftSlash/ChildProcess/SignalError``
+
 ### Process Lifecycle State
 
 - ``SwiftSlash/ChildProcess/State``
 - ``SwiftSlash/ChildProcess/state``
-
-### Other Instance Properties
-
-- ``SwiftSlash/ChildProcess/command``
+- ``SwiftSlash/ChildProcess/InvalidProcessStateError``
 
 ### Accessing Data Channels (Convenient)
 
@@ -32,8 +34,11 @@
 - ``SwiftSlash/ChildProcess/subscript(writer:)``
 - ``SwiftSlash/ChildProcess/subscript(reader:)``
 
-### Errors Regarding Child Processes
+### Runtime Errors
 
-- ``SwiftSlash/ChildProcess/InvalidProcessStateError``
 - ``SwiftSlash/ChildProcess/ReapError``
 - ``SwiftSlash/ChildProcess/SpawnError``
+
+### Other Instance Properties
+
+- ``SwiftSlash/ChildProcess/command``

@@ -127,7 +127,7 @@ extension FIFO {
 		return SyncConsumerNonBlockingExplicit(self)
 	}
 
-	public struct SyncConsumerNonBlockingExplicit:~Copyable {
+	public struct SyncConsumerNonBlockingExplicit {
 		public enum WhenConsumingTaskCancelled {
 			case noAction
 			case finish
@@ -148,7 +148,7 @@ extension FIFO {
 		return SyncConsumerNonBlocking(self)
 	}
 
-	public struct SyncConsumerNonBlocking:~Copyable {
+	public struct SyncConsumerNonBlocking {
 		private let fifo:FIFO<Element, Failure>
 		internal init(_ fifoIn:consuming FIFO) {
 			fifo = fifoIn
@@ -165,7 +165,7 @@ extension FIFO {
 		return SyncConsumerBlockingExplicit(self)
 	}
 
-	public struct SyncConsumerBlockingExplicit:~Copyable {
+	public struct SyncConsumerBlockingExplicit {
 		public enum WhenConsumingTaskCancelled {
 			case noAction
 			case finish
@@ -186,7 +186,7 @@ extension FIFO {
 		return SyncConsumerBlocking(self)
 	}
 
-	public struct SyncConsumerBlocking:~Copyable {
+	public struct SyncConsumerBlocking {
 		private let fifo:FIFO<Element, Failure>
 		internal init(_ fifoIn:consuming FIFO) {
 			fifo = fifoIn
@@ -205,7 +205,7 @@ extension FIFO {
 	}
 
 	/// the primary structure for consuming elements from the FIFO in an explicit way.
-	public struct AsyncConsumerExplicit:~Copyable {
+	public struct AsyncConsumerExplicit {
 		public enum WhenConsumingTaskCancelled {
 			case noAction
 			case finish
@@ -236,7 +236,7 @@ extension FIFO {
 	}
 
 	/// the primary structure for consuming elements from the FIFO.
-	public struct AsyncConsumer:~Copyable {
+	public struct AsyncConsumer {
 		/// specifies the action to take when a task is cancelled while consuming the FIFO.
 		public enum WhenConsumingTaskCancelled {
 			/// when the current task is cancelled, the FIFO will not be affected. no actions will be taken.

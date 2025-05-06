@@ -21,6 +21,12 @@ public actor ChildProcess {
 		/// The actual state of the process when the operation was requested.
 		public let actualState:State
 	}
+	
+	/// Thrown when a signal code failed send to the child process.
+	public struct SignalError:Swift.Error {
+		/// The system `errno` that was returned in correspondence with the failure.
+		public let systemErrorCode:Int32
+	}
 
 	/// Represents the various states that a child process may be in while going through its lifecycle.
 	public enum State:Sendable {
@@ -157,6 +163,21 @@ public actor ChildProcess {
 				throw InvalidProcessStateError(expectedState:.initialized, actualState:state)
 		}
 	}
+	
+	/// Send a signal to the child process.
+	/// - Throws: `InvalidProcessStateError` is thrown if the process is not running.
+	/// - 
+	public func signal(_ code:Int32) throws {
+		switch state {
+			case .running(let pid):
+				let killReturnValue = kill(pid, code)
+				guard killReturnValue == 0 else {
+					throw SignalError(systemErrorCode:__cswiftslash_get_errno())
+				}
+			default:
+				throw InvalidProcessStateError(expectedState:.running(-1), actualState:state)
+		}
+	}
 }
 
 extension ChildProcess {
@@ -185,7 +206,7 @@ extension ChildProcess {
 	/// Convenience variable that returns access to the stderr stream of the process.
 	public nonisolated var stderr:DataChannel.ChildWrite.ParentRead {
 		get {
-			switch self[writer:STDOUT_FILENO] {
+			switch self[writer:STDERR_FILENO] {
 				case .toParentProcess(stream:let strm, separator:_):
 					return strm
 				default:

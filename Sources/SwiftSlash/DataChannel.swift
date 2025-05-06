@@ -56,7 +56,7 @@ public enum DataChannel:Sendable {
 			}
 	
 			/// AsyncIterator for consuming data until the channel finishes.
-			public final class AsyncIterator: AsyncIteratorProtocol {
+			public struct AsyncIterator:AsyncIteratorProtocol {
 				internal let fifo: FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
 				internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
 					self.fifo = fifo

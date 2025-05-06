@@ -37,24 +37,24 @@ extension SwiftSlashTests {
 			let randomInt = Int.random(in: 0...Int.max)
 			let command = Command(absolutePath:"/bin/echo", arguments:["hello world \(randomInt)"])
 			let process = ChildProcess(command)
-			let stdoutStream = process[writer:STDOUT_FILENO]!
-
-			switch stdoutStream {
-				case .toParentProcess(stream:let curStream, separator:_):
-					let iterator = curStream.makeAsyncIterator()
-					let streamTask = Task {
-						return try await process.run()
-					}
-					parseLoop: while let curItem = await iterator.next() {
-						let curString = String(bytes:curItem.first!, encoding:.utf8)
-						#expect(curString == "hello world \(randomInt)")
-					}
-					#expect(try await streamTask.result.get() == .code(0))
-
-				default:
-					fatalError("SwiftSlash critical error :: stdout stream is not active.")
-				
+			async let exitResult = process.run()
+			let outTask = Task {
+				var buildLines = [[UInt8]]()
+				parseLoop: for await curItem in process.stdout {
+					buildLines.append(contentsOf:curItem)
+				}
+				return buildLines
 			}
+			let errTask = Task {
+				var errCount = 0
+				for await curItem in process.stderr {
+					errCount += curItem.count
+				}
+				return errCount
+			}
+			#expect(await outTask.result.get() == [Array("hello world \(randomInt)".utf8)], "expected output to match input string")
+			#expect(await errTask.result.get() == 0, "expected no errors from child process")
+			#expect(try await exitResult == .code(0))
 		}
 		@Test("SwiftSlashProcessTests :: pwd output test", 
 			.timeLimit(.minutes(1))
@@ -62,15 +62,14 @@ extension SwiftSlashTests {
 		func testPwdOutput() async throws {
 			let command = Command(absolutePath:"/bin/pwd")
 			let process = ChildProcess(command)
-			let stdoutStream = await process[writer:STDOUT_FILENO]!
+			let stdoutStream = process[writer:STDOUT_FILENO]!
 
 			switch stdoutStream {
 				case .toParentProcess(stream:let curStream, separator:_):
-					let iterator = curStream.makeAsyncIterator()
 					let streamTask = Task {
 						try await process.run()
 					}
-					parseLoop: while let curItem = await iterator.next() {
+					parseLoop: for await curItem in curStream {
 						let curString = String(bytes:curItem.first!, encoding:.utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
 						#expect(curString != nil, "Expected non-nil output from pwd command")
 						let currentDirectory = FileManager.default.currentDirectoryPath
@@ -92,7 +91,7 @@ extension SwiftSlashTests {
 				// this is a special command that will read a line of input and then exit with that code. the input line must be a valid exit number.
 				let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read num && exit "$num""#])
 				let process = ChildProcess(command)
-				let stdInWriteStream = await process[reader:STDIN_FILENO]!
+				let stdInWriteStream = process[reader:STDIN_FILENO]!
 				switch stdInWriteStream {
 					case (.fromParentProcess(stream:let inputStream)):
 						// launch the child process.
@@ -122,12 +121,11 @@ extension SwiftSlashTests {
 			let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"IFS= read line && printf "%s\n" "$line"; exit 0"#])
 
 			let process = ChildProcess(command)
-			let stdInWriteStream = await process[reader:STDIN_FILENO]!
-			let stdoutStream = await process[writer:STDOUT_FILENO]!
+			let stdInWriteStream = process[reader:STDIN_FILENO]!
+			let stdoutStream = process[writer:STDOUT_FILENO]!
 			switch (stdInWriteStream, stdoutStream) {
 				case (.fromParentProcess(stream:let inputStream), .toParentProcess(stream:let outputStream, separator:_)):
 					// launch the child process.
-					let iterator = outputStream.makeAsyncIterator()
 					let streamTask = Task {
 						try await process.run()
 					}
@@ -136,7 +134,7 @@ extension SwiftSlashTests {
 					let inputData = [UInt8](inputString.utf8)
 					try inputStream.yield(inputData)
 					var foundItems:size_t = 0
-					parseLoop: while let curItem = await iterator.next() {
+					parseLoop: for await curItem in outputStream {
 						guard curItem.count < 2 else {
 							break parseLoop
 						}
