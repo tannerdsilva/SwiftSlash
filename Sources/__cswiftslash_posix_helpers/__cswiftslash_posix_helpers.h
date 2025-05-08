@@ -22,6 +22,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 #include <errno.h>
 #include <string.h>
 #include <math.h>
+#include <signal.h>
 
 /// swift compiler will not allow for calling fork directly, so this function is a wrapper around the fork function.
 /// @return the result of the fork function call.

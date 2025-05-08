@@ -110,12 +110,12 @@ internal struct ProcessLogistics {
 				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [fh = wFH, et = eventTrigger, f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
-						try! et.deregister(writer:fh)
 						f.finish()
 						uds.finish()
 					})
-					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumerExplicit()] in
+					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumerExplicit(), et = eventTrigger] in
 						defer {
+							try! et.deregister(writer:wFH)
 							try! wFH.closeFileHandle()
 						}
 
@@ -192,16 +192,16 @@ internal struct ProcessLogistics {
 				internal let rFH:Int32
 				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
-					terminationFuture.whenResult({ [et = eventTrigger, f = systemReadEventsFIFO] _ in
-						try! et.deregister(reader:rFH)
+					terminationFuture.whenResult({ [f = systemReadEventsFIFO] _ in
 						f.finish()
 					})
 
-					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer()] in
+					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer(), et = eventTrigger] in
 						// this is the line parsing mechanism that allows us to separate arbitrary data into lines of a given specifier.
 						var lineParser = LineParser(separator:separator, nasync:userDataStream.fifo)
 						defer {
-							// this is the only place where action happens with the file handle, 
+							// this is the only place where action happens with the file handle,
+							try! et.deregister(reader:rFH)
 							try! rFH.closeFileHandle()
 							lineParser.finish()
 						}

@@ -40,7 +40,22 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let (handle, register)):
-					activeTriggers[handle] = register
+					switch register {
+						case .some(let r):
+							activeTriggers[handle] = r
+						case .none:
+							switch activeTriggers.removeValue(forKey:handle) {
+								case .some(let r):
+									switch r {
+										case .reader(_, let future):
+											try? future.setSuccess(())
+										case .writer(_, let future):
+											try? future.setSuccess(())
+									}
+								case .none:
+									break
+							}
+					}
 				case nil:
 					break infiniteLoop
 			}
@@ -116,7 +131,7 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writable data.
-								switch activeTriggers[curIdent]! {
+								switch activeTriggers[curIdent] {
 									case .writer(let fifo, _):
 										fifo.yield(())
 									default:
@@ -128,10 +143,11 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 							if currentEvent.filter == Int16(EVFILT_READ) {
 
 								// reader close.
-								let removedValue = activeTriggers.removeValue(forKey:curIdent)!
-								switch removedValue {
-									case .reader(_, let future):
-										try future.setSuccess(())
+								switch activeTriggers[curIdent] {
+									case .some(.reader(_, let future)):
+										try? future.setSuccess(())
+									case .none:
+										break;
 									default:
 										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 								}
@@ -139,10 +155,11 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
-								let removedValue = activeTriggers.removeValue(forKey:curIdent)!
-								switch removedValue {
-									case .writer(_, let future):
-										try future.setSuccess(())
+								switch activeTriggers[curIdent] {
+									case .some(.writer(_, let future)):
+										try? future.setSuccess(())
+									case .none:
+										break;
 									default:
 										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 								}

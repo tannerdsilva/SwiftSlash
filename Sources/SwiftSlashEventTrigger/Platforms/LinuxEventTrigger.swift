@@ -42,7 +42,7 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 			switch getIterator.next() {
 				case .some(let (handle, register)):
 					activeTriggers[handle] = register
-				case nil:
+				case .none:
 					break infiniteLoop
 			}
 		} while true
@@ -101,8 +101,8 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
 							// reading handle closed
-							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
-							switch removedValue {
+							// let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
+							switch activeTriggers[currentEvent.data.fd]! {
 								case .reader(_, let future):
 									try? future.setSuccess(())
 								default:
@@ -112,8 +112,8 @@ internal final class LinuxEventTrigger<DataChannelChildReadError, DataChannelChi
 						} else if eventFlags & UInt32(EPOLLERR.rawValue) != 0 {
 
 							// writing handle closed
-							let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
-							switch removedValue {
+							// let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
+							switch activeTriggers[currentEvent.data.fd]! {
 								case .writer(_, let future):
 									try? future.setSuccess(())
 								default:
