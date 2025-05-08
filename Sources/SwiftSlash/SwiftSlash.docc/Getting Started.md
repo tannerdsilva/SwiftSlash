@@ -38,25 +38,30 @@ To execute a `Command` and wait for its completion, use the `runSync()` function
 let result = try await commandToLaunch.runSync()
 ```
 
-`runSync()` returns a `CommandResult` containing:
+`runSync()` returns a `SyncResult` containing:
 
-* `exitCode`: the process exit code (`Int`).
-* `stdout`: an array of `Data` chunks for standard output.
-* `stderr`: an array of `Data` chunks for standard error.
+* `exit`: an enum specifying the exit result of the process. A process can either exit with an exit code, or exit with an uncaught signal code.
+* `stdout`: an array of byte "lines" (`[UInt8]`) that were parsed from the standard output stream.
+* `stderr`: an array of byte "lines" (`[UInt8]`) that were parsed from the standard error stream.
 
 ## Handling Output
 
-Convert `Data` to `String` using `String(decoding:as:)`:
+Convert `[UInt8]` lines to `String` using `String(decoding:as:)`:
 
 ```swift
-if result.exitCode == 0 {
-    let firstLine = String(decoding: result.stdout.first ?? Data(), as: .utf8)
+if result.exit == .code(0) {
+    let firstLine = String(bytes:result.stdout.first!, encoding:.utf8)
     print("Output: \(firstLine)")
 } else {
-    let errors = result.stderr
-        .map { String(decoding: $0, as: .utf8) }
-        .joined(separator: "\n")
-    print("Error: \(errors)")
+    // handle errors here as necessary
+    print("There was an error. STDERR contents below\n==========")
+    for curLine in result.stderr {
+    	if let asString = String(bytes:curLine, encoding:.utf8) {
+    		print("\(asString)")
+    	} else {
+    		print("Could not convert to string. This line contains \(curLine.count) bytes.")
+    	}
+    }
 }
 ```
 
@@ -66,13 +71,14 @@ if result.exitCode == 0 {
 task {
     let versionResult = try await Command("zfs", arguments: ["--version"]).runSync()
     if versionResult.exitCode == 0 {
-        let version = String(
-            decoding: versionResult.stdout.first ?? Data(),
-            as: .utf8
-        )
+        let version = String(bytes:versionResult.stdout.first!, encoding:.utf8)
         print("ZFS version: \(version)")
     } else {
         print("Failed to get ZFS version")
     }
 }
 ```
+
+## Advanced Usage
+
+To unlock the full capability and features available in SwiftSlash (including more complex async workloads that happen during runtime), you will need to interact directly with a ``SwiftSlash/ChildProcess`` instance.

@@ -52,11 +52,60 @@ extension SwiftSlashTests {
 				}
 				return errCount
 			}
-			#expect(await outTask.result.get() == [Array("hello world \(randomInt)".utf8)], "expected output to match input string")
+			let outBytes = await outTask.result.get()
+			let firstString = String(bytes:outBytes.first!, encoding:.utf8)
+			#expect(firstString == "hello world \(randomInt)", "expected output to match input string")
 			#expect(await errTask.result.get() == 0, "expected no errors from child process")
 			#expect(try await exitResult == .code(0))
 		}
-		@Test("SwiftSlashProcessTests :: pwd output test", 
+		@Test("SwiftSlashProcessTests :: getting started example test",
+			  .timeLimit(.minutes(1))
+		)
+		func testGettingStartedExample() async throws {
+			let commandToLaunch = try Command("ps", arguments:["aux"])
+			let result = try await commandToLaunch.runSync()
+			#expect(result.exit == .code(0))
+			if result.exit == .code(0) {
+				// command ran successfully. print the output that was captured during runtime
+				print("Command ran successfully. STDOUT contents below\n==========")
+				#expect(result.stdout.count > 100) // i think its safe to assume that any moden system will have way more than 100 processes at any one time.
+				for curLine in result.stdout {
+					if let asString = String(bytes:curLine, encoding:.utf8) {
+						print("\(asString)")
+					} else {
+						print("Could not convert to string. This line contains \(curLine.count) bytes.")
+					}
+				}
+			} else {
+				// handle errors here as necessary
+				print("There was an error. STDERR contents below\n==========")
+				for curLine in result.stderr {
+					if let asString = String(bytes:curLine, encoding:.utf8) {
+						print("\(asString)")
+					} else {
+						print("Could not convert to string. This line contains \(curLine.count) bytes.")
+					}
+				}
+			}
+		}
+		@Test("SwiftSlashProcessTests :: zfs example test",
+			  .timeLimit(.minutes(1))
+		)
+		func testZFSExample() async throws {
+			do {
+				let versionResult = try await Command("zfs", arguments: ["--version"]).runSync()
+				if versionResult.exit == .code(0) {
+					let versionString = String(bytes:versionResult.stdout.first!, encoding:.utf8)
+					#expect(versionString != nil)
+					#expect(versionString!.count > 0)
+				} else {
+					print("Failed to get ZFS version")
+				}
+			} catch CurrentEnvironment.PathSearchError.executableNotFound {
+				// this is ok
+			}
+		}
+		@Test("SwiftSlashProcessTests :: pwd output test",
 			.timeLimit(.minutes(1))
 		)
 		func testPwdOutput() async throws {
@@ -158,9 +207,9 @@ extension SwiftSlashTests {
 		)
 		func testRunSync() async throws {
 			// let newCommand = Command(absolutePath:"/bin/pwd")
-			let newCommand = Command(absolutePath:"/bin/sh", arguments:["-c", #"i=0; while [ "$i" -lt 10 ]; do echo "Hello from the other shell!"; i=$((i+1)); done; exit 0"#])
+			let newCommand = Command(absolutePath:"/bin/sh", arguments:["-c", #"i=0; while [ "$i" -lt 10 ]; do echo "Hello from the other shell!"; i=$((i+1)); done; exit 42"#])
 			let result = try await newCommand.runSync()
-			#expect(result.exit == .code(0), "expected exit code to be 0, but got \(result.exit)")
+			#expect(result.exit == .code(42), "expected exit code to be 0, but got \(result.exit)")
 			#expect(result.stdout.count == 10, "expected 10 lines of output, but got \(result.stdout.count)")
 			var foundItems:size_t = 0
 			for line in result.stdout {
