@@ -13,12 +13,12 @@ import __cswiftslash_eventtrigger
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
-internal enum Register<DataChannelChildReadError, DataChannelChildWriteError> where DataChannelChildReadError:Error, DataChannelChildWriteError:Error {
+internal enum Register {
 
 	/// register a parent process reader.
-	case reader(FIFO<size_t, Never>, Future<Void, DataChannelChildWriteError>)
+	case reader(FIFO<size_t, Never>, Future<Void, Never>)
 
 
 	/// register a parent process writer.
-	case writer(FIFO<Void, Never>, Future<Void, DataChannelChildReadError>)
+	case writer(FIFO<Void, Never>, Future<Void, Never>)
 }

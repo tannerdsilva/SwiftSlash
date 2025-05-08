@@ -28,7 +28,9 @@ public enum DataChannel:Sendable {
 	
 		/// Primary interface for consuming bytes written by child processes.
 		public struct ParentRead:Sendable, AsyncSequence {
-			public enum Error:Swift.Error {}
+
+			/// The type of error that can occur when reading from the data channel.
+			public typealias Error = Never
 			
 			/// Multiple lines or segments are grouped into a single array to reduce async context switching and ensure timely delivery of data.
 			public typealias Element = [[UInt8]]
@@ -92,6 +94,7 @@ public enum DataChannel:Sendable {
 	public enum ChildRead:Sendable {
 		/// A writable channel that the parent process can use to send data for the child process to read.
 		public struct ParentWrite:Sendable {
+			/// The error type for this data channel.
 			public enum Error:Swift.Error {
 				/// The channel was closed before or during a write.
 				case dataChannelClosed

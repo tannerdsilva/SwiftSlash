@@ -103,13 +103,13 @@ internal struct ProcessLogistics {
 			internal let launchedPID:pid_t
 			
 			internal struct WriteTask {
-				internal let terminationFuture:Future<Void, DataChannel.ChildRead.ParentWrite.Error>
+				internal let terminationFuture:Future<Void, Never>
 				internal let userDataStream:DataChannel.ChildRead.ParentWrite
 				internal let writeConsumerFIFO:FIFO<Void, Never>
 				internal let wFH:Int32
-				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
+				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
-					terminationFuture.whenResult({ [fh = wFH, et = eventTrigger, f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
+					terminationFuture.whenResult({ [f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
 						f.finish()
 						uds.finish()
 					})
@@ -168,11 +168,11 @@ internal struct ProcessLogistics {
 									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						} while true
-						let terminationResult = await terminationFuture.result()!
+						// data channel has been terminated. now we need to just cleanup any pending writes that the user might have stored in the FIFO. all futures found in the fifo at this point will be returned with an error instead of a successful completion or cancellation.
 						finalFlushLoop: while currentWriteStepper != nil {
 							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
 								case .element(let (_, writeCompleteFuture)):
-									try? writeCompleteFuture?.setResult(terminationResult)
+									try? writeCompleteFuture?.setFailure(.dataChannelClosed)
 								case .capped(_):
 									// this is a signal that the file handle is not ready for writing.
 									break finalFlushLoop
@@ -180,17 +180,16 @@ internal struct ProcessLogistics {
 									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
 						}
-						return try terminationResult.get()
 					}
 				}
 			}
 			internal struct ReadTask {
-				internal let terminationFuture:Future<Void, DataChannel.ChildWrite.ParentRead.Error>
+				internal let terminationFuture:Future<Void, Never>
 				internal let separator:[UInt8]
 				internal let userDataStream:DataChannel.ChildWrite.ParentRead
 				internal let systemReadEventsFIFO:FIFO<size_t, Never>
 				internal let rFH:Int32
-				internal let eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>
+				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [f = systemReadEventsFIFO] _ in
 						f.finish()
@@ -250,7 +249,7 @@ internal struct ProcessLogistics {
 	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
-	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>? = nil
+	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger? = nil
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
@@ -268,13 +267,13 @@ internal struct ProcessLogistics {
 					switch writable {
 						case .fromParentProcess(let channel):
 
-							let terminationFuture = Future<Void, DataChannel.ChildRead.ParentWrite.Error>()
+							let terminationFuture = Future<Void, Never>()
 							
 							// the child process shall read from a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will write to the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildReading()
 
 							// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-							let writerFIFO = EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>.WriterFIFO(maximumElementCount:1)
+							let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
 
 							// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
 							try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
@@ -302,7 +301,7 @@ internal struct ProcessLogistics {
 							
 							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildWriting()
-							let readerFIFO = EventTrigger<DataChannel.ChildRead.ParentWrite.Error, DataChannel.ChildWrite.ParentRead.Error>.ReaderFIFO()
+							let readerFIFO = EventTrigger.ReaderFIFO()
 							try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
 
 							// close the writing end of the pipe after fork.

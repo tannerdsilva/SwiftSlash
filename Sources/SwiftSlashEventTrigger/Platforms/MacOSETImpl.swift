@@ -18,8 +18,8 @@ import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashGlobalSerialization
 
-internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>:EventTriggerEngine where DataChannelChildReadError:Swift.Error, DataChannelChildWriteError:Swift.Error {
-	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle, DataChannelChildReadError, DataChannelChildWriteError>
+internal final class MacOSEventTrigger:EventTriggerEngine {
+	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
 	internal typealias EventType = kevent
@@ -31,10 +31,10 @@ internal final class MacOSEventTrigger<DataChannelChildReadError, DataChannelChi
 	internal let cancelPipe:PosixPipe
 
 	/// the file handle registrations that are currently active.
-	private var activeTriggers:[Int32:Register<DataChannelChildReadError, DataChannelChildWriteError>] = [:]
+	private var activeTriggers:[Int32:Register] = [:]
 	
 	/// the registrations that are pending.
-	private let registrations:FIFO<(Int32, Register<DataChannelChildReadError, DataChannelChildWriteError>?), Never>
+	private let registrations:FIFO<(Int32, Register?), Never>
 	private borrowing func extractPendingRegistrations() {
 		let getIterator = registrations.makeSyncConsumerNonBlocking()
 		infiniteLoop: repeat {
