@@ -20,7 +20,7 @@ import SwiftSlashGlobalSerialization
 public final class EventTrigger:Sendable {
 
 	#if os(Linux)
-	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger<DataChannelChildReadError, DataChannelChildWriteError>
+	internal typealias PlatformSpecificETImplementation = LinuxEventTrigger
 	#elseif os(macOS)
 	internal typealias PlatformSpecificETImplementation = MacOSEventTrigger
 	#endif
