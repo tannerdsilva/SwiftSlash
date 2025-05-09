@@ -1,123 +1,161 @@
-import Foundation
+/*
+LICENSE MIT
+copyright (c) tanner silva 2025. all rights reserved.
 
-/// DataChannels define how data is piped in and out of the process while it is running.
-///  - Data channels are assigned to a file handle of the launched process
-public struct DataChannel {
-    
-    /// Inbound DataChannels are for configuring channels that the running process will write to.
-    /// - Inbound DataChannels are most commonly used to capture `STDOUT` and `STDERR` of the running process.
-    public struct Inbound:Hashable {
-        /// Used on active inbound channels to define how data is buffered and grouped into the AsyncStream
-		public enum ParseMode {
-            /// Separate  AsyncStream data chunks by the CR byte (0xD)
-			case cr
-            /// Separate  AsyncStream data chunks by the LF byte (0xA)
-			case lf
-            /// Separate  AsyncStream data chunks by the occurrence of the CRLF byte sequence (0xD followed by 0xA)
-			case crlf
-            /// Disable bytestream parsing. Data will be transparently passed to the AsyncStream in real time.
-			case unparsedRaw
-        }
-		
-        /// Defines the configuration for an Inbound data channel
-		public enum Configuration {
-            /// Actively capture the output from this data channel with the specified ``DataChannel/Inbound/ParseMode``. Data from this channel can be consumed through its `AsyncStream`.
-			case active(ParseMode)
-            /// Close the file handle of the running process at launch time
-			case closed
-            /// Map this file handle to `/dev/null`
-			case nullPipe
-		}
-		
-        /// The file handle that this data channel will be assigned on the running process
-		public var targetHandle:Int32
-		
-        /// The stream of data that the running process is writing to this data stream (only useful on active configurations)
-		public var stream:AsyncStream<Data>
-        
-        /// The configuration for this data channel
-		public var config:Configuration
-		internal var parseMode:ParseMode? {
-			get {
-				switch self.config {
-					case let .active(mode):
-					return mode
-					default:
-					return nil
+   _____      ______________________   ___   ______ __
+  / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
+ _\ \ | |/ |/ // // _/  / / _\ \/ /__/ __ |_\ \/ _  / 
+/___/ |__/|__/___/_/   /_/ /___/____/_/ |_/___/_//_/  
+
+*/
+
+import SwiftSlashFIFO
+import SwiftSlashFuture
+
+/// Represents a unidirectional data channel that will connect to the launched process.
+/// Data channels must be prepared for a child process **before** the process is launched.
+/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
+public enum DataChannel:Sendable {
+
+	/// Child process will be configured to write data.
+	case write(ChildWrite)
+	/// Child process will be configured to read data.
+	case read(ChildRead)
+
+	/// Represents the various ways that a child process can be configured to write data.
+	/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
+	public enum ChildWrite:Sendable {
+	
+		/// Primary interface for consuming bytes written by child processes.
+		public struct ParentRead:Sendable, AsyncSequence {
+
+			/// The type of error that can occur when reading from the data channel.
+			public typealias Error = Never
+			
+			/// Multiple lines or segments are grouped into a single array to reduce async context switching and ensure timely delivery of data.
+			public typealias Element = [[UInt8]]
+			
+			/// Create a new data channel for child-to-parent streaming.
+			public init() {}
+	
+			/// Returns an async iterator yielding data chunks until the channel closes.
+			public borrowing func makeAsyncIterator() -> AsyncIterator {
+				AsyncIterator(fifo.makeAsyncConsumerExplicit())
+			}
+			
+			/// Internal FIFO for buffering incoming data.
+			internal let fifo:FIFO<[[UInt8]], Never> = .init()
+	
+			/// Yields a new data chunk into the channel’s FIFO.
+			internal borrowing func yield(_ element:consuming [[UInt8]]) {
+				fifo.yield(element)
+			}
+	
+			/// Closes the channel, signaling no further data.
+			/// - Note: downstream consumers (e.g., parent or other) will see EOF.
+			internal borrowing func closeDataChannel() {
+				fifo.finish()
+			}
+	
+			/// AsyncIterator for consuming data until the channel finishes.
+			public struct AsyncIterator:AsyncIteratorProtocol {
+				internal let fifo: FIFO<[[UInt8]], Never>.AsyncConsumerExplicit
+				internal init(_ fifo:consuming FIFO<[[UInt8]], Never>.AsyncConsumerExplicit) {
+					self.fifo = fifo
+				}
+				/// Returns the next chunk of data, or `nil` when the channel is closed.
+				public borrowing func next() async -> [[UInt8]]? {
+					switch await fifo.next(whenTaskCancelled:.finish) {
+					case .element(let element):
+						return element
+					case .capped(_):
+						return nil
+					case .wouldBlock:
+						fatalError("SwiftSlashFIFO internal error :: AsyncConsumer would block, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+					}
 				}
 			}
 		}
-		internal var continuation:AsyncStream<Data>.Continuation
 		
-		public init(target:Int32, config:Configuration = .active(.lf)) {
-			var continuation:AsyncStream<Data>.Continuation? = nil
-			self.stream = AsyncStream<Data> { cont in
-				continuation = cont
-			}
-			self.continuation = continuation!
-			self.config = config
-			switch config {
-				case .closed, .nullPipe:
-					continuation!.finish()
-				case .active:
-					break;
-			}
-			self.targetHandle = target
-		}
+		/// Parent will actively capture the written contents of the child process and parse it by a predetermined separator.
+		///
+		/// - Parameters:
+		/// 	- stream: The `ChildWrite` instance to consume the written data.
+		/// 	- separator: Byte sequence used to delimit chunks (e.g. `[0x0A]` for newline).
+		case toParentProcess(stream:ParentRead, separator:[UInt8])
 		
-		public func hash(into hasher:inout Hasher) {
-			hasher.combine(targetHandle)
-		}
-		
-		public static func == (lhs:Inbound, rhs:Inbound) -> Bool {
-			return lhs.targetHandle == rhs.targetHandle
-		}
+		/// Discards child output on this data channel by piping it to `/dev/null`.
+		/// The written data from the child process never reaches the parent process.
+		case toNull
 	}
-    
-    /// Outbound DataChannels are for configuring channels that the running process will read from
-    ///  - Outbound DataChannels are most commonly used to write data to `STDIN` of a running process.
-	public struct Outbound:Hashable {
-		public enum Configuration {
-            /// Enable this file handle for data transfer with the running process through its AsyncStream.Continuation
-			case active
-            /// Close the file handle of the running process at launch time
-			case closed
-            /// Map this file handle to `/dev/null`
-			case nullPipe
-		}
-        /// The file handle that this data channel will be assigned on the running process
-		public var targetHandle:Int32
-		
-		internal var stream:AsyncStream<Data>
-        
-        /// The configuration for this data channel
-		public var config:Configuration
-        
-        /// Submits data to enter the input stream of the running process
-		public var continuation:AsyncStream<Data>.Continuation
-		
-		public init(target:Int32, config:Configuration = .active) {
-			var continuation:AsyncStream<Data>.Continuation? = nil
-			self.stream = AsyncStream<Data> { cont in
-				continuation = cont
+
+	/// Represents the various ways that a child process can be configured to read data.
+	/// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
+	public enum ChildRead:Sendable {
+		/// A writable channel that the parent process can use to send data for the child process to read.
+		public struct ParentWrite:Sendable {
+			/// The error type for this data channel.
+			public enum Error:Swift.Error {
+				/// The channel was closed before or during a write.
+				case dataChannelClosed
 			}
-			self.continuation = continuation!
-			self.config = config
-			switch config {
-				case .closed, .nullPipe:
-					continuation!.finish()
-				case .active:
-					break;
+			/// Internal FIFO for buffering outgoing data and completion futures.
+			internal let fifo:FIFO<([UInt8], Future<Void, Error>?), Never> = .init()
+	
+			/// Initializes a new parent-to-child data channel.
+			public init() {}
+			
+			/// Yields a sequence of bytes to be written for the child process to read. This function will return immediately and does not wait for the data to be flushed.
+			/// - Parameters:
+			/// 	- bytes: The bytes to send.
+			/// - Throws: This function throws ``SwiftSlash/DataChannel/ChildRead/ParentWrite/Error`` if the data channel has already been closed.
+			/// - NOTE: This function returns immediately.
+			public borrowing func yield(_ bytes:consuming [UInt8]) throws(Error) {
+				switch fifo.yield((bytes, nil)) {
+					case .success:
+						break;
+					case .fifoClosed:
+						throw Error.dataChannelClosed
+					case .fifoFull:
+						fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+				}
 			}
-			self.targetHandle = target
+			
+			/// Writes a sequence of bytes for the child process to read. This function will not return until that data has been successfully flushed to the child process.
+			/// - Pararmeters:
+			/// 	- bytes: The bytes to send.
+			/// - Throws: This function throws ``SwiftSlash/DataChannel/ChildRead/ParentWrite/Error`` if the data channel has already been closed.
+			/// - NOTE: This function will not return until the data has been successfully flushed to the child process.
+			public borrowing func write(_ bytes:consuming [UInt8]) async throws(Error) {
+				let newFuture = Future<Void, Error>()
+				switch fifo.yield((bytes, newFuture)) {
+					case .success:
+						try await newFuture.result()!.get()
+					case .fifoClosed:
+						throw Error.dataChannelClosed
+					case .fifoFull:
+						fatalError("SwiftSlashFIFO internal error :: FIFO is full, but not expecting to be working with a limited FIFO here. this is a critical error. \(#file):\(#line)")
+				}
+			}
+	
+			/// Closes the channel, indicating no further writes.
+			/// - Note: child process will receive `EOF` and may react to this event.
+			public borrowing func closeDataChannel() {
+				fifo.finish()
+			}
+	
+			/// Provides an async consumer for the buffered data to be consumed.
+			internal borrowing func makeAsyncConsumer() -> FIFO<([UInt8], Future<Void, Error>?), Never>.AsyncConsumerExplicit {
+				fifo.makeAsyncConsumerExplicit()
+			}
 		}
 		
-		public func hash(into hasher:inout Hasher) {
-			hasher.combine(targetHandle)
-		}
-		
-		public static func == (lhs:Outbound, rhs:Outbound) -> Bool {
-			return lhs.targetHandle == rhs.targetHandle
-		}
+		/// The parent process will be bound to this data channel, having the ability to write data for the child to read.
+		///
+		/// - Parameter stream: The `ParentWrite` instance to send data into.
+		case fromParentProcess(stream:ParentWrite)
+
+		/// Child reads data sourced directly from `/dev/null` or equivalent source.
+		case fromNull
 	}
 }

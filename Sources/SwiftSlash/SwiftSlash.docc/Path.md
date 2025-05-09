@@ -1,0 +1,27 @@
+# ``SwiftSlash/Path``
+
+## Overview
+
+A **system path** is a sequence of directory or file names separated by a platform-specific delimiter (typically `/` on Unix-like systems). Internally, `Path` stores each segment as a separate string in its `components` array. When converted back to a full path string, segments are joined with `/` and prefixed with a leading slash to denote an absolute path.
+
+
+## Topics
+
+### Instance Initializers
+
+- ``SwiftSlash/Path/init(_:)``
+- ``SwiftSlash/Path/init(pathComponents:)``
+
+### Mutating Existing Paths in Memory
+
+- ``SwiftSlash/Path/appendPathComponent(_:)``
+- ``SwiftSlash/Path/removeLastComponent()``
+
+### Modify Paths by Copy
+
+- ``SwiftSlash/Path/appendingPathComponent(_:)``
+- ``SwiftSlash/Path/removingLastComponent()``
+
+### String Representation
+
+- ``SwiftSlash/Path/path()``
