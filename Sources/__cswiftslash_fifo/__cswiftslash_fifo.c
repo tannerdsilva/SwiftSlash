@@ -131,6 +131,7 @@ bool __cswiftslash_fifo_close(
 	if (__4 == true) {
 		(*____) = atomic_load_explicit(&_->____cp, memory_order_acquire);
 	}
+	pthread_mutex_unlock(&_->____wm);
 	pthread_mutex_destroy(&_->____wm);
 	if (_->____hm == true) {
 		pthread_mutex_unlock(&_->____m);
@@ -152,7 +153,7 @@ bool __cswiftslash_fifo_pass_cap(
 	if (atomic_compare_exchange_weak_explicit(&_->____ic, &__1, true, memory_order_acq_rel, memory_order_relaxed) == true) {
 		atomic_store_explicit(&_->____cp, __, memory_order_release);
 		bool __2 = true;
-		if (atomic_compare_exchange_weak_explicit(&_->____iwlk, &__2, false, memory_order_acq_rel, memory_order_relaxed) == true) {
+		if (atomic_compare_exchange_weak_explicit(&_->____iwlk, &__2, false, memory_order_acq_rel, memory_order_acquire) == true) {
 			pthread_mutex_unlock(&_->____wm);
 		} else if (__2 == true) {
 			abort();
