@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import Testing
 
-@Suite("__cswiftslash_tests",
+@Suite("SwiftSlashTests",
 	.serialized
 )
 internal struct SwiftSlashTests {}
