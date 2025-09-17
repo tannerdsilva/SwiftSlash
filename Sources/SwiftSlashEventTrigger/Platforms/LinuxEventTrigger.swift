@@ -19,7 +19,7 @@ import SwiftSlashFHHelpers
 import SwiftSlashFuture
 import SwiftSlashGlobalSerialization
 
-internal final class LinuxEventTrigger:EventTriggerEngine {
+internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32

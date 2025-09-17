@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import __cswiftslash_posix_helpers
 
-/// Comprehensive tool for launching `Command`s.
+/// Comprehensive tool for launching `Command` values.
 /// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
 public actor ChildProcess {
 	/// Thrown when the process interface is not in the expected state for the requested operation.
@@ -168,7 +168,8 @@ public actor ChildProcess {
 	}
 	
 	/// Send a signal to the child process.
-	/// - Parameter code: The signal code to send to the child process.
+	/// - Parameters:
+	/// 	- code: The signal code to send to the child process.
 	/// - Throws: `InvalidProcessStateError` is thrown if the process is not running.
 	public func signal(_ code:Int32) throws(SignalError) {
 		switch state {

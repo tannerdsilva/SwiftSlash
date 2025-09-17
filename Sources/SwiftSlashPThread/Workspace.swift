@@ -10,7 +10,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 /// this is the primary protocol for implementing a work type that can safely initialize, run, and cancel from a pthread.
-public protocol PThreadWork {
+public protocol PThreadWork:Sendable {
 	/// the argument type that this work takes.
 	associatedtype ArgumentType:Sendable
 	

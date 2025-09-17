@@ -18,7 +18,7 @@ import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashGlobalSerialization
 
-internal final class MacOSEventTrigger:EventTriggerEngine {
+internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32
