@@ -16,7 +16,7 @@ import SwiftSlashFuture
 internal enum Register {
 
 	/// register a parent process reader.
-	case reader(FIFO<size_t, Never>, Future<Void, Never>)
+	case reader(FIFO<Int, Never>, Future<Void, Never>)
 
 
 	/// register a parent process writer.

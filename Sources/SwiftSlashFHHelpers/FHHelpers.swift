@@ -46,7 +46,7 @@ extension Int32 {
 	/// - parameter dataBuffer: the buffer to read the data into.
 	/// - parameter readSize: the size of data to read.
 	/// - returns: the number of bytes read.
-	public func readFH(into dataBuffer:UnsafeMutablePointer<UInt8>, size readSize:size_t) throws(FileHandleError) -> size_t {
+	public func readFH(into dataBuffer:UnsafeMutablePointer<UInt8>, size readSize:Int) throws(FileHandleError) -> Int {
 		infiniteLoop: repeat {
 			// read the data from the file handle.
 			let amountRead = read(self, dataBuffer, readSize)
@@ -78,15 +78,15 @@ extension Int32 {
 	/// - returns: the number of bytes written.
 	/// - throws: FileHandleError.error_wouldblock, FileHandleError.error_bad_fh, FileHandleError.error_invalid, FileHandleError.error_io, FileHandleError.error_nospace, FileHandleError.error_unknown.
 	/// - note: error conditions for EAGAIN and EINTR are handled internally.
-	public func writeFH(_ dataToWrite:UnsafeBufferPointer<UInt8>) throws(FileHandleError) -> size_t {
+	public func writeFH(_ dataToWrite:UnsafeBufferPointer<UInt8>) throws(FileHandleError) -> Int {
 		return try writeFH(from:dataToWrite.baseAddress!, size:dataToWrite.count)
 	}
 
-	public func writeFH(singleByte:consuming UInt8) throws(FileHandleError) -> size_t {
+	public func writeFH(singleByte:consuming UInt8) throws(FileHandleError) -> Int {
 		return try writeFH(from:&singleByte, size:1)
 	}
 
-	fileprivate func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:size_t) throws(FileHandleError) -> size_t {
+	fileprivate func writeFH(from dataBuffer:UnsafePointer<UInt8>, size writeSize:Int) throws(FileHandleError) -> Int {
 		infiniteLoop: repeat {
 			// write the data to the file handle.
 			let amountWritten = write(self, dataBuffer, writeSize)

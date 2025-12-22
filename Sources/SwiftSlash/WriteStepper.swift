@@ -30,7 +30,7 @@ internal struct WriteStepper:~Copyable {
 	private var data:[UInt8]
 	
 	/// the offset of the data that has been written to the file handle.
-	private var offset:size_t = 0
+	private var offset:Int = 0
 
 	/// an optional future that will be set as finished when the write operation is complete.
 	internal let completeFuture:Future<Void, DataChannel.ChildRead.ParentWrite.Error>?
@@ -43,7 +43,7 @@ internal struct WriteStepper:~Copyable {
 
 	/// writes more data into the specified file handle.
 	internal mutating func write(to writerFH:Int32) throws(FileHandleError) -> Action {
-		func exposeBytes(_ dat:UnsafeMutablePointer<UInt8>, count:size_t) throws(FileHandleError) -> size_t {
+		func exposeBytes(_ dat:UnsafeMutablePointer<UInt8>, count:Int) throws(FileHandleError) -> Int {
 			return try writerFH.writeFH(UnsafeBufferPointer<UInt8>(start:dat + offset, count:count - offset))
 		}
 		offset += try exposeBytes(&data, count:data.count)

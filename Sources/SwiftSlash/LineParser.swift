@@ -30,9 +30,9 @@ internal struct LineParser:~Copyable {
 	/// the primary storage buffer for incoming data.
 	private var buffer:UnsafeMutablePointer<UInt8>
 	/// the current capacity of the buffer.
-	private var capacity:size_t
+	private var capacity:Int
 	/// the current number of bytes stored in the buffer.
-	private var count:size_t = 0
+	private var count:Int = 0
 
 	/// the byte pattern that the line parser will use to split incoming data into lines.
 	private let separator:[UInt8]
@@ -43,7 +43,7 @@ internal struct LineParser:~Copyable {
 	/// 	- separator: the byte‐pattern to split on (e.g. `Array("\r\n".utf8)`)
 	/// 	- initialCapacity: starting buffer size; will grow as needed
 	/// 	- output: the output method for the parser to use as it finds matches in the input stream
-	internal init(separator sepArg: [UInt8], initialCapacity initCapArg:size_t, output handlerArg: consuming Output) {
+	internal init(separator sepArg: [UInt8], initialCapacity initCapArg:Int, output handlerArg: consuming Output) {
 		separator = sepArg
 		capacity = max(initCapArg, sepArg.count)
 		buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
@@ -68,9 +68,9 @@ internal struct LineParser:~Copyable {
 	/// 	- writeHandler: closure that gets a free `UnsafeMutableBufferPointer<UInt8>` of at most `bytes` capacity, writes into it **up to** that many bytes, and returns how many bytes were written (0 ⇒ EOF).
 	/// - returns: the actual byte‐count read, so the caller can stop on `0`
 	/// - throws: whatever `writeHandler` throws
-	@discardableResult internal mutating func intake<E>(bytes: size_t, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> size_t) throws(E) -> size_t where E: Swift.Error {
+	@discardableResult internal mutating func intake<E>(bytes:Int, _ writeHandler: (UnsafeMutableBufferPointer<UInt8>) throws(E) -> Int) throws(E) -> Int where E:Swift.Error {
 		// make room
-		ensureCapacity(for: bytes)
+		ensureCapacity(for:bytes)
 
 		// write directly into our buffer
 		let writePtr = buffer.advanced(by: count)
@@ -101,7 +101,7 @@ internal struct LineParser:~Copyable {
 
 	/// convenience: consume a whole `[UInt8]` at once
 	@discardableResult
-	internal mutating func intake(_ data: consuming [UInt8]) -> size_t {
+	internal mutating func intake(_ data: consuming [UInt8]) -> Int {
 		return withUnsafeMutablePointer(to: &data) { ptr in
 			intake(bytes: ptr.pointee.count) { buf in
 				_ = buf.initialize(from: ptr.pointee)
@@ -135,7 +135,7 @@ internal struct LineParser:~Copyable {
 		}
 	}
 
-	private mutating func ensureCapacity(for additional: size_t) {
+	private mutating func ensureCapacity(for additional:Int) {
 		guard capacity >= count + additional else {
 			var newCap = capacity * 2
 			while count + additional > newCap {
@@ -185,7 +185,7 @@ internal struct LineParser:~Copyable {
 			if leftover > 0 {
 				memmove(buffer, buffer.advanced(by: lineStart), leftover)
 			}
-			count = size_t(leftover)
+			count = Int(leftover)
 		}
 
 		if !lines.isEmpty {

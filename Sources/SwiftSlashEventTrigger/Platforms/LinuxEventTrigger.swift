@@ -19,7 +19,9 @@ import SwiftSlashFHHelpers
 import SwiftSlashFuture
 import SwiftSlashGlobalSerialization
 
-internal final class LinuxEventTrigger:EventTriggerEngine {
+/// the primary event trigger implementation for linux.
+/// 	- NOTE: this class is marked with `unchecked Sendable` because it has mutable storage for `activeTriggers`. As required by the Swift runtime, the access to this mutable storage is perfectly isolated and managed to only a single thread.
+internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32

@@ -18,7 +18,10 @@ import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashGlobalSerialization
 
-internal final class MacOSEventTrigger:EventTriggerEngine {
+
+/// the primary event trigger implementation for MacOS.
+/// 	- NOTE: this class is marked with `unchecked Sendable` because it has mutable storage for `activeTriggers`. As required by the Swift runtime, the access to this mutable storage is perfectly isolated and managed to only a single thread. 
+internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 	internal typealias ArgumentType = EventTriggerSetup<EventTriggerHandle>
 	internal typealias ReturnType = Void
 	internal typealias EventTriggerHandle = Int32

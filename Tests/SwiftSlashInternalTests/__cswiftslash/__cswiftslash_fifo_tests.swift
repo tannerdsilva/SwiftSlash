@@ -55,7 +55,7 @@ extension __cswiftslash_tests {
 				return __cswiftslash_fifo_pass_cap(fifoPtr, capData)
 			}
 			/// sets the maximum number of elements in the FIFO
-			fileprivate func setMaxElements(_ maxElements: size_t) -> Bool {
+			fileprivate func setMaxElements(_ maxElements:Int) -> Bool {
 				return __cswiftslash_fifo_set_max_elements(fifoPtr, maxElements)
 			}
 			private func closeFIFO() -> (Bool, UnsafeMutableRawPointer?) {

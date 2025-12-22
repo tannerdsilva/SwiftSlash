@@ -26,7 +26,7 @@ public final class EventTrigger:Sendable {
 	#endif
 
 	/// the type of registration that is being made to the event trigger for readers.
-	public typealias ReaderFIFO = FIFO<size_t, Never>
+	public typealias ReaderFIFO = FIFO<Int, Never>
 	/// the type of registration that is being made to the event trigger for writers.
 	public typealias WriterFIFO = FIFO<Void, Never>
 
