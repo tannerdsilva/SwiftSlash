@@ -187,7 +187,7 @@ internal struct ProcessLogistics {
 				internal let terminationFuture:Future<Void, Never>
 				internal let separator:[UInt8]
 				internal let userDataStream:DataChannel.ChildWrite.ParentRead
-				internal let systemReadEventsFIFO:FIFO<size_t, Never>
+				internal let systemReadEventsFIFO:FIFO<Int, Never>
 				internal let rFH:Int32
 				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
@@ -222,7 +222,7 @@ internal struct ProcessLogistics {
 						}
 						do {
 							// prepare the lineparser to intake the data.
-							var writtenCount:size_t
+							var writtenCount:Int
 							repeat {
 								writtenCount = try lineParser.intake(bytes:largestReadSize) { wptr in
 									// read the data directly from the handle to the lineparser.

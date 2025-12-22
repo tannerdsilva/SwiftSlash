@@ -182,7 +182,7 @@ extension SwiftSlashTests {
 					let inputString = "Hello from parent process\n"
 					let inputData = [UInt8](inputString.utf8)
 					try inputStream.yield(inputData)
-					var foundItems:size_t = 0
+					var foundItems:Int = 0
 					parseLoop: for await curItem in outputStream {
 						guard curItem.count < 2 else {
 							break parseLoop
@@ -211,7 +211,7 @@ extension SwiftSlashTests {
 			let result = try await newCommand.runSync()
 			#expect(result.exit == .code(42), "expected exit code to be 0, but got \(result.exit)")
 			#expect(result.stdout.count == 10, "expected 10 lines of output, but got \(result.stdout.count)")
-			var foundItems:size_t = 0
+			var foundItems:Int = 0
 			for line in result.stdout {
 				let curString = String(bytes:line, encoding:.utf8)
 				#expect(curString != nil, "expected non-nil output from command")

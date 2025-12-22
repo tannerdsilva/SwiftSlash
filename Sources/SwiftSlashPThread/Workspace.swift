@@ -10,7 +10,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 */
 
 /// this is the primary protocol for implementing a work type that can safely initialize, run, and cancel from a pthread.
-public protocol PThreadWork {
+public protocol PThreadWork:Sendable {
 	/// the argument type that this work takes.
 	associatedtype ArgumentType:Sendable
 	
@@ -18,7 +18,7 @@ public protocol PThreadWork {
 	associatedtype ReturnType:Sendable
 	
 	/// the type of error that the work can throw.
-	associatedtype ThrowType:Swift.Error
+	associatedtype ThrowType:Swift.Error & Sendable
 	
 	/// creates a new instance of the work type.
 	init(_:consuming ArgumentType)

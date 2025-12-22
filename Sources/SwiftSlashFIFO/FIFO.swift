@@ -40,7 +40,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	/// initialize a new FIFO with a specified maximum element count.
 	/// - parameters:
 	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time.
-	public init(maximumElementCount:size_t) {
+	public init(maximumElementCount:Int) {
 		// memory setup
 		let newPointer = __cswiftslash_fifo_init(true)
 
