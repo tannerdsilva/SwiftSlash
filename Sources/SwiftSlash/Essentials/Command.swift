@@ -82,13 +82,13 @@ public struct Command:Sendable {
 	/// Encapsulates the result of a Command that was run using the convenience function ``SwiftSlash/Command/runSync()`.
 	public struct SyncResult:Sendable {
 		/// The exit code of the process.
-		let exit:ChildProcess.Exit
+		public let exit:ChildProcess.Exit
 		/// The data that was written to `STDERR` while the child process was running.
-		let stderr:[[UInt8]]
+		public let stderr:[[UInt8]]
 		/// The data that was written to `STDOUT` while the child process was running.
-		let stdout:[[UInt8]]
+		public let stdout:[[UInt8]]
 		/// A convenience boolean that is set to `true` when `exit == ChildProcess.Exit.code(0)`
-		let succeeded:Bool
+		public let succeeded:Bool
 	}
 	
 	/// Run a command synchronously.
