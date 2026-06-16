@@ -57,6 +57,14 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashContained"
 	),
 	.target(
+		name:"SwiftSlashPThreadSerialExecutor",
+		dependencies:[
+			"SwiftSlashPThread",
+			"SwiftSlashFIFO",
+			"__cswiftslash_threads"
+		]
+	),
+	.target(
 		name:"SwiftSlashGlobalSerialization"
 	),
 	.target(

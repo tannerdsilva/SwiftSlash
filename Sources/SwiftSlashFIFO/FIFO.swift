@@ -113,7 +113,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 		}
 		// consume a reference to each of the items that were being held by the FIFO
 		for item in items {
-			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue()
+			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue().value()
 		}
 		// consume the cap pointer if it was returned
 		if capPointer.0 == true && capPointer.1 != nil {
