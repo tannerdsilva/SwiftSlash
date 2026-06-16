@@ -11,6 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import Testing
 @testable import __cswiftslash_future
+@testable import SwiftSlashGlobalSerialization
 
 import Synchronization
 
@@ -734,7 +735,7 @@ extension __cswiftslash_tests {
 			}
 
 			@Test("__cswiftslash_future :: multiple waiters :: async error", .timeLimit(.minutes(1)))
-			func testMultipleWaitersAsyncError() async throws {
+			@SwiftSlashGlobalSerializationForTesting func testMultipleWaitersAsyncError() async throws {
 				let future = Harness()
 				let waiterCount = 5
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)
@@ -836,7 +837,7 @@ extension __cswiftslash_tests {
 			}
 
 			@Test("__cswiftslash_future :: multiple waiters :: error and result race", .timeLimit(.minutes(1)))
-			func testMultipleWaitersErrorAndResultRace() async throws {
+			@SwiftSlashGlobalSerializationForTesting func testMultipleWaitersErrorAndResultRace() async throws {
 				let future = Harness()
 				let waiterCount = 6
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)

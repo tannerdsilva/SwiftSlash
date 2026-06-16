@@ -65,7 +65,12 @@ fileprivate let swiftTargets:[Target] = [
 		]
 	),
 	.target(
-		name:"SwiftSlashGlobalSerialization"
+		name:"SwiftSlashGlobalSerialization",
+		dependencies:[
+			"SwiftSlashPThreadSerialExecutor",
+			"SwiftSlashFIFO",
+			"SwiftSlashPThread",
+		]
 	),
 	.target(
 		name:"SwiftSlashFuture",
@@ -132,6 +137,7 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashFIFO",
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",
+		"SwiftSlashGlobalSerialization",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
