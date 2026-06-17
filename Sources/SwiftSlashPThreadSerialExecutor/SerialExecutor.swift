@@ -23,7 +23,7 @@ public struct PThreadWorkerEventLoop:PThreadWork {
     public mutating func pthreadWork() throws(Swift.Error) -> Void {
 		let consumer = queue.makeSyncConsumerBlocking()
         while let (job, executor) = try consumer.next() {
-            job.runSynchronously(on: executor)
+            job.runSynchronously(on:executor)
         }
     }
 }
