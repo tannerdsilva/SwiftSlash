@@ -106,7 +106,8 @@ fileprivate let swiftTargets:[Target] = [
 			"__cswiftslash_eventtrigger",
 			"SwiftSlashPThread",
 			"SwiftSlashFIFO",
-			"SwiftSlashFHHelpers"
+			"SwiftSlashFHHelpers",
+			"SwiftSlashGlobalSerialization"
 		]
 	),
 	.target(

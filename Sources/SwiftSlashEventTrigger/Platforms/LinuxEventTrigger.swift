@@ -178,7 +178,7 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 }
 
 extension LinuxEventTrigger {
-	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = epoll_event()
 		newEvent.data.fd = reader
 		newEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
@@ -187,7 +187,7 @@ extension LinuxEventTrigger {
 		}
 	}
 
-	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = epoll_event()
 		newEvent.data.fd = writer
 		newEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
