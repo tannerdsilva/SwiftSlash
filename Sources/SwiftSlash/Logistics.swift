@@ -249,8 +249,8 @@ internal struct ProcessLogistics {
 	}
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
-	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger? = nil
-	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
+	@SwiftSlashGlobalSerializationForTesting fileprivate static var eventTrigger:EventTrigger? = nil
+	@SwiftSlashGlobalSerializationForTesting internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
 		}
@@ -387,7 +387,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ChildProcess.SpawnError) -> pid_t {
+	@SwiftSlashGlobalSerializationForTesting fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ChildProcess.SpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
 			throw ChildProcess.SpawnError.precheckExecutableFailure

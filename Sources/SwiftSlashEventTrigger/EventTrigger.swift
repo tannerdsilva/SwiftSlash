@@ -40,7 +40,7 @@ public final class EventTrigger:Sendable {
 	private let cancelPipe:PosixPipe
 
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
-	@SwiftSlashGlobalSerialization public init() throws {
+	@SwiftSlashGlobalSerializationForTesting public init() throws {
 		cancelPipe = try PosixPipe()
 		regStream = FIFO()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
@@ -57,13 +57,13 @@ public final class EventTrigger:Sendable {
 	}
 
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
-	@SwiftSlashGlobalSerialization public borrowing func register(reader:Int32, _ fifo:consuming ReaderFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting public borrowing func register(reader:Int32, _ fifo:consuming ReaderFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
 		regStream.yield((reader, .reader(fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, reader:reader)
 	}
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	@SwiftSlashGlobalSerialization public func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting public func register(writer:Int32, _ fifo:consuming WriterFIFO, finishFuture:consuming Future<Void, Never>) throws(EventTriggerErrors) {
 		regStream.yield((writer, .writer(fifo, finishFuture)))
 		try PlatformSpecificETImplementation.register(prim, writer:writer)
 	}

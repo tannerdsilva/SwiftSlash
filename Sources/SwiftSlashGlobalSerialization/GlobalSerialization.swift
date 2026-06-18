@@ -20,10 +20,10 @@ import SwiftSlashPThread
 }
 
 /// a process may only launch one child process at a time. no step in regards to producing a child process is reentrant safe. this actor enforces this strictly.
-@globalActor internal actor SwiftSlashGlobalSerializationForTesting:GlobalActor {
+@globalActor public actor SwiftSlashGlobalSerializationForTesting:GlobalActor {
 	private let serialExecutor:PThreadSerialExecutor
 
-	internal init() {
+	public init() {
 		let lt:Running<PThreadWorkerEventLoop>
 		let fifo = FIFO<(UnownedJob, UnownedSerialExecutor), Swift.Error>()
 		do {
@@ -34,7 +34,7 @@ import SwiftSlashPThread
 		self.serialExecutor = PThreadSerialExecutor(thread:lt, fifo:fifo)
 	}
 
-	internal nonisolated var unownedExecutor:UnownedSerialExecutor {
+	public nonisolated var unownedExecutor:UnownedSerialExecutor {
 		serialExecutor.asUnownedSerialExecutor()
 	}
 

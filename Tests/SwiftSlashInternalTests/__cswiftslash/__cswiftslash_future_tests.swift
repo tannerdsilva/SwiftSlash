@@ -735,7 +735,7 @@ extension __cswiftslash_tests {
 			}
 
 			@Test("__cswiftslash_future :: multiple waiters :: async error", .timeLimit(.minutes(1)))
-			@SwiftSlashGlobalSerializationForTesting func testMultipleWaitersAsyncError() async throws {
+			func testMultipleWaitersAsyncError() async throws {
 				let future = Harness()
 				let waiterCount = 5
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)
@@ -837,7 +837,7 @@ extension __cswiftslash_tests {
 			}
 
 			@Test("__cswiftslash_future :: multiple waiters :: error and result race", .timeLimit(.minutes(1)))
-			@SwiftSlashGlobalSerializationForTesting func testMultipleWaitersErrorAndResultRace() async throws {
+			func testMultipleWaitersErrorAndResultRace() async throws {
 				let future = Harness()
 				let waiterCount = 6
 				var results = [Harness.Result?](repeating: nil, count: waiterCount)

@@ -198,7 +198,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 }
 
 extension MacOSEventTrigger {
-	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting internal static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(reader)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
@@ -211,7 +211,7 @@ extension MacOSEventTrigger {
 		}
 	}
 
-	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
+	@SwiftSlashGlobalSerializationForTesting internal static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors) {
 		var newEvent = kevent()
 		newEvent.ident = UInt(writer)
 		newEvent.flags = UInt16(EV_ADD | EV_CLEAR | EV_EOF)
