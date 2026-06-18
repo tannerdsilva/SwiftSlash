@@ -23,7 +23,7 @@ internal enum WaitPIDResult {
 	case failed(errno:Int32)
 }
 extension pid_t {
-	@SwiftSlashGlobalSerialization internal func waitPID() async -> WaitPIDResult {
+	internal func waitPID() async -> WaitPIDResult {
 		let (statusValue, errnoValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(Int32, Int32?), Never>) in
 			var statusCapture:Int32 = 0
 			let wpidReturn = waitpid(self, &statusCapture, 0)
