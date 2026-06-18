@@ -29,19 +29,20 @@ public struct PThreadWorkerEventLoop:PThreadWork {
 }
 
 public final class PThreadSerialExecutor:SerialExecutor {
-    private let queue:FIFO<UnownedJob, Swift.Error> = FIFO()
+    private let queue:FIFO<(UnownedJob, UnownedSerialExecutor), Swift.Error>
 	private let running:Running<PThreadWorkerEventLoop>
-	public init(thread:consuming Running<PThreadWorkerEventLoop>) {
+	public init(thread:consuming Running<PThreadWorkerEventLoop>, fifo:FIFO<(UnownedJob, UnownedSerialExecutor), Swift.Error>) {
 		self.running = thread
+		self.queue = fifo
 	}
     deinit {
         queue.finish()
     }
     public func enqueue(_ job:consuming ExecutorJob) {
         // FIFO is thread-safe and handles yielding the job across threads.
-        _ = queue.yield(UnownedJob(job))
+        _ = queue.yield((UnownedJob(job), asUnownedSerialExecutor()))
     }
-    public func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+    public borrowing func asUnownedSerialExecutor() -> UnownedSerialExecutor {
         return UnownedSerialExecutor(ordinary:self)
     }
 }

@@ -31,7 +31,7 @@ import SwiftSlashPThread
 		} catch let error {
 			fatalError("failed to launch pthread for global serialization actor: \(error)")
 		}
-		self.serialExecutor = PThreadSerialExecutor(thread:lt)
+		self.serialExecutor = PThreadSerialExecutor(thread:lt, fifo:fifo)
 	}
 
 	internal nonisolated var unownedExecutor:UnownedSerialExecutor {
