@@ -50,7 +50,7 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		} while true
 	}
 	
-	internal init(_ ptSetup:consuming ArgumentType) {
+	internal init(_ ptSetup:sending ArgumentType) {
 		registrations = ptSetup.registersIn
 		prim = ptSetup.handle
 		cancelPipe = ptSetup.cancelPipe
@@ -69,7 +69,7 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		eventBuffer.deallocate()
 	}
 
-	internal func pthreadWork() throws -> Void {
+	internal func pthreadWork() throws -> sending Void {
 		// break by pthread cancel
 		repeat {
 

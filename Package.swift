@@ -21,14 +21,14 @@ fileprivate let cswiftslashTargets:[Target] = [
 		publicHeadersPath:"."
 	),
 	// future
-	.target(
-		name:"__cswiftslash_future",
-		dependencies: [
-			"__cswiftslash_identified_list",
-			"__cswiftslash_types"
-		],
-		publicHeadersPath:"."
-	),
+	// .target(
+	// 	name:"__cswiftslash_future",
+	// 	dependencies: [
+	// 		"__cswiftslash_identified_list",
+	// 		"__cswiftslash_types"
+	// 	],
+	// 	publicHeadersPath:"."
+	// ),
 	// threading
 	.target(
 		name:"__cswiftslash_threads",
@@ -75,9 +75,11 @@ fileprivate let swiftTargets:[Target] = [
 	.target(
 		name:"SwiftSlashFuture",
 		dependencies:[
-			"__cswiftslash_future",
-			"SwiftSlashContained"
-		]
+			"SwiftSlashOneShotLatch",
+		],
+	),
+	.target(
+		name:"SwiftSlashOneShotLatch"
 	),
 	.target(
 		name:"SwiftSlashPThread",
@@ -127,7 +129,6 @@ fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
 		"__cswiftslash_fifo",
-		"__cswiftslash_future",
 		"__cswiftslash_types",
 		"__cswiftslash_threads",
 		"__cswiftslash_eventtrigger",

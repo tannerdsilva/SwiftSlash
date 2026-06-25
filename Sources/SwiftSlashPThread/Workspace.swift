@@ -18,11 +18,11 @@ public protocol PThreadWork:Sendable {
 	associatedtype ReturnType:Sendable
 	
 	/// the type of error that the work can throw.
-	associatedtype ThrowType:Swift.Error & Sendable
+	associatedtype ThrowType:Swift.Error
 	
 	/// creates a new instance of the work type.
-	init(_:consuming ArgumentType)
+	init(_:sending ArgumentType)
 	
 	/// runs the work and returns the result.
-	mutating func pthreadWork() throws(ThrowType) -> ReturnType
+	mutating func pthreadWork() throws(ThrowType) -> sending ReturnType
 }
