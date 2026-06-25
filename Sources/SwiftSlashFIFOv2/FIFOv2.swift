@@ -44,13 +44,59 @@ public final class FIFOv2<Element:~Copyable, Failure>:Sendable where Failure:Swi
 	}
 
 	internal struct Core:~Copyable {
+		internal final class Link {
+			internal let element:Element
+			internal var next:Link? = nil
+			internal init(_ elementIn:consuming Element) {
+				element = elementIn
+			}
+		}
+
 		/// used to hold a pair of references to the base and tail links of the FIFO.
 		internal struct ReferencePair:~Copyable {
 			/// a reference to the base link of the FIFO
 			internal var base:Link? = nil
 			/// a reference to the tail link of the FIFO
 			internal var tail:Link? = nil
+			
+			internal mutating func addLink(_ link:Link) {
+				switch (base, tail) {
+				case (nil, nil):
+					base = link
+					tail = link
+				case (_, let t?):
+					t.next = link
+					tail = link
+				default:
+					fatalError("SwiftSlashFIFO: ReferencePair is in an invalid state. \(#file):\(#line)")
+				}
+			}
+
+			internal mutating func removeLink() -> Link? {
+				switch (base, tail) {
+				case (nil, nil):
+					return nil
+				case (let b?, let t?):
+					if b === t {
+						base = nil
+						tail = nil
+						b.next = nil
+						return b
+					} else {
+						base = b.next
+						b.next = nil
+						if base == nil {
+							tail = nil
+						}
+						return b
+					}
+				default:
+					fatalError("SwiftSlashFIFO: ReferencePair is in an invalid state. \(#file):\(#line)")
+				}
+			}
+
 		}
+
 		/// used to set a limit of buffered elements in the FIFO. if this value is nil, the FIFO buffer size will be unbounded.
 		internal let maxElementsBuffered:UInt64?
 		/// used to track the number of elements currently buffered in the FIFO.
@@ -60,13 +106,15 @@ public final class FIFOv2<Element:~Copyable, Failure>:Sendable where Failure:Swi
 		internal init(maxElementsBuffered maxElements:UInt64?) {
 			maxElementsBuffered = maxElements
 		}
-	}
 
-	internal final class Link {
-		internal let element:Element
-		internal var next:Link? = nil
-		internal init(_ elementIn:consuming Element) {
-			element = elementIn
+		internal mutating func yield(_ element:consuming Element) -> YieldResult {
+			guard maxElementsBuffered == nil || elementCount < maxElementsBuffered! else {
+				return .fifoFull
+			}
+			let link = Link(element)
+			pair.addLink(link)
+			elementCount += 1
+			return .success
 		}
 	}
 

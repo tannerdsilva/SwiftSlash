@@ -191,8 +191,8 @@ extension SwiftSlashTests {
 			let future = Future<Int, Never>()
 			try future.setSuccess(10)
 			
-			try await confirmation("whenResult fires synchronously", expectedCount: 1) { syncFire in
-				let handlerID = try future.whenResult { result in
+			await confirmation("whenResult fires synchronously", expectedCount: 1) { syncFire in
+				let handlerID = future.whenResult { result in
 					syncFire.confirm()
 					#expect(result != nil)
 					#expect(result!.get() == 10)
@@ -286,6 +286,11 @@ extension SwiftSlashTests {
 
 		@Test("Future :: torture test high concurrency sync waiters", .timeLimit(.minutes(1)))
 		func testHighConcurrencySyncWaiters() async throws {
+			func waitForAllThreads(_ threads: [Running<GenericPThread<Void>>]) throws {
+				for t in threads {
+					try t.joinSync()
+				}
+			}
 			let future = Future<Int, Never>()
 			let expectedValue = 99
 			let threadsCount = 100
@@ -305,9 +310,7 @@ extension SwiftSlashTests {
 			try await Task.sleep(nanoseconds: 200_000_000)
 			try future.setSuccess(expectedValue)
 			
-			for t in runningThreads {
-				try await t.joinAsync()
-			}
+			try waitForAllThreads(runningThreads)
 			
 			#expect(expectation.load(ordering: .sequentiallyConsistent) == threadsCount)
 		}
@@ -319,7 +322,7 @@ extension SwiftSlashTests {
 			
 			try await confirmation("all callbacks fired", expectedCount: 50) { confirm in
 				for _ in 0..<50 {
-					_ = try future.whenResult { result in
+					_ = future.whenResult { result in
 						#expect(result?.get() == expectedValue)
 						confirm()
 					}
@@ -330,7 +333,7 @@ extension SwiftSlashTests {
 
 		@Test("Future :: torture test drop future with many whenResult callbacks", .timeLimit(.minutes(1)))
 		func testDropFutureWithManyWhenResult() async throws {
-			try await confirmation("all callbacks cancelled on drop", expectedCount: 100) { confirm in
+			await confirmation("all callbacks cancelled on drop", expectedCount: 100) { confirm in
 				struct WhenDeInit: ~Copyable {
 					let cancelCounter: Confirmation
 					init(_ c: Confirmation) { cancelCounter = c }
@@ -339,7 +342,7 @@ extension SwiftSlashTests {
 				
 				let future = Future<Int, Never>()
 				for _ in 0..<100 {
-					_ = try future.whenResult { [d = WhenDeInit(confirm)] r in
+					_ = future.whenResult { [d = WhenDeInit(confirm)] r in
 						_ = d
 						#expect(r == nil)
 					}

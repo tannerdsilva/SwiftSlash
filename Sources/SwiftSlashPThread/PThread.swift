@@ -229,29 +229,11 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 		}
 		// join the pthread
 		guard pthread_join(ptp, nil) == 0 else {
-			fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
+			throw PThreadJoinFailure()
 		}
 		guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
 			fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
 		}
-	}
-
-	public consuming func joinAsync() async throws(PThreadJoinFailure) {
-		guard state.load(ordering:.acquiring) != .threadJoined else {
-			throw PThreadJoinFailure()
-		}
-		await withUnsafeContinuation({ (cont:UnsafeContinuation<Void, Never>) in
-			withUnsafeMutablePointer(to:&self) { (selfPtr:UnsafeMutablePointer<Running<W>>) in
-				// join the pthread
-				guard pthread_join(selfPtr.pointee.ptp, nil) == 0 else {
-					fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
-				}
-				guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
-					fatalError("SwiftSlashPThread: pthread_join atomic operations tripped. this is a critical error. \(#file):\(#line)")
-				}
-			}
-			cont.resume()
-		})
 	}
 
 	deinit {

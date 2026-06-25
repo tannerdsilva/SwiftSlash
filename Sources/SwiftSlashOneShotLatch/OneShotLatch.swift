@@ -27,14 +27,14 @@ public final class OneShotLatch:Sendable {
 		}
 
 		internal borrowing func unlock() throws(OneShotSemanticViolation) {
-			guard hasBeenUnlocked.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == false else {
+			guard hasBeenUnlocked.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == true else {
 				throw OneShotSemanticViolation()
 			}
 			semaphore.signal()
 		}
 
 		internal borrowing func wait() throws(OneShotSemanticViolation) {
-			guard hasBeenWaited.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == false else {
+			guard hasBeenWaited.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == true else {
 				throw OneShotSemanticViolation()
 			}
 			semaphore.wait()
