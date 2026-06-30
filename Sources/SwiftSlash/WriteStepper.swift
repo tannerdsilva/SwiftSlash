@@ -48,7 +48,7 @@ internal struct WriteStepper:~Copyable {
 		}
 		offset += try exposeBytes(&data, count:data.count)
 		if offset == data.count {
-			try? completeFuture?.setSuccess(())
+			_ = try? completeFuture?.setSuccess(())
 			return .retireMe
 		} else {
 			return .holdMe

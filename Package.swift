@@ -97,6 +97,12 @@ fileprivate let swiftTargets:[Target] = [
 		]
 	),
 	.target(
+		name:"SwiftSlashFIFOv2",
+		dependencies:[
+			"SwiftSlashOneShotLatch"
+		]
+	),
+	.target(
 		name:"SwiftSlashFHHelpers",
 		dependencies:[
 			"__cswiftslash_posix_helpers"
@@ -140,6 +146,7 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",
 		"SwiftSlashGlobalSerialization",
+		"SwiftSlashOneShotLatch",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )

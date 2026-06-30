@@ -12,40 +12,54 @@ copyright (c) tanner silva 2025. all rights reserved.
 import Synchronization
 import class Dispatch.DispatchSemaphore
 
-/// used to block a waiter for synchronous waiting.
-/// NOTE: this class is marked with `unchecked Sendable` because it is assumed that this tool will only be used within the "state mutex" of the future.
+/// used to block a waiter for synchronous blocking until the latch is released.
 /// NOTE: each instance of this class must handle a single waiter block latch. the instance is not reusable and there cannot be multiple waiters.
-public final class OneShotLatch:Sendable {
+public final class OneShotLatch<Shot:Sendable>:Sendable {
 	/// thrown when a latch is attempted to be unlocked or waited more than once - violating the one-shot semantics of this latch.
 	public struct OneShotSemanticViolation:Swift.Error {}
 	internal struct Core:~Copyable {
-		private let hasBeenUnlocked:Atomic<Bool> = .init(false)
-		private let hasBeenWaited:Atomic<Bool> = .init(false)
-		private let semaphore:DispatchSemaphore
+		private var hasBeenUnlocked:Bool = false
+		private var hasBeenWaited:Bool = false
+		private let semaphore:DispatchSemaphore = DispatchSemaphore(value:0)
+		private let result:Mutex<Shot?>
 		fileprivate init() {
-			semaphore = DispatchSemaphore(value:0)
+			result = .init(nil)
 		}
 
-		internal borrowing func unlock() throws(OneShotSemanticViolation) {
-			guard hasBeenUnlocked.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == true else {
+		internal mutating func fire(_ element:sending Shot) throws(OneShotSemanticViolation) {
+			guard hasBeenWaited == false else {
 				throw OneShotSemanticViolation()
+			}
+			hasBeenUnlocked = true
+			result.withLock { result in
+				result = element
 			}
 			semaphore.signal()
 		}
 
-		internal borrowing func wait() throws(OneShotSemanticViolation) {
-			guard hasBeenWaited.compareExchange(expected:false, desired: true, successOrdering:.acquiringAndReleasing, failureOrdering:.relaxed).exchanged == true else {
+		internal mutating func wait() throws(OneShotSemanticViolation) -> Shot {
+			guard hasBeenWaited == false else {
 				throw OneShotSemanticViolation()
 			}
+			hasBeenWaited = true
 			semaphore.wait()
+			return result.withLock { result in
+				result!
+			}
 		}
 	}
-	internal let core:Core = .init()
+	internal let core:Mutex<Core> = .init(.init())
 	public init() {}
-	public borrowing func unlock() throws(OneShotSemanticViolation) {
-		try core.unlock()
+	public borrowing func fire(_ element:sending Shot) throws(OneShotSemanticViolation) {
+		try core.withLock { coreState throws(OneShotSemanticViolation) in
+			try coreState.fire(element)
+		 }
 	}
-	public borrowing func wait() throws(OneShotSemanticViolation) {
-		try core.wait()
+
+	@available(*, noasync, message:"OneShotLatch.wait() is a synchronous blocking call. it is not compatible with async contexts.")
+	public borrowing func wait() throws(OneShotSemanticViolation) -> Shot {
+		try core.withLock { coreState throws(OneShotSemanticViolation) in
+			try coreState.wait()
+		}
 	}
 }

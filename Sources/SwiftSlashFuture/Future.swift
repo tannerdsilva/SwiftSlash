@@ -19,19 +19,15 @@ public final class Future<Produced:Sendable, Failure:Swift.Error>:Sendable {
 	/// a tool used by a user waiting for a result of a future instance. this tool, specifically, is used to block the waiting thread until the future produces a result, allowing the user to synchronously wait for a result from the future.
 	public final class SyncWaiter:Sendable {
 		internal let uid:UInt64 = UInt64.random(in:1...UInt64.max)
-		private let latch:OneShotLatch
-		private let result:Mutex<Result<Produced, Failure>?>
+		private let latch:OneShotLatch<Result<Produced, Failure>?>
 		internal init() {
 			latch = OneShotLatch()
-			result = Mutex(nil)
 		}
 		public func wait() -> Result<Produced, Failure>? {
-			try! latch.wait()
-			return result.withLock { $0 }
+			return try! latch.wait()
 		}
 		internal borrowing func notify(with resultToAssign:sending Result<Produced, Failure>?) {
-			result.withLock { $0 = resultToAssign }
-			try! latch.unlock()
+			try! latch.fire(resultToAssign)
 		}
 	}
 	public typealias CodeBlockWaiter = @Sendable (Result<Produced, Failure>?) -> Void
@@ -44,6 +40,7 @@ public final class Future<Produced:Sendable, Failure:Swift.Error>:Sendable {
 	}
 }
 
+// MARK: Assignment
 extension Future {
 	/// sets the result of the future to a successful value. if the future already has a result (either a success, a failure, or a cancellation), this function will throw an error.
 	/// - parameters:
@@ -69,7 +66,8 @@ extension Future {
 }
 
 extension Future {
-
+	/// returns the basic state of a future, indicating whether it has a result or not.
+	/// - returns: `true` if the future has a result (either a success, a failure, or a cancellation), or `false` if the future is still pending a result.
 	public func hasResult() -> Bool {
 		return core.hasResult()
 	}
@@ -94,8 +92,8 @@ extension Future {
 		return core.registerCodeBlockWaiter(codeToRun)
 	}
 
-	/// wait for the future to produce a result and return it.
-	@available(*, noasync, message:"this function cannot be called from an async context because it may block the calling thread for an indefinite amount of time")
+	/// creates a new synchronous waiter that can be used to block the current thread until the future produces a result. if the future already has a result, the waiter will be notified immediately with the result.
+	/// - returns: a new synchronous waiter that can be used to block the current thread until the future produces a result.
 	public func waitSynchronously() -> SyncWaiter {
 		let waiter = SyncWaiter()
 		_ = core.registerResultWaiter(waiter)
@@ -121,7 +119,7 @@ extension Future {
 					}
 				}
 			})
-		} onCancel: {
+		} onCancel:{
 			didCallCancellationHandler.store(true, ordering:.releasing)
 			let cancelID = cancelID.load(ordering:.acquiring)
 			if cancelID != 0 {
@@ -136,6 +134,7 @@ extension Future {
 	}
 }
 
+// MARK: Core
 extension Future {
 	internal struct Core:~Copyable {
 
@@ -271,6 +270,9 @@ extension Future {
 		}
 
 		/// registers a code block waiter to wait for the result of the future. if the future is already finished, the code block will be executed immediately with the result.
+		/// - parameters:
+		/// 	- codeToNotify: the code block to execute when the future produces a result. the code block will be executed with an optional result, which will be nil if the future was cancelled before it could produce a result.
+		/// - returns: the uid of the registered code block waiter, or nil if the future already has a result and the code block was executed.
 		internal borrowing func registerCodeBlockWaiter(_ codeToNotify:consuming @escaping CodeBlockWaiter) -> UInt64? {
 			switch stateMutex.withLock({ (state) -> WaiterOrResult in
 				switch state {
@@ -300,6 +302,9 @@ extension Future {
 		}
 
 		/// registers an async awaiter to wait for the result of the future. if the future is already finished, the continuation will be resumed immediately with the result.
+		/// - parameters:
+		/// 	- continuation: the continuation to resume when the future produces a result.
+		/// - returns: the uid of the registered async awaiter, or nil if the future already has a result and the continuation was resumed immediately.
 		internal borrowing func registerAsyncAwaiter(_ continuation:consuming UnsafeContinuation<Result<Produced, Failure>?, Never>) -> UInt64? {
 			switch stateMutex.withLock({ (state) -> WaiterOrResult in
 				switch state {
@@ -334,6 +339,7 @@ extension Future {
 		/// - throws: an error if the future is already finished.
 		/// - returns: a set of the uids of the waiters that were notified of the assignment of the result, error, or cancellation.
 		internal borrowing func assign(_ result:ResultErrorCancelled) throws(InvalidStateError) -> Set<UInt64> {
+			// retrieve all waiters from the state.
 			let waiters:[(UInt64, WaiterInfo)] = try stateMutex.withLock({ (state) throws(InvalidStateError) in
 				switch state {
 					case .pending(let waiters):
@@ -391,7 +397,4 @@ extension Future {
 			}
 		}
 	}
-}
-
-extension Future.Core {
 }
