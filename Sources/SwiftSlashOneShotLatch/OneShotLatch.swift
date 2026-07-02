@@ -18,16 +18,16 @@ public final class OneShotLatch<Shot:Sendable>:Sendable {
 	/// thrown when a latch is attempted to be unlocked or waited more than once - violating the one-shot semantics of this latch.
 	public struct OneShotSemanticViolation:Swift.Error {}
 	internal struct Core:~Copyable {
-		private var hasBeenUnlocked:Bool = false
-		private var hasBeenWaited:Bool = false
+		internal private(set) var hasBeenUnlocked:Bool = false
+		internal private(set) var hasBeenWaited:Bool = false
 		private let semaphore:DispatchSemaphore = DispatchSemaphore(value:0)
-		private let result:Mutex<Shot?>
+		internal let result:Mutex<Shot?>
 		fileprivate init() {
 			result = .init(nil)
 		}
 
 		internal mutating func fire(_ element:sending Shot) throws(OneShotSemanticViolation) {
-			guard hasBeenWaited == false else {
+			guard hasBeenUnlocked == false else {
 				throw OneShotSemanticViolation()
 			}
 			hasBeenUnlocked = true
@@ -37,14 +37,17 @@ public final class OneShotLatch<Shot:Sendable>:Sendable {
 			semaphore.signal()
 		}
 
-		internal mutating func wait() throws(OneShotSemanticViolation) -> Shot {
+		internal mutating func semaphoreForWaiting() throws(OneShotSemanticViolation) -> DispatchSemaphore {
 			guard hasBeenWaited == false else {
 				throw OneShotSemanticViolation()
 			}
 			hasBeenWaited = true
-			semaphore.wait()
+			return semaphore
+		}
+
+		internal borrowing func resultAfterWaiting() -> Shot {
 			return result.withLock { result in
-				result!
+				return result!
 			}
 		}
 	}
@@ -56,10 +59,29 @@ public final class OneShotLatch<Shot:Sendable>:Sendable {
 		 }
 	}
 
+	private enum ShotOrSemaphore {
+		case shot(Shot)
+		case semaphore(DispatchSemaphore)
+	}
+
 	@available(*, noasync, message:"OneShotLatch.wait() is a synchronous blocking call. it is not compatible with async contexts.")
 	public borrowing func wait() throws(OneShotSemanticViolation) -> Shot {
-		try core.withLock { coreState throws(OneShotSemanticViolation) in
-			try coreState.wait()
+		let checkState:ShotOrSemaphore = try core.withLock({ coreState throws(OneShotSemanticViolation) -> ShotOrSemaphore in
+			guard coreState.hasBeenUnlocked == false else {
+				return coreState.result.withLock { result in
+					.shot(result!)
+				}
+			}
+			return .semaphore(try coreState.semaphoreForWaiting())
+		})
+		switch checkState {
+			case .shot(let shot):
+				return shot
+			case .semaphore(let semaphore):
+				semaphore.wait()
+				return core.withLock { coreState in
+					return coreState.resultAfterWaiting()
+				}
 		}
 	}
 }

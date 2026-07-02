@@ -18,10 +18,10 @@ import SwiftSlashFIFO
 internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
 	
 	/// registers a file handle (that is intended to be read from) with the event trigger for active monitoring.
-	@SwiftSlashGlobalSerializationForTesting static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
+	@SwiftSlashGlobalSerialization static func register(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)
 
 	/// registers a file handle (that is intended to be written to) with the event trigger for active monitoring.
-	@SwiftSlashGlobalSerializationForTesting static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
+	@SwiftSlashGlobalSerialization static func register(_ ev:EventTriggerHandlePrimitive, writer:Int32) throws(EventTriggerErrors)
 
 	/// deregisters a file handle. the reader must be of reader variant. if the handle is not of reader variant, behavior is undefined.
 	static func deregister(_ ev:EventTriggerHandlePrimitive, reader:Int32) throws(EventTriggerErrors)

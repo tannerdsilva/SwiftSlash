@@ -20,6 +20,17 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 	/// thrown when the fifo is in an invalid state for the operation being attempted.
 	public struct InvalidStateError:Swift.Error {}
 
+	/// thrown when an invalid maximum element count is specified for the fifo. the maximum element count must be greater than 0, or nil for an unbounded fifo.
+	public struct InvalidMaximumElementCount:Swift.Error {}
+
+	/// used to specify what should happen when the consuming task of this fifo is cancelled.
+	public enum WhenConsumingTaskCancelled {
+		/// take no action. the fifo will continue passing objects as it normally does.
+		case noAction
+		/// finish the fifo with a success result. this will cause the fifo to stop passing objects and return nil for any future calls to next() (after the buffer has been cleared).
+		case finish
+	}
+
 	/// used to convey one of the possible outcomes of consuming the next element from the FIFO.
 	public enum ConsumeResult {
 		/// the next element was successfully consumed from the FIFO.
@@ -40,163 +51,21 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 		case fifoFull
 	}
 
-	internal struct Core:~Copyable {
-		/// thrown when the fifo is full and cannot accept any more elements.
-		internal struct BufferLimitExceeded:Swift.Error {}
-
-		/// the unfinished state of the FIFO. this is the state that is used to pass elements through the FIFO.
-		/// - NOTE: the unfinished state does not keep track of whether or not the FIFO has been closed.
-		internal struct Unfinished:~Copyable {
-			
-			/// used to hold a pair of references to the base and tail links of the FIFO.
-			private struct ReferencePair:~Copyable {
-				
-				/// the link is a reference type that is used to hold an element in the FIFO. it links together with other links 
-				internal final class Link {
-					/// the element that is being held in the link.
-					internal let element:Element
-					/// a reference to the next link in the FIFO. if this value is nil, then this link is the tail of the FIFO.
-					internal var next:Link? = nil
-					/// initialize the link with an element.
-					/// - parameter elementIn: the element to hold in the link.
-					internal init(_ elementIn:consuming Element) {
-						element = elementIn
-					}
-					/// consumes the element from the link. this function is used to remove the element from the link when it is being removed from the FIFO.
-					/// - returns: the element that was held in the link.
-					internal consuming func consumeElement() -> sending Element {
-						return element
-					}
-				}
-
-				/// the maximum element count that may be buffered in this fifo.
-				internal let maxElementsBuffered:UInt64?
-				/// a reference to the base link of the FIFO
-				private var base:Link? = nil
-				/// a reference to the tail link of the FIFO
-				private var tail:Link? = nil
-
-				/// initialize the ReferencePair with an optional maximum element count.
-				/// - parameter maxElements: the maximum number of elements that may be buffered in the FIFO. if this value is nil, the FIFO will be unbounded.
-				internal init(maxElementsBuffered maxElements:UInt64?) {
-					maxElementsBuffered = maxElements
-				}
-				
-				/// inserts a new link at the tail of the FIFO. this function will increment the elementCount property.
-				/// - parameter link: the link to insert at the tail of the FIFO.
-				internal mutating func addElement(elementCount:UnsafePointer<Atomic<UInt64>>, _ link:Element) throws(BufferLimitExceeded) {
-					guard maxElementsBuffered == nil || elementCount.pointee.load(ordering:.sequentiallyConsistent) < maxElementsBuffered! else {
-						throw BufferLimitExceeded()
-					}
-					defer {
-						elementCount.pointee.add(1, ordering:.sequentiallyConsistent)
-					}
-					let link = Link(link)
-					switch (base, tail) {
-						case (nil, nil):
-							// there are no existing elements in the FIFO, so we must set both the base and tail to the new link.
-							base = link
-							tail = link
-						case (_, let t?):
-							// there are existing elements in the FIFO, so we must set the next property of the tail to the new link, and then update the tail to the new link.
-							t.next = link
-							tail = link
-						default:
-							fatalError("SwiftSlashFIFO: ReferencePair is in an invalid state. \(#file):\(#line)")
-					}
-				}
-
-				/// removes the link at the base of the FIFO. this function will decrement the elementCount property.
-				/// - returns: the link that was removed from the base of the FIFO, or nil if the FIFO is empty.
-				internal mutating func removeElement(elementCount:UnsafePointer<Atomic<UInt64>>) -> sending Element? {
-					switch (base, tail) {
-						case (nil, nil):
-							return nil
-						case (let b?, let t?):
-							defer {
-								elementCount.pointee.subtract(1, ordering:.sequentiallyConsistent)
-							}
-							if b === t {
-								base = nil
-								tail = nil
-								b.next = nil
-								return b.consumeElement()
-							} else {
-								base = b.next
-								if base == nil {
-									tail = nil
-								}
-								return b.consumeElement()
-							}
-						default:
-							fatalError("SwiftSlashFIFO: ReferencePair is in an invalid state. \(#file):\(#line)")
-					}
-				}
-			}
-
-			/// specifies one of the two kinds of waiters that can exist 
-			internal enum WaiterInfo:Sendable {
-				case synchronous(OneShotLatch<Result<Element, Failure>?>)
-				case asynchronous(UnsafeContinuation<Result<Result<Element, Failure>?, AlreadyWaiting>, Never>)
-			}
-
-			/// used to track whether the FIFO has been closed. if the FIFO is closed, no more elements may be yielded into the FIFO.
-			private var pair:ReferencePair
-			
-			/// there may be a single waiter for the FIFO. if there is a waiter, it will be stored here. if there is no waiter, this value will be nil.
-			/// - NOTE: a waiter must only be a non-nil value if the FIFO is empty. if the FIFO is not empty, there should be no waiter, and this value should be nil.
-			internal var waiter:WaiterInfo? = nil
-
-			internal init(maxElementsBuffered maxElements:UInt64?) {
-				guard maxElements != 0 else {
-					fatalError("SwiftSlashFIFO: maxElementsBuffered must be greater than 0. \(#file):\(#line). if you wish to specify an unbounded FIFO, pass nil for the maxElementsBuffered parameter.")
-				}
-				pair = ReferencePair(maxElementsBuffered: maxElements)
-			}
-
-			/// yields an element into the FIFO.
-			/// - parameter element: the element to yield into the FIFO.
-			/// - returns: a Bool value indicating whether the yield was successful. if the FIFO is full, the yield will fail and return false.
-			internal mutating func yield(elementCount:UnsafePointer<Atomic<UInt64>>, _ element:sending Element) throws(BufferLimitExceeded) {
-				// if there is a waiter, we must notify them that an element is now available.
-				switch waiter {
-					case .some(let w):
-						defer {
-							waiter = nil
-						}
-						switch w {
-							case .synchronous(let oneShot):
-								try! oneShot.fire(.success(element))
-							case .asynchronous(let continuation):
-								// handle the asynchronous waiter by resuming the continuation with the yielded element.
-								// in this case, there is no need to interact with the pair, since the element is being passed directly to the waiter.
-								continuation.resume(returning:.success(.success(element)))
-						}
-					case .none:
-						try pair.addElement(elementCount:elementCount, element)
-				}
-			}
-
-			internal mutating func consumeNext(elementCount:UnsafePointer<Atomic<UInt64>>) -> sending Element? {
-				return pair.removeElement(elementCount:elementCount)
-			}
-		}
-		internal struct State:~Copyable {
-			internal var unfinished:Unfinished
-			internal var capResult:Result<Void, Failure>? = nil
-			internal init(maxElementsBuffered maxElements:UInt64?) {
-				unfinished = Unfinished(maxElementsBuffered: maxElements)
-			}
-		}
-	}
-
+	/// the number of elements that are being buffered in the FIFO. this value is updated atomically, and may be read from any thread.
 	private let count:Atomic<UInt64> = Atomic(0)
+	/// the core state of the FIFO.
 	private let core:Mutex<Core.State>
 
-	internal init(maxElementsBuffered maxElements:UInt64?) {
-		core = Mutex(.init(maxElementsBuffered: maxElements))
+	/// initialize the FIFO with an optional maximum element count.
+	/// - parameter maxElements: the maximum number of elements that may be buffered in the FIFO. if this value is nil, the FIFO will be unbounded.
+	/// - throws: InvalidMaximumElementCount if the maxElements parameter is 0.
+	internal init(maxElementsBuffered maxElements:UInt64?) throws(InvalidMaximumElementCount) {
+		core = Mutex(try .init(maxElementsBuffered: maxElements))
 	}
 
+	/// yields an element into the FIFO.
+	/// - parameter element: the element to yield into the FIFO.
+	/// - returns: a YieldResult value indicating the result of the yield operation.
 	internal func yield(_ element:sending Element) -> YieldResult {
 		return core.withLock { state in
 			// check if the fifo has already been finished.
@@ -219,7 +88,7 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 	}
 
 	private func finish(cappingWith result:Result<Void, Failure>) throws(InvalidStateError) {
-		switch try core.withLock({ (state) throws(InvalidStateError) -> Core.Unfinished.WaiterInfo? in
+		switch try core.withLock({ (state) throws(InvalidStateError) -> Core.State.Unfinished.WaiterInfo? in
 			// if the fifo has already been finished, we do not need to do anything.
 			switch state.capResult {
 				case .some(_):
@@ -233,8 +102,10 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 			// check for a waiter.
 			return state.unfinished.waiter
 		}) {
+			// there is already a waiter, so we need to notify them that the fifo has been finished.
 			case .some(let waiter):
 				switch waiter {
+					// this is a synchronous waiter, so we will fire the one-shot latch with the result of the fifo.
 					case .synchronous(let oneShot):
 						switch result {
 							case .success:
@@ -245,11 +116,11 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 					case .asynchronous(let continuation):
 						// handle the asynchronous waiter
 						switch result {
-							// if the fifo has been finished, we must resume the continuation with nil, which indicates that the fifo has been finished.
 							case .success:
+								// resume the continuation with a nil value, indicating that the fifo has been finished successfully.
 								continuation.resume(returning:.success(nil))
-							// if the fifo has been finished with an error, we must resume the continuation with the error, which indicates that the fifo has been finished with an error.
 							case .failure(let error):
+								// resume the continuation with a failure value, indicating that the fifo has been finished with an error.
 								continuation.resume(returning:.success(.failure(error)))
 						}
 				}
@@ -279,7 +150,7 @@ extension FIFOv2 {
 						return
 					}
 
-					// validate that there is no elements available.
+					// validate that there is no elements available in the buffer.
 					let acquireNext = state.unfinished.consumeNext(elementCount:countPtr)
 					guard acquireNext == nil else {
 						// there is an element available, so we will return it immediately.
@@ -310,7 +181,7 @@ extension FIFOv2 {
 		}).get()
 	}
 
-	internal func nextSyncExplicit() throws(AlreadyWaiting) -> ConsumeResult {
+	internal func nextSynchronous() throws(AlreadyWaiting) -> ConsumeResult {
 		return try core.withLock({ state throws(AlreadyWaiting) in
 			return try withUnsafePointer(to:count, { countPtr throws(AlreadyWaiting) -> ConsumeResult in
 				// validate that there is not already a waiter.
