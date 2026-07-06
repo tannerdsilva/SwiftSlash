@@ -39,6 +39,7 @@ extension FIFOv2.Core.State {
 	internal struct Unfinished:~Copyable {
 		
 		/// used to hold a pair of references to the base and tail links of the FIFO.
+		/// NOTE: this struct does not concern itself with whether or not the FIFO has been closed. it is only used to hold the links that are used to bufffer and pass elements through the FIFO.
 		private struct ReferencePair:~Copyable {
 			
 			/// the link is a reference type that is used to hold an element in the FIFO. it links together with other links 
@@ -127,14 +128,22 @@ extension FIFOv2.Core.State {
 		/// specifies one of the two kinds of waiters that can exist for the next fifo element.
 		internal enum WaiterInfo:Sendable {
 			/// a synchronous waiter is a one-shot latch that will be fired when the next element is available.
-			case synchronous(OneShotLatch<Result<Element, Failure>?>)
+			case synchronous(OneShotLatch<FIFOv2.NextElement>)
 			/// an asynchronous waiter is a continuation that will be resumed when the next element is available.
-			case asynchronous(UnsafeContinuation<Result<Result<Element, Failure>?, FIFOv2.AlreadyWaiting>, Never>)
+			case asynchronous(UnsafeContinuation<Result<FIFOv2.NextElement, FIFOv2.AlreadyWaiting>, Never>)
+		}
+
+		/// specifies one of the two possible outcomes of a yield operation.
+		internal enum YieldResult:Sendable {
+			/// the element was buffered in the FIFO, and there was no pending waiter to notify.
+			case buffered
+			/// the element was not buffered in the FIFO, because there was a pending waiter that was notified with the result of the yield operation. the holder of this value should notify the waiter with the provided result.
+			case waiterNotificationRequired(WaiterInfo, FIFOv2.NextElement)
 		}
 
 		/// used to track whether the FIFO has been closed. if the FIFO is closed, no more elements may be yielded into the FIFO.
 		private var pair:ReferencePair
-		
+
 		/// there may be a single waiter for the FIFO. if there is a waiter, it will be stored here. if there is no waiter, this value will be nil.
 		/// - NOTE: a waiter must only be a non-nil value if the FIFO is empty. if the FIFO is not empty, there should be no waiter, and this value should be nil.
 		internal var waiter:WaiterInfo? = nil
@@ -151,24 +160,16 @@ extension FIFOv2.Core.State {
 
 		/// yields an element into the FIFO.
 		/// - parameter element: the element to yield into the FIFO.
-		/// - returns: a Bool value indicating whether the yield was successful. if the FIFO is full, the yield will fail and return false.
-		internal mutating func yield(elementCount:UnsafePointer<Atomic<UInt64>>, _ element:sending Element) throws(FIFOv2.Core.BufferLimitExceeded) {
+		/// - returns: a yield outcome that indicates whether the element was buffered in the FIFO, or whether there was a pending waiter that needs to be notified with the result of the yield operation.
+		internal mutating func yield(elementCount:UnsafePointer<Atomic<UInt64>>, _ element:consuming Element) throws(FIFOv2.Core.BufferLimitExceeded) -> YieldResult {
 			// if there is a waiter, we must notify them that an element is now available.
 			switch waiter {
 				case .some(let w):
-					defer {
-						waiter = nil
-					}
-					switch w {
-						case .synchronous(let oneShot):
-							try! oneShot.fire(.success(element))
-						case .asynchronous(let continuation):
-							// handle the asynchronous waiter by resuming the continuation with the yielded element.
-							// in this case, there is no need to interact with the pair, since the element is being passed directly to the waiter.
-							continuation.resume(returning:.success(.success(element)))
-					}
+					waiter = nil
+					return .waiterNotificationRequired(w, .success(element))
 				case .none:
 					try pair.addElement(elementCount:elementCount, element)
+					return .buffered
 			}
 		}
 

@@ -12,7 +12,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import Synchronization
 import SwiftSlashOneShotLatch
 
-public final class Future<Produced:Sendable, Failure:Swift.Error>:Sendable {
+public final class Future<Produced:Sendable, Failure:Swift.Error & Swift.Sendable>:Sendable {
 	/// thrown when a result is attempted to be assigned to a future but the future is already in a finished state (either with a result, an error, or a cancellation).
 	public struct InvalidStateError:Swift.Error {}
 
@@ -119,7 +119,7 @@ extension Future {
 					}
 				}
 			})
-		} onCancel:{
+		} onCancel: {
 			didCallCancellationHandler.store(true, ordering:.releasing)
 			let cancelID = cancelID.load(ordering:.acquiring)
 			if cancelID != 0 {
@@ -170,7 +170,7 @@ extension Future {
 		}
 		
 		/// the state of the future, which can either be pending (with a list of waiters) or finished (with a result, an error, or a cancellation).
-		private enum State {
+		private enum State:Sendable {
 			/// the future is pending and has a list of waiters that are waiting for the result to be notified.
 			case pending([(UInt64, WaiterInfo)])
 			/// the future is finished and has a result, an error, or a cancellation.

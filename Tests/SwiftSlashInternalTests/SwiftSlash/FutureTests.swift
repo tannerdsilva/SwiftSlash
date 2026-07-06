@@ -77,9 +77,11 @@ extension SwiftSlashTests {
 				var future:Future<IntHeap, Swift.Error> = Future<IntHeap, Swift.Error>()
 				for _ in 0..<100 {
 					let randomValue = IntHeap(Self.randomInt(), c:resultValueDeallocatorCounter)
+					#expect(future.hasResult() == false)
 					try future.setSuccess(randomValue)
 					let result = try await future.result()!.get().getValue()
 					#expect(result == randomValue.getValue())
+					#expect(future.hasResult() == true)
 					future = Future<IntHeap, Swift.Error>()
 				}
 			}
@@ -172,7 +174,7 @@ extension SwiftSlashTests {
 			let future2 = Future<Int, Never>()
 			let task = Task<Bool, Never> {
 				do {
-					_ = try await future2.result(throwing: CancellationError.self, onCurrentTaskCancellation: CancellationError())
+					_ = try await future2.result(throwing:CancellationError.self, onCurrentTaskCancellation:CancellationError())
 					return false
 				} catch {
 					return true
@@ -221,11 +223,36 @@ extension SwiftSlashTests {
 		@SwiftSlashPThreadBackedExecutor func testBlockingWaiterCancelled() throws {
 			let future = Future<Int, Never>()
 			let resultTool = future.waitSynchronously()
-			Task.detached { [f = future] in f.cancelWaiter(resultTool.uid) }
+			Task.detached { [f = future] in 
+				// wait two seconds
+				try await Task.sleep(nanoseconds: 2 * 1_000_000_000) // 2s
+				#expect(f.cancelWaiter(resultTool.uid) == true)
+			}
 			let capResult = resultTool.wait()
 			#expect(capResult == nil)
 			try future.setSuccess(10) // ensure future can still be set without crashing
-			// #expect(future.waitSynchronously().wait()!.get() == 10)
+			#expect(future.waitSynchronously().wait()!.get() == 10)
+		}
+
+		@Test("Future :: test code block waiter cancelled", .timeLimit(.minutes(1)))
+		func testCodeBlockWaiterCancelled() async throws {
+			let future = Future<Int, Never>()
+			await confirmation("confirm that the waiter is cancelled", expectedCount: 1) { cancelConfirm in
+				let handlerID = future.whenResult { result in
+					cancelConfirm.confirm()
+					#expect(result == nil)
+				}
+				#expect(handlerID != nil)
+				#expect(future.cancelWaiter(handlerID!) == true)
+			}
+		}
+
+		@Test("Future :: test cancelling a factory fresh future", .timeLimit(.minutes(1)))
+		func testCancellingVirginFuture() async throws {
+			let future = Future<Int, Never>()
+			#expect(future.cancelWaiter(123456789) == false) // should be a no-op, but not crash
+			try future.setSuccess(42) // ensure future can still be set without crashing
+			#expect(future.cancelWaiter(24680) == false) // should be a no-op, but not crash
 		}
 
 		// MARK: - Torture Tests
@@ -361,6 +388,7 @@ extension SwiftSlashTests {
 			var tasks: [Task<Bool, Never>] = []
 			for i in 0..<totalTasks {
 				let task = Task<Bool, Never> {
+					try? await Task.sleep(nanoseconds:UInt64.random(in:1...4) * 1_000_000_000) // random sleep between 1 and 4 seconds
 					do {
 						let res = try await future.result(throwing: CancellationError.self, onCurrentTaskCancellation: CancellationError())
 						return res?.get() == expectedValue
