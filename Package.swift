@@ -89,18 +89,19 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashFuture"
 		]
 	),
+	// .target(
+	// 	name:"SwiftSlashFIFO",
+	// 	dependencies:[
+	// 		"__cswiftslash_fifo",
+	// 		"SwiftSlashContained"
+	// 	]
+	// ),
 	.target(
 		name:"SwiftSlashFIFO",
 		dependencies:[
-			"__cswiftslash_fifo",
-			"SwiftSlashContained"
-		]
-	),
-	.target(
-		name:"SwiftSlashFIFOv2",
-		dependencies:[
 			"SwiftSlashOneShotLatch"
-		]
+		],
+		path:"Sources/SwiftSlashFIFOv2",
 	),
 	.target(
 		name:"SwiftSlashFHHelpers",

@@ -11,6 +11,16 @@ copyright (c) tanner silva 2025. all rights reserved.
 import Synchronization
 import SwiftSlashOneShotLatch
 
+/// used to convey the various types of results that may occur when yielding an element into the FIFO.
+public enum FIFOYieldResult {
+	/// the yield value was successfully passed into the FIFO
+	case success
+	/// the FIFO was closed, and the yield value was not passed into the FIFO
+	case fifoClosed
+	/// the FIFO was full, and the yield value was not passed into the FIFO
+	case fifoFull
+}
+
 /// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is *not* intended for use with multiple producers or multiple consumers.
 /// ### the semantics of the FIFO are as follows:
 /// - the FIFO is initialized with an optional maximum buffered element count. if there is always a 'waiter' ready to consume the next element, then the FIFO will not buffer any elements. if there is no 'waiter' ready to consume the next element, then the FIFO will buffer elements up to the maximum buffered element count. if the maximum buffered element count is reached, then any further attempts to yield an element into the FIFO will fail with a BufferLimitExceeded error.
@@ -18,7 +28,7 @@ import SwiftSlashOneShotLatch
 /// - the FIFO can be "capped" or "finished" with one of two possible results: a success result, or a failure result.
 /// - a FIFO may be finished with elements still buffered in the FIFO. in this case, the FIFO will continue to pass elements to the consumer until the buffer is empty, at which point the FIFO will return the result of the finish operation (success or failure) to the consumer.
 /// - if the maximum buffered count is NOT `nil`, the value must be greater than 0.
-public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
+public final class FIFO<Element:Sendable, Failure:Swift.Error>:Sendable {
 
 	/// the type of the next element that will be yielded from the FIFO. this type is used to convey the result of the next() operation, which may be a successful element, a failure, or nil if the FIFO has been closed.
 	public typealias NextElement = Result<Element, Failure>?
@@ -66,23 +76,16 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 		case wouldBlock(SyncWaiter)
 	}
 
-	/// used to convey the various types of results that may occur when yielding an element into the FIFO.
-	public enum YieldResult {
-		/// the yield value was successfully passed into the FIFO
-		case success
-		/// the FIFO was closed, and the yield value was not passed into the FIFO
-		case fifoClosed
-		/// the FIFO was full, and the yield value was not passed into the FIFO
-		case fifoFull
-	}
+	@available(*, deprecated, renamed: "FIFOYieldResult")
+	public typealias YieldResult = FIFOYieldResult
 
 	/// internal struct to convey the result of a yield operation, and any waiter notification that may be required.
 	private struct YieldOutcome {
 		/// the result of the yield operation.
-		internal let result:YieldResult
+		internal let result:FIFOYieldResult
 		/// any waiter notification that may be required as a result of the yield operation. if this value is nil, then there is no waiter to notify.
 		internal let waiterNotification:Core.State.Unfinished.YieldResult?
-		internal init(result resultIn:YieldResult, waiterNotification waiterNotificationIn:Core.State.Unfinished.YieldResult?) {
+		internal init(result resultIn:FIFOYieldResult, waiterNotification waiterNotificationIn:Core.State.Unfinished.YieldResult?) {
 			result = resultIn
 			waiterNotification = waiterNotificationIn
 		}
@@ -96,14 +99,17 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 	/// initialize the FIFO with an optional maximum element count.
 	/// - parameter maxElements: the maximum number of elements that may be buffered in the FIFO. if this value is nil, the FIFO will be unbounded.
 	/// - throws: InvalidMaximumElementCount if the maxElements parameter is 0.
-	internal init(maxElementsBuffered maxElements:UInt64?) throws(InvalidMaximumElementCount) {
+	public init(maximumElementCount maxElements:UInt64? = nil) throws(InvalidMaximumElementCount) {
 		core = Mutex(try .init(maxElementsBuffered: maxElements))
 	}
+}
 
+// MARK: Yield & Finish
+extension FIFO {
 	/// yields an element into the FIFO.
 	/// - parameter element: the element to yield into the FIFO.
 	/// - returns: a YieldResult value indicating the result of the yield operation.
-	internal func yield(_ element:sending Element) -> YieldResult {
+	@discardableResult public func yield(_ element:sending Element) -> YieldResult {
 		// enter the locked section of the fifo core state, and attempt to yield the element into the FIFO. return the result of the yield operation.
 		let lockResult = core.withLock { state -> YieldOutcome in
 			// check if the fifo has already been finished.
@@ -149,7 +155,7 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 		return lockResult.result	
 	}
 
-	private func finish(cappingWith result:Result<Void, Failure>) throws(InvalidStateError) {
+	fileprivate borrowing func finish(cappingWith result:Result<Void, Failure>) throws(InvalidStateError) {
 		switch try core.withLock({ (state) throws(InvalidStateError) -> Core.State.Unfinished.WaiterInfo? in
 			// if the fifo has already been finished, we do not need to do anything.
 			switch state.capResult {
@@ -196,20 +202,21 @@ public final class FIFOv2<Element:Sendable, Failure:Swift.Error>:Sendable {
 
 	/// finishes the FIFO with a success result. this will cause the FIFO to stop passing objects and return nil for any future calls to next() (after the buffer has been cleared).
 	/// - throws: InvalidStateError if the FIFO has already been finished.
-	internal func finish() throws(InvalidStateError) {
+	public borrowing func finish() throws(InvalidStateError) {
 		try finish(cappingWith:.success(()))
 	}
 
 	/// finishes the FIFO with a failure result. this will cause the FIFO to stop passing objects and throw this error for any future calls to next() (after the buffer has been cleared).
 	/// - parameter error: the error to finish the FIFO with.
 	/// - throws: InvalidStateError if the FIFO has already been finished.
-	internal func finish(withError error:consuming Failure) throws(InvalidStateError) {
+	public borrowing func finish(withError error:consuming Failure) throws(InvalidStateError) {
 		try finish(cappingWith:.failure(error))
 	}
 }
 
-extension FIFOv2 {
-	internal func next(onCurrentTaskCancelled action:WhenConsumingTaskCancelled) async throws(AlreadyWaiting) -> NextElement {
+// MARK: Iterating
+extension FIFO {
+	internal func next(whenTaskCancelled action:WhenConsumingTaskCancelled) async throws(AlreadyWaiting) -> NextElement {
 		return try await withTaskCancellationHandler(operation: {
 			return await nextAsynchronous()
 		}, onCancel: { [weak self] in
@@ -224,7 +231,7 @@ extension FIFOv2 {
 			}
 		}).get()
 	}
-	internal func nextAsynchronous() async -> Result<NextElement, AlreadyWaiting> {
+	internal borrowing func nextAsynchronous() async -> Result<NextElement, AlreadyWaiting> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<NextElement, AlreadyWaiting>, Never>) in
 			let hasImmediateResult:Result<NextElement, AlreadyWaiting>? = core.withLock({ state in
 				withUnsafePointer(to:count, { countPtr in

@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import Synchronization
 import SwiftSlashOneShotLatch
 
-extension FIFOv2 {
+extension FIFO {
 	/// the "internal core" mechanism of the FIFO.
 	internal struct Core:~Copyable {
 		/// thrown when the fifo is full and cannot accept any more elements.
@@ -33,7 +33,7 @@ extension FIFOv2 {
 	}
 }
 
-extension FIFOv2.Core.State {
+extension FIFO.Core.State {
 	/// the unfinished state of the FIFO. this is the state that is used to pass elements through the FIFO.
 	/// - NOTE: the unfinished state does not keep track of whether or not the FIFO has been closed.
 	internal struct Unfinished:~Copyable {
@@ -75,9 +75,9 @@ extension FIFOv2.Core.State {
 			
 			/// inserts a new link at the tail of the FIFO. this function will increment the elementCount property.
 			/// - parameter link: the link to insert at the tail of the FIFO.
-			internal mutating func addElement(elementCount:UnsafePointer<Atomic<UInt64>>, _ link:Element) throws(FIFOv2.Core.BufferLimitExceeded) {
+			internal mutating func addElement(elementCount:UnsafePointer<Atomic<UInt64>>, _ link:Element) throws(FIFO.Core.BufferLimitExceeded) {
 				guard maxElementsBuffered == nil || elementCount.pointee.load(ordering:.sequentiallyConsistent) < maxElementsBuffered! else {
-					throw FIFOv2.Core.BufferLimitExceeded()
+					throw FIFO.Core.BufferLimitExceeded()
 				}
 				defer {
 					elementCount.pointee.add(1, ordering:.sequentiallyConsistent)
@@ -128,9 +128,9 @@ extension FIFOv2.Core.State {
 		/// specifies one of the two kinds of waiters that can exist for the next fifo element.
 		internal enum WaiterInfo:Sendable {
 			/// a synchronous waiter is a one-shot latch that will be fired when the next element is available.
-			case synchronous(OneShotLatch<FIFOv2.NextElement>)
+			case synchronous(OneShotLatch<FIFO.NextElement>)
 			/// an asynchronous waiter is a continuation that will be resumed when the next element is available.
-			case asynchronous(UnsafeContinuation<Result<FIFOv2.NextElement, FIFOv2.AlreadyWaiting>, Never>)
+			case asynchronous(UnsafeContinuation<Result<FIFO.NextElement, FIFO.AlreadyWaiting>, Never>)
 		}
 
 		/// specifies one of the two possible outcomes of a yield operation.
@@ -138,7 +138,7 @@ extension FIFOv2.Core.State {
 			/// the element was buffered in the FIFO, and there was no pending waiter to notify.
 			case buffered
 			/// the element was not buffered in the FIFO, because there was a pending waiter that was notified with the result of the yield operation. the holder of this value should notify the waiter with the provided result.
-			case waiterNotificationRequired(WaiterInfo, FIFOv2.NextElement)
+			case waiterNotificationRequired(WaiterInfo, FIFO.NextElement)
 		}
 
 		/// used to track whether the FIFO has been closed. if the FIFO is closed, no more elements may be yielded into the FIFO.
@@ -151,9 +151,9 @@ extension FIFOv2.Core.State {
 		/// initialize the Unfinished state with an optional maximum element count.
 		/// - parameter maxElements: the maximum number of elements that may be buffered in the FIFO. if this value is nil, the FIFO will be unbounded.
 		/// - throws: InvalidMaximumElementCount if the maxElements parameter is 0.
-		internal init(maxElementsBuffered maxElements:UInt64?) throws(FIFOv2.InvalidMaximumElementCount) {
+		internal init(maxElementsBuffered maxElements:UInt64?) throws(FIFO.InvalidMaximumElementCount) {
 			guard maxElements != 0 else {
-				throw FIFOv2.InvalidMaximumElementCount()
+				throw FIFO.InvalidMaximumElementCount()
 			}
 			pair = ReferencePair(maxElementsBuffered: maxElements)
 		}
@@ -161,7 +161,7 @@ extension FIFOv2.Core.State {
 		/// yields an element into the FIFO.
 		/// - parameter element: the element to yield into the FIFO.
 		/// - returns: a yield outcome that indicates whether the element was buffered in the FIFO, or whether there was a pending waiter that needs to be notified with the result of the yield operation.
-		internal mutating func yield(elementCount:UnsafePointer<Atomic<UInt64>>, _ element:consuming Element) throws(FIFOv2.Core.BufferLimitExceeded) -> YieldResult {
+		internal mutating func yield(elementCount:UnsafePointer<Atomic<UInt64>>, _ element:consuming Element) throws(FIFO.Core.BufferLimitExceeded) -> YieldResult {
 			// if there is a waiter, we must notify them that an element is now available.
 			switch waiter {
 				case .some(let w):
