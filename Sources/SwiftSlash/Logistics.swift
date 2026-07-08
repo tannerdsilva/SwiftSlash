@@ -17,29 +17,27 @@ import SwiftSlashFIFO
 import SwiftSlashFuture
 import SwiftSlashGlobalSerialization
 
+/// the result of a waitpid call. this is used to determine how a child process exited. similar to pthread_join but for child processes.
 internal enum WaitPIDResult {
+	/// the child process was signaled to exit. the associated value is the signal number that caused the child process to exit.
 	case signaled(Int32)
+	/// the child process exited normally. the associated value is the exit status of the child process.
 	case exited(Int32)
+	/// the waitpid call failed. the associated value is the errno value set by the failed waitpid call.
 	case failed(errno:Int32)
 }
+
 extension pid_t {
-	internal func waitPID() async -> WaitPIDResult {
-		let (statusValue, errnoValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(Int32, Int32?), Never>) in
-			var statusCapture:Int32 = 0
-			let wpidReturn = waitpid(self, &statusCapture, 0)
-			var errnoValue:Int32? = nil
-			if wpidReturn == -1 {
-				errnoValue = __cswiftslash_get_errno()
-			}
-			continuation.resume(returning:(statusCapture, errnoValue))
-		})
-		guard errnoValue == nil else {
-			return WaitPIDResult.failed(errno:errnoValue!)
+	internal func waitPID() -> WaitPIDResult {
+		var statusCapture:Int32 = 0
+		let wpidReturn = waitpid(self, &statusCapture, 0)
+		if wpidReturn == -1 {
+			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
 		}
-		if __cswiftslash_eventtrigger_wifsignaled(statusValue) != 0 {
-			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusValue))
-		} else if __cswiftslash_eventtrigger_wifexited(statusValue) != 0 {
-			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusValue))
+		if __cswiftslash_eventtrigger_wifsignaled(statusCapture) != 0 {
+			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusCapture))
+		} else if __cswiftslash_eventtrigger_wifexited(statusCapture) != 0 {
+			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusCapture))
 		}
 		fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
 	}
@@ -172,7 +170,7 @@ internal struct ProcessLogistics {
 						finalFlushLoop: while currentWriteStepper != nil {
 							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
 								case .element(let (_, writeCompleteFuture)):
-									try? writeCompleteFuture?.setFailure(.dataChannelClosed)
+									_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
 								case .capped(_):
 									// this is a signal that the file handle is not ready for writing.
 									break finalFlushLoop
