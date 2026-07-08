@@ -11,7 +11,6 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import __cswiftslash_threads
 import SwiftSlashFuture
-import SwiftSlashContained
 import Synchronization
 
 // this file articulates a lot of unsafe and unbalanced memory management. the scope of the unsafety is limited to this single file, therefore, any possible errors or mishandlings of the memory should be visible from this file alone. the file consists of mostly private and fileprivate functions, with only a small handful of public/internal entrypoints being provided.
@@ -39,8 +38,8 @@ extension PThreadWork {
 
 extension PThreadWork {
 	// this is a bridge function that allows the c code to call the allocator function for the specific type in question. this is a critical step in the pthread lifecycle because this is where the initial argument is consumed.
-	fileprivate init(_ ptr:UnsafeMutableRawPointer) {
-		self = Self(Unmanaged<Contained<ArgumentType>>.fromOpaque(ptr).takeRetainedValue().value())
+	fileprivate init(_ arg:any Sendable) {
+		self = Self(arg as! ArgumentType)
 	}
 	// this is a bridge function that allows the primary work implementation to run and return into the future as it needs to when it is called from the pthread.
 	fileprivate mutating func firePThreadWork(into future:consuming Future<Result<any Sendable, any Swift.Error>, Never>) {
@@ -63,7 +62,7 @@ fileprivate struct Workspace {
 	
 	/// the instance of the workspace that is being used in the pthread.
 	private var workspaceInstance:any PThreadWork
-	/// the type of workspace that is being used in the pthread.
+	/// the type of workspace that is being used in the pthread. the type is not known at compile time, so it is stored here for use in the pthread.
 	private let workspaceType:any PThreadWork.Type
 	/// the future for pthread configuration. this is set to success when the pthread is configured, running its work, and ready to be canceled. after a result is passed into the return future, this future is set to nil.
 	private let configureFuture:Future<Future<Result<any Sendable, any Swift.Error>, Never>, Never>
@@ -107,7 +106,7 @@ fileprivate struct Workspace {
 // assistive structure to define how a pthread shall be launched and ran.
 fileprivate struct Setup {
 	// a pointer to the contained argument
-	fileprivate let containedArg:UnsafeMutableRawPointer
+	fileprivate let containedArg:any Sendable
 	// a pthread takes time to launch and configure itself before we can allow it to be canceled. this future will be set to success when the pthread is ready to be canceled.
 	fileprivate let configureFuture:Future<Future<Result<any Sendable, any Swift.Error>, Never>, Never>
 	// the type of pthread work to execute. this informs the pthread launch what kind of memory and work needs to be done.
@@ -116,7 +115,7 @@ fileprivate struct Setup {
 	// call this from outside the pthread before it is launched. this setup structure will initialize on the heap and passed into the pthread from there.
 	fileprivate init<P>(
 		_ _:P.Type,
-		containedArgument:UnsafeMutableRawPointer,
+		containedArgument:any Sendable,
 		configureFuture:Future<Future<Result<any Sendable, any Swift.Error>, Never>, Never>
 	) where P:PThreadWork {
 		self.containedArg = containedArgument
@@ -278,7 +277,8 @@ fileprivate func launchPThread<W, A>(work _:W.Type, argument:A) -> Result<Runnin
 
 	// define the memoryspace where we will store the setup structure for the pthread.
 	let launchStructure = UnsafeMutablePointer<Setup>.allocate(capacity:1)
-	launchStructure.initialize(to:Setup(W.self, containedArgument:Unmanaged.passRetained(Contained(argument)).toOpaque(), configureFuture:configureFuture))
+
+	launchStructure.initialize(to:Setup(W.self, containedArgument:argument, configureFuture:configureFuture))
 	defer {
 		launchStructure.deinitialize(count:1)
 		launchStructure.deallocate()

@@ -46,9 +46,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 
 fileprivate let swiftTargets:[Target] = [
 	.target(
-		name:"SwiftSlashContained"
-	),
-	.target(
 		name:"SwiftSlashPThreadSerialExecutor",
 		dependencies:[
 			"SwiftSlashPThread",
@@ -77,7 +74,6 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashPThread",
 		dependencies:[
 			"__cswiftslash_threads",
-			"SwiftSlashContained",
 			"SwiftSlashFuture"
 		]
 	),
@@ -85,8 +81,7 @@ fileprivate let swiftTargets:[Target] = [
 		name:"SwiftSlashFIFO",
 		dependencies:[
 			"SwiftSlashOneShotLatch"
-		],
-		path:"Sources/SwiftSlashFIFOv2",
+		]
 	),
 	.target(
 		name:"SwiftSlashFHHelpers",
@@ -125,7 +120,6 @@ fileprivate let testTarget:Target = .testTarget(
 		"__cswiftslash_eventtrigger",
 		"__cswiftslash_identified_list",
 		"SwiftSlashFuture",
-		"SwiftSlashContained",
 		"SwiftSlashPThread",
 		"SwiftSlashFIFO",
 		"SwiftSlashEventTrigger",

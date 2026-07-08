@@ -147,7 +147,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								// reader close.
 								switch activeTriggers[curIdent] {
 									case .some(.reader(_, let future)):
-										try? future.setSuccess(())
+										_ = try? future.setSuccess(())
 									case .none:
 										break;
 									default:
@@ -159,7 +159,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								// writer close.
 								switch activeTriggers[curIdent] {
 									case .some(.writer(_, let future)):
-										try? future.setSuccess(())
+										_ = try? future.setSuccess(())
 									case .none:
 										break;
 									default:

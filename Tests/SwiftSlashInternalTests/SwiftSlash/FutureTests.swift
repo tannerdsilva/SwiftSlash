@@ -153,17 +153,8 @@ extension SwiftSlashTests {
 			// test dropping the future while a `whenResult` callback is pending.
 			// this verifies that deinit correctly resumes waiters with nil and drops references.
 			await confirmation("test for correct dereferencing of @escaping handler references after dropping future", expectedCount:1) { cancelCounter in
-				struct WhenDeInit:~Copyable {
-					let cancelCounter:Confirmation
-					init(_ c:Confirmation) {
-						cancelCounter = c
-					}
-					deinit {
-						cancelCounter.confirm()
-					}
-				}
 				let future = Future<Int, Never>()
-				_ = future.whenResult { [d = WhenDeInit(cancelCounter)] r in
+				_ = future.whenResult { [d = WhenDeinitTool(cancelCounter, cancelCounter)] r in
 					_ = d
 					#expect(r == nil)
 				}
@@ -361,20 +352,17 @@ extension SwiftSlashTests {
 		@Test("Future :: torture test drop future with many whenResult callbacks", .timeLimit(.minutes(1)))
 		func testDropFutureWithManyWhenResult() async throws {
 			await confirmation("all callbacks cancelled on drop", expectedCount: 100) { confirm in
-				struct WhenDeInit: ~Copyable {
-					let cancelCounter: Confirmation
-					init(_ c: Confirmation) { cancelCounter = c }
-					deinit { cancelCounter.confirm() }
-				}
-				
-				let future = Future<Int, Never>()
-				for _ in 0..<100 {
-					_ = future.whenResult { [d = WhenDeInit(confirm)] r in
-						_ = d
-						#expect(r == nil)
+				await confirmation("all callbacks cancelled on drop", expectedCount: 100) { cancelCounter in
+					let future = Future<Int, Never>()
+					for _ in 0..<100 {
+						_ = future.whenResult { [d = WhenDeinitTool((), confirm)] r in
+							_ = d
+							#expect(r == nil)
+							cancelCounter.confirm()
+						}
 					}
+					// future goes out of scope here, triggering deinit which cancels waiters with nil
 				}
-				// future goes out of scope here, triggering deinit which cancels waiters with nil
 			}
 		}
 

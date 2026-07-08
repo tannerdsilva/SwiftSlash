@@ -47,7 +47,7 @@ extension Future {
 	/// 	- result: the successful result to set on the future.
 	/// - throws: an error if the future already has a result (either a success, a failure, or a cancellation).
 	@discardableResult public func setSuccess(_ result:sending Produced) throws(InvalidStateError) -> Set<UInt64> {
-		try core.assign(.result(result))
+		return try core.assign(.result(result))
 	}
 	
 	/// sets the result of the future to a failure value. if the future already has a result (either a success, a failure, or a cancellation), this function will throw an error.
@@ -55,13 +55,13 @@ extension Future {
 	/// 	- error: the failure error to set on the future.
 	/// - throws: an error if the future already has a result (either a success, a failure, or a cancellation).
 	@discardableResult public func setFailure(_ error:sending Failure) throws(InvalidStateError) -> Set<UInt64> {
-		try core.assign(.thrown(error))
+		return try core.assign(.thrown(error))
 	}
 
 	/// cancels the future. if the future already has a result (either a success, a failure, or a cancellation), this function will throw an error.
 	/// - throws: an error if the future already has a result (either a success, a failure, or a cancellation).
 	@discardableResult public func cancel() throws(InvalidStateError) -> Set<UInt64> {
-		try core.assign(.cancelled)
+		return try core.assign(.cancelled)
 	}
 }
 
