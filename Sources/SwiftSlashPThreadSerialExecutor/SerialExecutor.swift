@@ -36,7 +36,8 @@ public final class PThreadSerialExecutor:SerialExecutor {
 		self.queue = fifo
 	}
     deinit {
-        queue.finish()
+		// try? is acceptable here because we do not care if the queue is already finished.
+		try? queue.finish()
     }
     public func enqueue(_ job:consuming ExecutorJob) {
         // FIFO is thread-safe and handles yielding the job across threads.

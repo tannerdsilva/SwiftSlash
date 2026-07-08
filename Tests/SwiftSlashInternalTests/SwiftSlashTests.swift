@@ -24,7 +24,7 @@ internal struct SwiftSlashTests {}
 
 	internal init() {
 		let lt:Running<PThreadWorkerEventLoop>
-		let fifo = FIFO<(UnownedJob, UnownedSerialExecutor), Swift.Error>()
+		let fifo = try! FIFO<(UnownedJob, UnownedSerialExecutor), Swift.Error>()
 		do {
 			lt = try PThreadWorkerEventLoop.launch(fifo)
 		} catch let error {

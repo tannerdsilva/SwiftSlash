@@ -110,8 +110,8 @@ internal struct ProcessLogistics {
 				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
-						f.finish()
-						uds.finish()
+						try? f.finish()
+						try? uds.finish()
 					})
 					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumerExplicit(), et = eventTrigger] in
 						defer {
@@ -192,7 +192,7 @@ internal struct ProcessLogistics {
 				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [f = systemReadEventsFIFO] _ in
-						f.finish()
+						try? f.finish()
 					})
 
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer(), et = eventTrigger] in
@@ -206,7 +206,7 @@ internal struct ProcessLogistics {
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
 						var largestReadSize = 256
-						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
+						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish(.success(()))) {
 							do {
 								if readableSize > largestReadSize {
 									largestReadSize = readableSize
@@ -273,7 +273,7 @@ internal struct ProcessLogistics {
 							let newPipe = try PosixPipe.forChildReading()
 
 							// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-							let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
+							let writerFIFO = try! EventTrigger.WriterFIFO(maximumElementCount:1)
 
 							// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
 							try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
@@ -301,7 +301,7 @@ internal struct ProcessLogistics {
 							
 							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildWriting()
-							let readerFIFO = EventTrigger.ReaderFIFO()
+							let readerFIFO = try! EventTrigger.ReaderFIFO()
 							try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
 
 							// close the writing end of the pipe after fork.

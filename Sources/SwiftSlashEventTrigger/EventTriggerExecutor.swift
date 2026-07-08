@@ -24,7 +24,7 @@ extension EventTrigger {
 		private let eventLoopWorker:PThread
 		private let queue:FIFO<(Swift.UnownedJob, Swift.UnownedSerialExecutor), Swift.Error>
 		internal init() {
-			self.queue = FIFO()
+			self.queue = try! FIFO()
 			self.eventLoopWorker = PThread(queue)
 		}
 		internal func enqueue(_ job:consuming ExecutorJob) {

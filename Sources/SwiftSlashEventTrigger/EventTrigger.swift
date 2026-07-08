@@ -42,7 +42,7 @@ public final class EventTrigger:Sendable {
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	@SwiftSlashGlobalSerialization public init() throws {
 		cancelPipe = try PosixPipe()
-		regStream = FIFO()
+		regStream = try! FIFO()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>

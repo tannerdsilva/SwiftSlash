@@ -26,12 +26,12 @@ extension SwiftSlashTests {
 		@Test("SwiftSlashEventTrigger :: reading lifecycle simple", .timeLimit(.minutes(1)))
 		func readingRegistration() async throws {
 			let newPipe = try PosixPipe()
-			let readingFIFO = FIFO<Int, Never>()
+			let readingFIFO = try!FIFO<Int, Never>()
 			let asyncConsumer = readingFIFO.makeAsyncConsumer()
 			let et:EventTrigger = try await EventTrigger()
 			let fut = Future<Void, DataChannel.ChildWrite.ParentRead.Error>()
 			fut.whenResult { result in
-				readingFIFO.finish()
+				try! readingFIFO.finish()
 			}
 			try await et.register(reader:newPipe.reading, readingFIFO, finishFuture:fut)
 			#expect(try newPipe.writing.writeFH(singleByte:0x0) == 1)
@@ -50,12 +50,12 @@ extension SwiftSlashTests {
 		@Test("SwiftSlashEventTrigger :: writing lifecycle simple", .timeLimit(.minutes(1)))
 		func writingRegistration() async throws {
 			let newPipe = try PosixPipe()
-			let writingFIFO = FIFO<Void, Never>()
+			let writingFIFO = try! FIFO<Void, Never>()
 			let asyncConsumer: FIFO<Void, Never>.AsyncConsumer = writingFIFO.makeAsyncConsumer()
 			let et = try await EventTrigger()
 			let fut = Future<Void, Never>()
 			fut.whenResult { result in
-				writingFIFO.finish()
+				try! writingFIFO.finish()
 			}
 			try await et.register(writer:newPipe.writing, writingFIFO, finishFuture:fut)
 			var nextItem:Void? = await asyncConsumer.next()

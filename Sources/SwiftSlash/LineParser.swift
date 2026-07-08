@@ -118,7 +118,7 @@ internal struct LineParser:~Copyable {
 			switch handler {
 				case .fifo(let stream):
 					stream.yield([final])
-					stream.finish()
+					try? stream.finish()
 				case .handler(let h):
 					h([final])
 					h(nil)
@@ -128,7 +128,7 @@ internal struct LineParser:~Copyable {
 			// nothing to emit, just signal end
 			switch handler {
 				case .fifo(let stream):
-					stream.finish()
+					try? stream.finish()
 				case .handler(let h):
 					h(nil)
 			}

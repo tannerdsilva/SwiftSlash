@@ -122,6 +122,7 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 	}
 }
 
+// MARK: SyncConsumerNonBlockingExplicit
 extension FIFO {
 	public func makeSyncConsumerNonblockingExplicit() -> SyncConsumerNonBlockingExplicit {
 		return SyncConsumerNonBlockingExplicit(self)
@@ -229,6 +230,7 @@ extension FIFO {
 	}
 }
 
+// MARK: AsyncConsumer
 extension FIFO {
 	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
 	public func makeAsyncConsumer() -> AsyncConsumer {

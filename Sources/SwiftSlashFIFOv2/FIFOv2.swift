@@ -55,8 +55,8 @@ public final class FIFO<Element:Sendable, Failure:Swift.Error>:Sendable {
 		/// the oneshot latch that is used to block the thread until the next element is available in the FIFO.
 		internal let oneShot:OneShotLatch<NextElement>
 		/// initialize the SyncWaiter with a OneShotLatch instance.
-		internal init(_ oneShotIn:OneShotLatch<NextElement>) {
-			oneShot = oneShotIn
+		public init() {
+			oneShot = .init()
 		}
 		/// waits for the next element to be available in the FIFO. this function will block the current thread until the next element is available, or until the FIFO is closed.
 		/// - returns: the next element in the FIFO, or nil if the FIFO has been closed without an error.
@@ -67,13 +67,13 @@ public final class FIFO<Element:Sendable, Failure:Swift.Error>:Sendable {
 	}
 
 	/// used to convey one of the possible outcomes of consuming the next element from the FIFO.
-	public enum ConsumeResult {
+	public enum ConsumeResult:Sendable {
 		/// the next element was successfully consumed from the FIFO.
 		case element(Element)
 		/// the FIFO was closed, and no more elements may be consumed.
 		case capped(Result<Void, Failure>)
 		/// the FIFO is currently empty, and no elements may be consumed at this time.
-		case wouldBlock(SyncWaiter)
+		case wouldBlock
 	}
 
 	@available(*, deprecated, renamed: "FIFOYieldResult")
@@ -109,21 +109,21 @@ extension FIFO {
 	/// yields an element into the FIFO.
 	/// - parameter element: the element to yield into the FIFO.
 	/// - returns: a YieldResult value indicating the result of the yield operation.
-	@discardableResult public func yield(_ element:sending Element) -> YieldResult {
+	@discardableResult public func yield(_ element:sending Element) -> FIFOYieldResult {
 		// enter the locked section of the fifo core state, and attempt to yield the element into the FIFO. return the result of the yield operation.
 		let lockResult = core.withLock { state -> YieldOutcome in
 			// check if the fifo has already been finished.
 			switch state.capResult {
 				case .some(_):
 					// the fifo has already been finished, so we cannot yield any more elements.
-					return YieldOutcome(result: .fifoClosed, waiterNotification: nil)
+					return YieldOutcome(result:.fifoClosed, waiterNotification:nil)
 				case .none:
 					// the fifo is still open, so we can attempt to yield the element.
 					return withUnsafePointer(to: count) { countPtr in
 						do {
-							return YieldOutcome(result: .success, waiterNotification: try state.unfinished.yield(elementCount:countPtr, element))
+							return YieldOutcome(result:.success, waiterNotification:try state.unfinished.yield(elementCount:countPtr, element))
 						} catch {
-							return YieldOutcome(result: .fifoFull, waiterNotification: nil)
+							return YieldOutcome(result:.fifoFull, waiterNotification:nil)
 						}
 					}
 			}
@@ -231,7 +231,7 @@ extension FIFO {
 			}
 		}).get()
 	}
-	internal borrowing func nextAsynchronous() async -> Result<NextElement, AlreadyWaiting> {
+	fileprivate borrowing func nextAsynchronous() async -> Result<NextElement, AlreadyWaiting> {
 		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<NextElement, AlreadyWaiting>, Never>) in
 			let hasImmediateResult:Result<NextElement, AlreadyWaiting>? = core.withLock({ state in
 				withUnsafePointer(to:count, { countPtr in
@@ -271,8 +271,8 @@ extension FIFO {
 		})
 	}
 
-	internal func nextSynchronous() throws(AlreadyWaiting) -> ConsumeResult {
-		return try core.withLock({ state throws(AlreadyWaiting) in
+	internal func nextSynchronous(waiter threadBlockWaiter:SyncWaiter? = nil) throws(AlreadyWaiting) -> ConsumeResult {
+		return try core.withLock({ state throws(AlreadyWaiting) -> ConsumeResult in
 			return try withUnsafePointer(to:count, { countPtr throws(AlreadyWaiting) -> ConsumeResult in
 				// validate that there is not already a waiter.
 				guard state.unfinished.waiter == nil else {
@@ -297,10 +297,11 @@ extension FIFO {
 								return .capped(.failure(error))
 						}
 					case .none:
-						// the fifo has not been finished. wrap the latch in a waiter and return it to the caller, so that they can wait for the next element to be available.
-						let newLatch = OneShotLatch<NextElement>()
-						state.unfinished.waiter = .synchronous(newLatch)
-						return .wouldBlock(SyncWaiter(newLatch))
+						// the fifo has not been finished. put the waiter 
+						if let tbw = threadBlockWaiter {
+							state.unfinished.waiter = .synchronous(tbw.oneShot)
+						}
+						return .wouldBlock
 				}
 			})
 		})

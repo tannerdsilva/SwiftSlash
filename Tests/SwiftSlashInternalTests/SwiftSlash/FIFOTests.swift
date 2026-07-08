@@ -24,7 +24,7 @@ extension SwiftSlashTests {
 	struct FIFOTests {
 		@Test("SwiftSlashFIFO :: basic usage with deinitialization checks", .timeLimit(.minutes(1)))
 		func testFIFOWithDeinitTool() async {
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = try! FIFO<WhenDeinitTool<Int>, Never>()
 			fifo = nil
 			#expect(fifo == nil)
 		}
@@ -32,7 +32,7 @@ extension SwiftSlashTests {
 		@Test("SwiftSlashFIFO :: basic usage for no consumption", .timeLimit(.minutes(1)))
 		func testNoConsumption() async {
 			// now test the same scenario without any consumption. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = try! FIFO<WhenDeinitTool<Int>, Never>()
 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:5) { deinitExp in
 				fifo!.yield(WhenDeinitTool(1, deinitExp))
 				fifo!.yield(WhenDeinitTool(2, deinitExp))
@@ -45,7 +45,7 @@ extension SwiftSlashTests {
 		@Test("SwiftSlashFIFO :: memory management in partial consumption scenario (async)", .timeLimit(.minutes(1)))
 		func testPartialConsumption() async {
 			// test a partial consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = try! FIFO<WhenDeinitTool<Int>, Never>()
 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:2) { deinitOuter in
 				await withTaskGroup(of:[Int].self) { tg in
 					await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:3) { deinitInner in
@@ -67,7 +67,7 @@ extension SwiftSlashTests {
 						fifo!.yield(WhenDeinitTool(3, deinitInner))
 						fifo!.yield(WhenDeinitTool(4, deinitOuter))
 						fifo!.yield(WhenDeinitTool(5, deinitOuter))
-						fifo!.finish()
+						try! fifo!.finish()
 						await tg.waitForAll()
 					}
 				}
@@ -79,7 +79,7 @@ extension SwiftSlashTests {
 		func testFullConsumption() async {
 			let elementCount = 10000
 			// test a full consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			let fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>()
+			let fifo:FIFO<WhenDeinitTool<Int>, Never>? = try! FIFO<WhenDeinitTool<Int>, Never>()
 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:elementCount) { deinitOuter in
 				await withTaskGroup(of:[Int].self) { tg in
 					tg.addTask { [asc = fifo!.makeAsyncConsumer()] in
@@ -96,7 +96,7 @@ extension SwiftSlashTests {
 						fifo!.yield(WhenDeinitTool(i, deinitOuter))
 						written.append(i)
 					}
-					fifo!.finish()
+					try! fifo!.finish()
 					#expect(await tg.next() == written)
 				}
 			}
@@ -105,9 +105,9 @@ extension SwiftSlashTests {
 		@Test("SwiftSlashFIFO :: intentional overflow of maximum element count (async)", .timeLimit(.minutes(1)))
 		func testMaxElementOverflow() async {
 			let writeCount = 10000
-			let maxCount = 10
+			let maxCount:UInt64 = 10
 			// test a full consumption scenario. ensure that the references are deinitialized properly when the fifo is deinitialized.
-			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = FIFO<WhenDeinitTool<Int>, Never>(maximumElementCount:maxCount)
+			var fifo:FIFO<WhenDeinitTool<Int>, Never>? = try! FIFO<WhenDeinitTool<Int>, Never>(maximumElementCount:maxCount)
 			await confirmation("verify correct memory management of elements passed to the fifo", expectedCount:writeCount) { deinitThing in
 				await withTaskGroup(of:[Int].self) { tg in
 					var written = [Int]()
@@ -128,7 +128,7 @@ extension SwiftSlashTests {
 						}
 						return buildInts
 					}
-					fifo!.finish()
+					try! fifo!.finish()
 					let expected = Array(written.prefix(10))
 					let foundItem = await tg.next()!
 					#expect(expected == foundItem, "\(foundItem) != \(expected)")

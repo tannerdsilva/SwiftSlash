@@ -44,7 +44,7 @@ public enum DataChannel:Sendable {
 			}
 			
 			/// Internal FIFO for buffering incoming data.
-			internal let fifo:FIFO<[[UInt8]], Never> = .init()
+			internal let fifo:FIFO<[[UInt8]], Never> = try! .init()
 	
 			/// Yields a new data chunk into the channel’s FIFO.
 			internal borrowing func yield(_ element:consuming [[UInt8]]) {
@@ -54,7 +54,7 @@ public enum DataChannel:Sendable {
 			/// Closes the channel, signaling no further data.
 			/// - Note: downstream consumers (e.g., parent or other) will see EOF.
 			internal borrowing func closeDataChannel() {
-				fifo.finish()
+				try? fifo.finish()
 			}
 	
 			/// AsyncIterator for consuming data until the channel finishes.
@@ -65,7 +65,7 @@ public enum DataChannel:Sendable {
 				}
 				/// Returns the next chunk of data, or `nil` when the channel is closed.
 				public borrowing func next() async -> [[UInt8]]? {
-					switch await fifo.next(whenTaskCancelled:.finish) {
+					switch await fifo.next(whenTaskCancelled:.finish(.success(()))) {
 					case .element(let element):
 						return element
 					case .capped(_):
@@ -100,7 +100,7 @@ public enum DataChannel:Sendable {
 				case dataChannelClosed
 			}
 			/// Internal FIFO for buffering outgoing data and completion futures.
-			internal let fifo:FIFO<([UInt8], Future<Void, Error>?), Never> = .init()
+			internal let fifo:FIFO<([UInt8], Future<Void, Error>?), Never> = try! .init()
 	
 			/// Initializes a new parent-to-child data channel.
 			public init() {}
@@ -141,7 +141,7 @@ public enum DataChannel:Sendable {
 			/// Closes the channel, indicating no further writes.
 			/// - Note: child process will receive `EOF` and may react to this event.
 			public borrowing func closeDataChannel() {
-				fifo.finish()
+				try? fifo.finish()
 			}
 	
 			/// Provides an async consumer for the buffered data to be consumed.
