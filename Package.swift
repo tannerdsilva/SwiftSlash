@@ -12,14 +12,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 		name:"__cswiftslash_types",
 		publicHeadersPath:"."
 	),
-	// fifo
-	.target(
-		name:"__cswiftslash_fifo",
-		dependencies: [
-			"__cswiftslash_types"
-		],
-		publicHeadersPath:"."
-	),
 	// future
 	// .target(
 	// 	name:"__cswiftslash_future",
@@ -89,13 +81,6 @@ fileprivate let swiftTargets:[Target] = [
 			"SwiftSlashFuture"
 		]
 	),
-	// .target(
-	// 	name:"SwiftSlashFIFO",
-	// 	dependencies:[
-	// 		"__cswiftslash_fifo",
-	// 		"SwiftSlashContained"
-	// 	]
-	// ),
 	.target(
 		name:"SwiftSlashFIFO",
 		dependencies:[
@@ -135,7 +120,6 @@ fileprivate let swiftTargets:[Target] = [
 fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
-		"__cswiftslash_fifo",
 		"__cswiftslash_types",
 		"__cswiftslash_threads",
 		"__cswiftslash_eventtrigger",

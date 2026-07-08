@@ -133,40 +133,47 @@ fileprivate enum CloseOut:UInt8, AtomicRepresentable {
 	case threadCancelled = 1
 	/// the pthread is exited.
 	case threadExited = 2
+	/// the pthread is joining.
+	case threadJoining = 3
 	/// the pthread is joined.
-	case threadJoined = 3
+	case threadJoined = 4
 }
 
 /// a Sendable class that encompasses a running pthread. this structure is responsible for ensuring that the pthread is joined and that the memory is properly managed between the running memory space and the calling memory space.
 public final class Running<W>:@unchecked Sendable where W:PThreadWork {
+
+	private struct State:Sendable {
+		internal var closeOut:CloseOut = .threadRunning
+	}
+
 	// the pthread primitive
-	private let ptp:__cswiftslash_threads_t_type
-	// the future that will be set to success when the pthread is launched.
+	internal let ptp:__cswiftslash_threads_t_type
 	private let returnFuture:Future<Result<any Sendable, any Swift.Error>, Never>
-	// documents the current state of the running pthread
-	private let state:Atomic<CloseOut> = .init(CloseOut.threadRunning)
+	private let operatingState:Mutex<State> = Mutex(State())
 
 	fileprivate init(
-		alreadyLaunched pthread:__cswiftslash_threads_t_type,
+		alreadyLaunched pthread:consuming __cswiftslash_threads_t_type,
 		returnFuture rf:consuming Future<Result<any Sendable, any Swift.Error>, Never>
 	) {
 		ptp = pthread
 		returnFuture = rf
-		returnFuture.whenResult { [weak self] resultPtr in
-			let loaded = self?.state.load(ordering:.acquiring)
-			switch loaded {
-				case .threadRunning:
-					guard self?.state.compareExchange(expected:.threadRunning, desired:.threadExited, ordering:.acquiringAndReleasing).0 == true else {
-						fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
-					}
-				case .threadCancelled:
-					// the thread has been cancelled. we need to wait for it to exit.
-					guard self?.state.compareExchange(expected:.threadCancelled, desired:.threadExited, ordering:.acquiringAndReleasing).0 == true else {
-						fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
-					}
-				default:
-					fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. the current value is \(String(describing:loaded)) \(#file):\(#line)")
+		rf.whenResult { [weak self] resultPtr in
+			guard let self = self else {
+				return
 			}
+			operatingState.withLock({ stateAccess in
+				// the goal here is to update the state is at least at the "exited" stage at this point.
+				switch stateAccess.closeOut {
+					case .threadRunning:
+						stateAccess.closeOut = .threadExited
+					case .threadCancelled:
+						// the thread has been cancelled. we need to wait for it to exit.
+						stateAccess.closeOut = .threadExited
+					default:
+						// the thread has already exited or is joining or joined. we need to do nothing.
+						break
+				}
+			})
 		}
 	}
 
@@ -201,57 +208,60 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	/// cancels the running pthread. it will exit when it reaches the next pthread cancellation point.
 	/// - returns: true if the pthread was successfully set to cancelled, false if the pthread was not successfully canceled.
 	public borrowing func cancel() throws(PThreadCancellationFailure) {
-		switch state.compareExchange(expected:.threadRunning, desired:.threadCancelled, ordering:.acquiringAndReleasing) {
-			case (true, _):
-				guard pthread_cancel(ptp) == 0 else {
-					fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. \(#file):\(#line)")
-				}
-			case (false, .threadExited):
-				return
-			case (false, .threadCancelled):
-				// the thread has already been cancelled.
-				throw PThreadCancellationFailure.alreadyCancelled
-			case (false, .threadJoined):
-				// the thread has already been joined.
-				throw PThreadCancellationFailure.alreadyCancelled
-			case (false, .threadRunning):
-				// the thread is still running. we need to cancel it.
-				// this should never happen because we are using atomic operations to ensure that the thread is not running.
-				fatalError("SwiftSlashPThread: pthread_cancel failed. this is a critical error. \(#file):\(#line)")
-		}
+		try operatingState.withLock({ stateAccess throws(PThreadCancellationFailure) in
+			switch stateAccess.closeOut {
+				case .threadRunning:
+					guard pthread_cancel(ptp) == 0 else {
+						throw .internalFailure
+					}
+					stateAccess.closeOut = .threadCancelled
+				case .threadCancelled:
+					throw PThreadCancellationFailure.alreadyCancelled
+				case .threadExited:
+					throw PThreadCancellationFailure.alreadyCancelled
+				case .threadJoining:
+					throw PThreadCancellationFailure.alreadyCancelled
+				case .threadJoined:
+					throw PThreadCancellationFailure.alreadyCancelled
+			}
+		})
 	}
 
 	@available(*, noasync, message:"function joinSync() is not async safe. it is only safe to call this function from the main thread.")
 	public consuming func joinSync() throws(PThreadJoinFailure) {
-		// verify that the pthread has not already been joined
-		guard state.load(ordering:.acquiring) != .threadJoined else {
-			throw PThreadJoinFailure()
-		}
-		// join the pthread
+		try operatingState.withLock({ stateAccess throws(PThreadJoinFailure) in
+			guard stateAccess.closeOut != .threadJoined && stateAccess.closeOut != .threadJoining else {
+				throw PThreadJoinFailure()
+			}
+			stateAccess.closeOut = .threadJoining
+		})
 		guard pthread_join(ptp, nil) == 0 else {
 			throw PThreadJoinFailure()
 		}
-		guard state.compareExchange(expected:.threadExited, desired:.threadJoined, ordering:.acquiringAndReleasing).0 == true else {
-			fatalError("SwiftSlashPThread: pthread_join failed. this is a critical error. \(#file):\(#line)")
-		}
+		try operatingState.withLock({ stateAccess throws(PThreadJoinFailure) in
+			stateAccess.closeOut = .threadJoined
+		})
 	}
 
 	deinit {
-		switch state.load(ordering:.acquiring) {
-		case .threadRunning:
-			// the thread is still running. we need to cancel it.
-			try! cancel()
-			// wait for the thread to exit.
-			try! joinSync()
-		case .threadCancelled:
-			// the thread has been cancelled. we need to wait for it to exit.
-			try! joinSync()
-		case .threadExited:
-			// the thread has exited. we need to wait for it to exit.
-			try! joinSync()
-		case .threadJoined:
-			// the thread has already been joined. we need to do nothing.
-			break
+		switch operatingState.withLock({ stateAccess in
+			return stateAccess.closeOut
+		}) {
+			case .threadRunning:
+				// the thread is still running. we need to cancel it.
+				try! cancel()
+				// wait for the thread to exit.
+				try! joinSync()
+			case .threadCancelled:
+				// the thread has been cancelled. we need to wait for it to exit.
+				try! joinSync()
+			case .threadExited:
+				// the thread has exited. we need to wait for it to exit.
+				try! joinSync()
+			case .threadJoined:
+				break
+			case .threadJoining:
+				break;
 		}
 	}
 }
