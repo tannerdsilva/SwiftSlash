@@ -59,17 +59,17 @@ internal struct ProcessLogistics {
 		internal let dataChannels:[Int32:DataChannel]
 
 		internal init(
-			exe:Path,
-			arguments:[String],
-			workingDirectory:Path,
-			env:[String:String],
-			dataChannels:[Int32:DataChannel]
+			exe exePath:consuming Path,
+			arguments argsIn:consuming [String],
+			workingDirectory wd:Path,
+			env envIn:[String:String],
+			dataChannels io:[Int32:DataChannel]
 		) {
-			self.exe = exe
-			self.arguments = arguments
-			self.workingDirectory = workingDirectory
-			self.env = env
-			self.dataChannels = dataChannels
+			exe = exePath
+			arguments = argsIn
+			workingDirectory = wd
+			env = envIn
+			dataChannels = io
 		}
 
 		/// expose all of the arguments for this launch package as c pointers that could be used to launch a child process.

@@ -12,15 +12,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 		name:"__cswiftslash_types",
 		publicHeadersPath:"."
 	),
-	// future
-	// .target(
-	// 	name:"__cswiftslash_future",
-	// 	dependencies: [
-	// 		"__cswiftslash_identified_list",
-	// 		"__cswiftslash_types"
-	// 	],
-	// 	publicHeadersPath:"."
-	// ),
 	// threading
 	.target(
 		name:"__cswiftslash_threads",
@@ -32,14 +23,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 	// posix helpers
 	.target(
 		name:"__cswiftslash_posix_helpers",
-		publicHeadersPath:"."
-	),
-	// identified list
-	.target(
-		name:"__cswiftslash_identified_list",
-		dependencies: [
-			"__cswiftslash_types"
-		],
 		publicHeadersPath:"."
 	),
 ]
@@ -118,7 +101,6 @@ fileprivate let testTarget:Target = .testTarget(
 		"__cswiftslash_types",
 		"__cswiftslash_threads",
 		"__cswiftslash_eventtrigger",
-		"__cswiftslash_identified_list",
 		"SwiftSlashFuture",
 		"SwiftSlashPThread",
 		"SwiftSlashFIFO",
