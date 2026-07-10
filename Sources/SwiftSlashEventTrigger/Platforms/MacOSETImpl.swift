@@ -50,9 +50,9 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								case .some(let r):
 									switch r {
 										case .reader(_, let future):
-											try? future.setSuccess(())
+											_ = try? future.setSuccess(())
 										case .writer(_, let future):
-											try? future.setSuccess(())
+											_ = try? future.setSuccess(())
 									}
 								case .none:
 									break

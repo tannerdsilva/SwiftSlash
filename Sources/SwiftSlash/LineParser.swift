@@ -135,6 +135,9 @@ internal struct LineParser:~Copyable {
 		}
 	}
 
+	/// ensure capacity exists to add at least `additional` amount of bytes.
+	/// - parameters:
+	///		- additional: the amount of bytes that are planned to be added to the buffer.
 	private mutating func ensureCapacity(for additional:Int) {
 		guard capacity >= count + additional else {
 			var newCap = capacity * 2
@@ -150,6 +153,7 @@ internal struct LineParser:~Copyable {
 		}
 	}
 
+	
 	private mutating func emitLinesIfAny() {
 		var lines = [LineOutput]()
 		var lineStart = 0

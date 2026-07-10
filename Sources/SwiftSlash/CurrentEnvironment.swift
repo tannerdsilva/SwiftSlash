@@ -19,6 +19,7 @@ import Darwin
 
 /// A namespace for static functions that provide information about the current process.
 public struct CurrentEnvironment {
+
 	/// Thrown when there is a problem with the path searching function.
 	public enum PathSearchError:Swift.Error {
 		/// Thrown when the `PATH` key is not found in the current environment variable set.
@@ -26,6 +27,7 @@ public struct CurrentEnvironment {
 		/// Thrown when the specified name is not found within the configured environment paths.
 		case executableNotFound(currentPaths:[String], name:String)
 	}
+
 	/// Clears all environment variables for the current process.
 	/// Iterates over each key in the current environment and calls `unsetenv(_:)`.
 	/// - Returns: Zero on success; if any call to `unsetenv` fails, returns the corresponding `errno` value.
@@ -38,6 +40,7 @@ public struct CurrentEnvironment {
 		}
 		return 0
 	}
+
 	/// Retrieves the environment variables of the current process.
 	/// Parses the global `environ` array into a `[String:String]` dictionary.
 	/// Keys without an explicit “=`value`” part will be mapped to an empty string.
@@ -60,6 +63,7 @@ public struct CurrentEnvironment {
 		}
 		return envs
 	}
+
 	/// Returns the current working directory of the calling process.
 	/// - Returns: A `Path` representing the process’s current working directory.
 	public static func workingDirectory() -> Path {
