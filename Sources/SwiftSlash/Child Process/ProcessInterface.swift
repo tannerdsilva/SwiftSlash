@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -147,15 +147,15 @@ public actor ChildProcess {
 						curRead.launch(taskGroup:&tg)
 					}
 					
+					try await tg.waitForAll()
+
 					// reap the running process
-					switch await preapredPackage.launchedPID.waitPID() {
+					switch preapredPackage.launchedPID.waitPID() {
 						case .exited(let exitCode):
 							state = .reaped(.code(exitCode))
-							try await tg.waitForAll()
 							return .code(exitCode)
 						case .signaled(let sigCode):
 							state = .reaped(.signal(sigCode))
-							try await tg.waitForAll()
 							return .signal(sigCode)
 						case .failed(let err):
 							throw ReapError(errnoValue:err)

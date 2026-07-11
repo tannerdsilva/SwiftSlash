@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -16,6 +16,7 @@ public struct PThreadLaunchFailure:Swift.Error {}
 public enum PThreadCancellationFailure:Swift.Error {
 	case alreadyCancelled
 	case alreadyJoined
+	case internalFailure
 }
 
 /// thrown when a pthread is unable to be joined.

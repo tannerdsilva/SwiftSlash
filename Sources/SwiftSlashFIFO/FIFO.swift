@@ -1,5 +1,6 @@
-/* LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+/*
+LICENSE MIT
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -8,14 +9,66 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 */
 
-import __cswiftslash_fifo
-import SwiftSlashContained
+import Synchronization
+import SwiftSlashOneShotLatch
 
-/// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is not intended for use with multiple producers or multiple consumers.
-public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swift.Error {
-	
+/// used to convey the various types of results that may occur when yielding an element into the FIFO.
+public enum FIFOYieldResult {
+	/// the yield value was successfully passed into the FIFO
+	case success
+	/// the FIFO was closed, and the yield value was not passed into the FIFO
+	case fifoClosed
+	/// the FIFO was full, and the yield value was not passed into the FIFO
+	case fifoFull
+}
+
+/// fifo is a mechanism that operates very similarly to a native Swift AsyncStream. the tool is designed for use with a single producer and a single consumer. the tool is thread-safe and reentrancy-safe, but is *not* intended for use with multiple producers or multiple consumers.
+/// ### the semantics of the FIFO are as follows:
+/// - the FIFO is initialized with an optional maximum buffered element count. if there is always a 'waiter' ready to consume the next element, then the FIFO will not buffer any elements. if there is no 'waiter' ready to consume the next element, then the FIFO will buffer elements up to the maximum buffered element count. if the maximum buffered element count is reached, then any further attempts to yield an element into the FIFO will fail with a BufferLimitExceeded error.
+/// - with the buffer limits always being met, the FIFO will pass any 'n' umber of elements from the producer to the consumer.
+/// - the FIFO can be "capped" or "finished" with one of two possible results: a success result, or a failure result.
+/// - a FIFO may be finished with elements still buffered in the FIFO. in this case, the FIFO will continue to pass elements to the consumer until the buffer is empty, at which point the FIFO will return the result of the finish operation (success or failure) to the consumer.
+/// - if the maximum buffered count is NOT `nil`, the value must be greater than 0.
+public final class FIFO<Element:Sendable, Failure:Swift.Error>:Sendable {
+
+	/// the type of the next element that will be yielded from the FIFO. this type is used to convey the result of the next() operation, which may be a successful element, a failure, or nil if the FIFO has been closed.
+	public typealias NextElement = Result<Element, Failure>?
+
+	/// thrown when there is already a waiter for the fifo.
+	public struct AlreadyWaiting:Swift.Error {}
+
+	/// thrown when the fifo is in an invalid state for the operation being attempted.
+	public struct InvalidStateError:Swift.Error {}
+
+	/// thrown when an invalid maximum element count is specified for the fifo. the maximum element count must be greater than 0, or nil for an unbounded fifo.
+	public struct InvalidMaximumElementCount:Swift.Error {}
+
+	/// used to specify what should happen when the consuming task of this fifo is cancelled.
+	public enum WhenConsumingTaskCancelled:Sendable {
+		/// take no action. the fifo will continue passing objects as it normally does.
+		case noAction
+		/// finish the fifo with a specified result. this will cause the fifo to stop yielding new objects, and will cause any future calls to next() to return the specified result (after the buffer has been cleared).
+		case finish(Result<Void, Failure>)
+	}
+
+	/// a mechanism that is used to synchronously block a thread until the next element is available in the FIFO. this mechanism is used to allow synchronous code to wait for the next element in the FIFO without using async/await.
+	public struct SyncWaiter:Sendable {
+		/// the oneshot latch that is used to block the thread until the next element is available in the FIFO.
+		internal let oneShot:OneShotLatch<NextElement>
+		/// initialize the SyncWaiter with a OneShotLatch instance.
+		public init() {
+			oneShot = .init()
+		}
+		/// waits for the next element to be available in the FIFO. this function will block the current thread until the next element is available, or until the FIFO is closed.
+		/// - returns: the next element in the FIFO, or nil if the FIFO has been closed without an error.
+		public func wait() -> NextElement {
+			// any breakage in the "one shot semantics" of the OneShotLatch is a programming error, so we will force-try this operation. if it fails, it is a programming error and we want to crash.
+			return try! oneShot.wait()
+		}
+	}
+
 	/// used to convey one of the possible outcomes of consuming the next element from the FIFO.
-	public enum ConsumeResult {
+	public enum ConsumeResult:Sendable {
 		/// the next element was successfully consumed from the FIFO.
 		case element(Element)
 		/// the FIFO was closed, and no more elements may be consumed.
@@ -24,331 +77,234 @@ public final class FIFO<Element, Failure>:@unchecked Sendable where Failure:Swif
 		case wouldBlock
 	}
 
-	/// used to convey the various types of results that may occur when yielding an element into the FIFO.
-	public enum YieldResult {
-		/// the yield value was successfully passed into the FIFO
-		case success
-		/// the FIFO was closed, and the yield value was not passed into the FIFO
-		case fifoClosed
-		/// the FIFO was full, and the yield value was not passed into the FIFO
-		case fifoFull
-	}
-	
-	// underlying c implementation
-	private let datachain_primitive_ptr:UnsafeMutablePointer<__cswiftslash_fifo_linkpair_t>
-	
-	/// initialize a new FIFO with a specified maximum element count.
-	/// - parameters:
-	///		- maximumElementCount: the maximum number of elements that may be held in the FIFO at any given time.
-	public init(maximumElementCount:Int) {
-		// memory setup
-		let newPointer = __cswiftslash_fifo_init(true)
+	@available(*, unavailable, renamed: "FIFOYieldResult")
+	public typealias YieldResult = FIFOYieldResult
 
-		// set the maximum element count if it was passed
-		guard __cswiftslash_fifo_set_max_elements(newPointer, maximumElementCount) == true else {
-			fatalError("swiftslash - failed to set maximum element count - \(#file):\(#line)")
+	/// internal struct to convey the result of a yield operation, and any waiter notification that may be required.
+	private struct YieldOutcome {
+		/// the result of the yield operation.
+		internal let result:FIFOYieldResult
+		/// any waiter notification that may be required as a result of the yield operation. if this value is nil, then there is no waiter to notify.
+		internal let waiterNotification:Core.State.Unfinished.YieldResult?
+		internal init(result resultIn:FIFOYieldResult, waiterNotification waiterNotificationIn:Core.State.Unfinished.YieldResult?) {
+			result = resultIn
+			waiterNotification = waiterNotificationIn
 		}
-		datachain_primitive_ptr = newPointer
 	}
 
-	/// initialize a new FIFO with no maximum element count. yielded elements will be retained indefinitely until they are consumed or the FIFO is deinitialized.
-	public init() {
-		datachain_primitive_ptr = __cswiftslash_fifo_init(true)
+	/// the number of elements that are being buffered in the FIFO. this value is updated atomically, and may be read from any thread.
+	private let count:Atomic<UInt64> = Atomic(0)
+	/// the core state of the FIFO.
+	private let core:Mutex<Core.State>
+
+	/// initialize the FIFO with an optional maximum element count.
+	/// - parameter maxElements: the maximum number of elements that may be buffered in the FIFO. if this value is nil, the FIFO will be unbounded.
+	/// - throws: InvalidMaximumElementCount if the maxElements parameter is 0.
+	public init(maximumElementCount maxElements:UInt64? = nil) throws(InvalidMaximumElementCount) {
+		core = Mutex(try .init(maxElementsBuffered: maxElements))
 	}
+}
 
-	/// pass an element into the FIFO for consumption. the element will be held until it is consumed by the consumer. if the FIFO is closed, the element will be held until the FIFO is deinitialized. if a maximum element count was set, the element will be immediately discarded if the FIFO is full.
-	@discardableResult public borrowing func yield(_ element:consuming Element) -> YieldResult {
-		let um = Unmanaged.passRetained(Contained(element)).toOpaque()
-		passLoop: repeat {
-			logicSwitch: switch __cswiftslash_fifo_pass(datachain_primitive_ptr, um) {
-				// try again
-				case 1:
-					break logicSwitch
-
-				// success return
-				case 0:
-					return .success
-
-				// the FIFO is closed
-				case -1:
-					_ = Unmanaged<Contained<Element>>.fromOpaque(um).takeRetainedValue()
-					return .fifoClosed
-
-				// the FIFO is full
-				case -2:
-					_ = Unmanaged<Contained<Element>>.fromOpaque(um).takeRetainedValue()
-					return .fifoFull
-				default:
-					fatalError("swiftslash - unexpected return value from __cswiftslash_fifo_pass - \(#file):\(#line)")
+// MARK: Yield & Finish
+extension FIFO {
+	/// yields an element into the FIFO.
+	/// - parameter element: the element to yield into the FIFO.
+	/// - returns: a YieldResult value indicating the result of the yield operation.
+	@discardableResult public func yield(_ element:sending Element) -> FIFOYieldResult {
+		// enter the locked section of the fifo core state, and attempt to yield the element into the FIFO. return the result of the yield operation.
+		let lockResult = core.withLock { state -> YieldOutcome in
+			// check if the fifo has already been finished.
+			switch state.capResult {
+				case .some(_):
+					// the fifo has already been finished, so we cannot yield any more elements.
+					return YieldOutcome(result:.fifoClosed, waiterNotification:nil)
+				case .none:
+					// the fifo is still open, so we can attempt to yield the element.
+					return withUnsafePointer(to: count) { countPtr in
+						do {
+							return YieldOutcome(result:.success, waiterNotification:try state.unfinished.yield(elementCount:countPtr, element))
+						} catch {
+							return YieldOutcome(result:.fifoFull, waiterNotification:nil)
+						}
+					}
 			}
-		} while true
+		}
+		switch lockResult.waiterNotification {
+			case .some(let yieldOutcome):
+				switch yieldOutcome {
+					case .buffered:
+						// the element was buffered in the FIFO, and there was no pending waiter to notify.
+						break
+					case .waiterNotificationRequired(let waiterInfo, let result):
+						// there is a waiter, so we need to notify them that an element is now available.
+						switch waiterInfo {
+							case .synchronous(let oneShot):
+								// this is a synchronous waiter, so we will fire the one-shot latch with the result of the fifo.
+								// any breakage in the "one shot semantics" of the OneShotLatch is a programming error, so we will force-try this operation. if it fails, it is a programming error and we want to crash.
+								try! oneShot.fire(result)
+							case .asynchronous(let continuation):
+								// handle the asynchronous waiter
+								continuation.resume(returning:.success(result))
+						}
+				}
+			case .none:
+				// there is no waiter, so we do not need to do anything.
+				break;
+		}
+
+		// return the result of the yield operation.
+		return lockResult.result	
 	}
 
-	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public borrowing func finish() {
-		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Failure>>(.success(())))
-		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
-			_ = resultElement.takeRetainedValue()
-			return
+	fileprivate borrowing func finish(cappingWith result:Result<Void, Failure>) throws(InvalidStateError) {
+		switch try core.withLock({ (state) throws(InvalidStateError) -> Core.State.Unfinished.WaiterInfo? in
+			// if the fifo has already been finished, we do not need to do anything.
+			switch state.capResult {
+				case .some(_):
+					throw InvalidStateError()
+				case .none:
+					state.capResult = result
+			}
+			defer {
+				state.unfinished.waiter = nil
+			}
+			// check for a waiter.
+			return state.unfinished.waiter
+		}) {
+			// there is already a waiter, so we need to notify them that the fifo has been finished.
+			case .some(let waiter):
+				switch waiter {
+					// this is a synchronous waiter, so we will fire the one-shot latch with the result of the fifo.
+					case .synchronous(let oneShot):
+						switch result {
+							case .success:
+								// any breakage in the "one shot semantics" of the OneShotLatch is a programming error, so we will force-try this operation. if it fails, it is a programming error and we want to crash.
+								try! oneShot.fire(nil)
+							case .failure(let error):
+								// any breakage in the "one shot semantics" of the OneShotLatch is a programming error, so we will force-try this operation. if it fails, it is a programming error and we want to crash.
+								try! oneShot.fire(.failure(error))
+						}
+					case .asynchronous(let continuation):
+						// handle the asynchronous waiter
+						switch result {
+							case .success:
+								// resume the continuation with a nil value, indicating that the fifo has been finished successfully.
+								continuation.resume(returning:.success(nil))
+							case .failure(let error):
+								// resume the continuation with a failure value, indicating that the fifo has been finished with an error.
+								continuation.resume(returning:.success(.failure(error)))
+						}
+				}
+			case .none:
+				// there is no waiter, so we do not need to do anything.
+				break
 		}
 	}
 
-	/// finish the FIFO. after calling this function, the FIFO will not accept any more data. additional objects may be passed into the FIFO, and they will be held and eventually dereferenced when the FIFO is deinitialized.
-	public borrowing func finish(throwing finishingError:consuming Failure) {
-		let resultElement = Unmanaged.passRetained(Contained<Result<Void, Failure>>(.failure(finishingError)))
-		guard __cswiftslash_fifo_pass_cap(datachain_primitive_ptr, resultElement.toOpaque()) == true else {
-			_ = resultElement.takeRetainedValue()
-			return
-		}
+	/// finishes the FIFO with a success result. this will cause the FIFO to stop passing objects and return nil for any future calls to next() (after the buffer has been cleared).
+	/// - throws: InvalidStateError if the FIFO has already been finished.
+	public borrowing func finish() throws(InvalidStateError) {
+		try finish(cappingWith:.success(()))
 	}
 
-	deinit {
-		// close the fifo and capture the various pointers that are being held and returned by this function.
-		var items = [UnsafeMutableRawPointer]()
-		let capPointer:(Bool, UnsafeMutableRawPointer?) = withUnsafeMutablePointer(to:&items) { itemsPointer in
-			var capPtr:UnsafeMutableRawPointer? = nil
-			return (__cswiftslash_fifo_close(datachain_primitive_ptr, { pointer, ctx in
-				ctx!.assumingMemoryBound(to:[UnsafeMutableRawPointer].self).pointee.append(pointer)
-			}, itemsPointer, &capPtr), capPtr)
-		}
-		// consume a reference to each of the items that were being held by the FIFO
-		for item in items {
-			_ = Unmanaged<Contained<Element>>.fromOpaque(item).takeRetainedValue()
-		}
-		// consume the cap pointer if it was returned
-		if capPointer.0 == true && capPointer.1 != nil {
-			_ = Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(capPointer.1!).takeRetainedValue()
-		}
-	}
-}
-
-extension FIFO {
-	public func makeSyncConsumerNonblockingExplicit() -> SyncConsumerNonBlockingExplicit {
-		return SyncConsumerNonBlockingExplicit(self)
-	}
-
-	public struct SyncConsumerNonBlockingExplicit {
-		public enum WhenConsumingTaskCancelled {
-			case noAction
-			case finish
-		}
-		private let fifo:FIFO<Element, Failure>
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-
-		public borrowing func next() -> ConsumeResult {
-			return _nextExplicit()
-		}
-	}
-}
-
-extension FIFO {
-	public func makeSyncConsumerNonBlocking() -> SyncConsumerNonBlocking {
-		return SyncConsumerNonBlocking(self)
-	}
-
-	public struct SyncConsumerNonBlocking {
-		private let fifo:FIFO<Element, Failure>
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-
-		public borrowing func next() throws(Failure) -> Element? {
-			return try _next()?.get()
-		}
-	}
-}
-
-extension FIFO {
-	public func makeSyncConsumerBlockingExplicit() -> SyncConsumerBlockingExplicit {
-		return SyncConsumerBlockingExplicit(self)
-	}
-
-	public struct SyncConsumerBlockingExplicit {
-		public enum WhenConsumingTaskCancelled {
-			case noAction
-			case finish
-		}
-		private let fifo:FIFO<Element, Failure>
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-
-		public borrowing func next() -> ConsumeResult {
-			return _nextExplicit()
-		}
+	/// finishes the FIFO with a failure result. this will cause the FIFO to stop passing objects and throw this error for any future calls to next() (after the buffer has been cleared).
+	/// - parameter error: the error to finish the FIFO with.
+	/// - throws: InvalidStateError if the FIFO has already been finished.
+	public borrowing func finish(withError error:consuming Failure) throws(InvalidStateError) {
+		try finish(cappingWith:.failure(error))
 	}
 }
 
+// MARK: Iterating
 extension FIFO {
-	public func makeSyncConsumerBlocking() -> SyncConsumerBlocking {
-		return SyncConsumerBlocking(self)
-	}
-
-	public struct SyncConsumerBlocking {
-		private let fifo:FIFO<Element, Failure>
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-
-		public borrowing func next() throws(Failure) -> Element? {
-			return try _next().get()
-		}
-	}
-}
-
-extension FIFO {
-	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
-	public func makeAsyncConsumerExplicit() -> AsyncConsumerExplicit {
-		return AsyncConsumerExplicit(self)
-	}
-
-	/// the primary structure for consuming elements from the FIFO in an explicit way.
-	public struct AsyncConsumerExplicit {
-		public enum WhenConsumingTaskCancelled {
-			case noAction
-			case finish
-		}
-		private let fifo:FIFO<Element, Failure>
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-		public borrowing func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async -> ConsumeResult {
-			switch cancelAction {
+	internal func next(whenTaskCancelled action:WhenConsumingTaskCancelled) async throws(AlreadyWaiting) -> NextElement {
+		return try await withTaskCancellationHandler(operation: {
+			return await nextAsynchronous()
+		}, onCancel: { [weak self] in
+			guard let self = self else {
+				return
+			}
+			switch action {
 				case .noAction:
-					return await _nextExplicit()
-				case .finish:
-					return await withTaskCancellationHandler(operation: {
-						await _nextExplicit()
-					}, onCancel: { [f = fifo] in
-						f.finish()
-					})
+					break
+				case .finish(let result):
+					try? self.finish(cappingWith:result)
 			}
-		}
+		}).get()
 	}
-}
+	fileprivate borrowing func nextAsynchronous() async -> Result<NextElement, AlreadyWaiting> {
+		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<NextElement, AlreadyWaiting>, Never>) in
+			let hasImmediateResult:Result<NextElement, AlreadyWaiting>? = core.withLock({ state in
+				withUnsafePointer(to:count, { countPtr in
+					// validate that there is not already a waiter.
+					guard state.unfinished.waiter == nil else {
+						return .failure(AlreadyWaiting())
+					}
 
-extension FIFO {
-	/// create a new consumer for the FIFO. this should be the only consumer for the FIFO, as the FIFO is not intended for use with multiple consumers.
-	public func makeAsyncConsumer() -> AsyncConsumer {
-		return AsyncConsumer(self)
-	}
+					// validate that there is no elements available in the buffer.
+					let acquireNext = state.unfinished.consumeNext(elementCount:countPtr)
+					guard acquireNext == nil else {
+						// there is an element available, so we will return it immediately.
+						return .success(.success(acquireNext!))
+					}
 
-	/// the primary structure for consuming elements from the FIFO.
-	public struct AsyncConsumer {
-		/// specifies the action to take when a task is cancelled while consuming the FIFO.
-		public enum WhenConsumingTaskCancelled {
-			/// when the current task is cancelled, the FIFO will not be affected. no actions will be taken.
-			case noAction
-			/// when the current task is cancelled, the FIFO will be finished.
-			case finish
-		}
-
-		/// the FIFO being consumed
-		private let fifo:FIFO<Element, Failure>
-
-		/// initialize a new consumer for the specified FIFO.
-		internal init(_ fifoIn:consuming FIFO) {
-			fifo = fifoIn
-		}
-
-		/// wait asyncronously for the next element to consume from the FIFO.
-		public borrowing func next(whenTaskCancelled cancelAction:consuming WhenConsumingTaskCancelled = .noAction) async throws(Failure) -> Element? {
-			switch cancelAction {
-				case .noAction:
-					return try await _next().get()
-				case .finish:
-					return try await withTaskCancellationHandler(operation: {
-						await _next()
-					}, onCancel: { [f = fifo] in
-						f.finish()
-					}).get()
+					// check if the fifo has been finished.
+					switch state.capResult {
+						case .some(let capResult):
+							// the fifo has been finished, so we will return the cap result immediately.
+							switch capResult {
+								case .success:
+									return .success(nil)
+								case .failure(let error):
+									return .success(.failure(error))
+							}
+						case .none:
+							// there is no element available, and the fifo has not been finished, so we will set the waiter to the continuation.
+							// note that this is the only place where nil is returned, hence, the only place where the continuation is not handled immediately. as such, the continuation will be resumed when an element is yielded into the fifo, or when the fifo is finished.
+							state.unfinished.waiter = .asynchronous(continuation)
+							return nil
+					}
+				})
+			})
+			if hasImmediateResult != nil {
+				continuation.resume(returning:hasImmediateResult!)
 			}
-		}
-	}
-}
-
-extension FIFO.SyncConsumerNonBlockingExplicit {
-	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
-		var pointer:__cswiftslash_ptr_t? = nil
-		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
-	}
-}
-extension FIFO.SyncConsumerNonBlocking {
-	fileprivate borrowing func _next() -> Result<Element?, Failure>? {
-		var pointer:__cswiftslash_ptr_t? = nil
-		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_nonblocking(fifo.datachain_primitive_ptr, &pointer), pointer)
-	}
-}
-
-extension FIFO.SyncConsumerBlockingExplicit {
-	fileprivate borrowing func _nextExplicit() -> FIFO.ConsumeResult {
-		var pointer:__cswiftslash_ptr_t? = nil
-		return FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)
-	}
-}
-extension FIFO.SyncConsumerBlocking {
-	fileprivate borrowing func _next() -> Result<Element?, Failure> {
-		var pointer:__cswiftslash_ptr_t? = nil
-		return FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!
-	}
-}
-extension FIFO.AsyncConsumerExplicit {
-	fileprivate borrowing func _nextExplicit() async -> FIFO.ConsumeResult {
-		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<FIFO.ConsumeResult, Never>) in
-			var pointer:__cswiftslash_ptr_t? = nil
-			let result = FIFO._handleFIFOConsumeExplicit(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)
-			continuation.resume(returning:result)
 		})
 	}
-}
-extension FIFO.AsyncConsumer {
-	fileprivate borrowing func _next() async -> Result<Element?, Failure> {
-		return await withUnsafeContinuation({ (continuation:UnsafeContinuation<Result<Element?, Failure>, Never>) in
-			var pointer:__cswiftslash_ptr_t? = nil
-			continuation.resume(returning:FIFO._handleFIFOConsume(__cswiftslash_fifo_consume_blocking(fifo.datachain_primitive_ptr, &pointer), pointer)!)
-		})
-	}
-}
 
-extension FIFO {
-	fileprivate static func _handleFIFOConsumeExplicit(_ ret:__cswiftslash_fifo_consume_result_t, _ pointer:__cswiftslash_ptr_t?) -> ConsumeResult {
-		switch ret {
-			case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
-				return .element(Unmanaged<Contained<Element>>.fromOpaque(pointer!).takeRetainedValue().value())
-			case  __CSWIFTSLASH_FIFO_CONSUME_CAP:
-				switch Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(pointer!).takeUnretainedValue().value() {
-					case .success:
-						return .capped(.success(()))
-					case .failure(let err):
-						return .capped(.failure(err))
+	internal func nextSynchronous(waiter threadBlockWaiter:SyncWaiter? = nil) throws(AlreadyWaiting) -> ConsumeResult {
+		return try core.withLock({ state throws(AlreadyWaiting) -> ConsumeResult in
+			return try withUnsafePointer(to:count, { countPtr throws(AlreadyWaiting) -> ConsumeResult in
+				// validate that there is not already a waiter.
+				guard state.unfinished.waiter == nil else {
+					throw AlreadyWaiting()
 				}
-			case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
-				return .wouldBlock
-			case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
-				fatalError("SwiftSlashFIFO :: got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking. this is a critical internal error :: \(#file):\(#line)")
-			default:
-				fatalError("SwiftSlashFIFO :: unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-		}
-	}
-	fileprivate static func _handleFIFOConsume(_ ret:__cswiftslash_fifo_consume_result_t, _ pointer:__cswiftslash_ptr_t?) -> Result<Element?, Failure>? {
-		switch ret {
-			case  __CSWIFTSLASH_FIFO_CONSUME_RESULT:
-				return .success(Unmanaged<Contained<Element>>.fromOpaque(pointer!).takeRetainedValue().value())
-			case  __CSWIFTSLASH_FIFO_CONSUME_CAP:
-				switch Unmanaged<Contained<Result<Void, Failure>>>.fromOpaque(pointer!).takeUnretainedValue().value() {
-					case .success:
-						return .success(nil)
-					case .failure(let err):
-						return .failure(err)
+
+				// validate that there is no elements available.
+				let acquireNext = state.unfinished.consumeNext(elementCount:countPtr)
+				guard acquireNext == nil else {
+					// there is an element available, so we will return it immediately.
+					return .element(acquireNext!)
 				}
-			case  __CSWIFTSLASH_FIFO_CONSUME_WOULDBLOCK:
-				return nil
-			case  __CSWIFTSLASH_FIFO_CONSUME_INTERNAL_ERROR:
-				fatalError("swiftslash - got FIFO_CONSUME_INTERNAL_ERROR from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-			default:
-				fatalError("swiftslash - unexpected return value from _cswiftslash_fifo_consume_blocking - \(#file):\(#line)")
-		}
+				
+				// check if the fifo has been finished.
+				switch state.capResult {
+					case .some(let capResult):
+						// the fifo has been finished, so we will return the cap result immediately.
+						switch capResult {
+							case .success:
+								return .capped(.success(()))
+							case .failure(let error):
+								return .capped(.failure(error))
+						}
+					case .none:
+						// the fifo has not been finished. put the waiter 
+						if let tbw = threadBlockWaiter {
+							state.unfinished.waiter = .synchronous(tbw.oneShot)
+						}
+						return .wouldBlock
+				}
+			})
+		})
 	}
 }

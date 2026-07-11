@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -23,14 +23,14 @@ public struct GenericPThread<R:Sendable>:PThreadWork {
 	/// creates a new instance of GenericPThread.
 	/// - parameters:
 	/// 	- argument: the function to run.
-	public init(_ argument:consuming @escaping ArgumentType) {
+	public init(_ argument:sending @escaping ArgumentType) {
 		self.funcToRun = argument
 	}
 
 	/// runs the function and returns the result.
 	/// - returns: the result of the function.
 	/// - throws: any error that prevents the work from being completed.
-	public mutating func pthreadWork() throws -> R {
+	public mutating func pthreadWork() throws -> sending R {
 		return try funcToRun()
 	}
 }

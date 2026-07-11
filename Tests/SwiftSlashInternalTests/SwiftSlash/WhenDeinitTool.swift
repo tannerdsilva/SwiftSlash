@@ -11,7 +11,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 
 import Testing
 
-internal final class WhenDeinitTool<T> {
+internal final class WhenDeinitTool<T:Sendable>:Sendable {
 	private let conf:Confirmation
 	internal let value:T
 	internal init(_ value:T, _ conf:Confirmation) {

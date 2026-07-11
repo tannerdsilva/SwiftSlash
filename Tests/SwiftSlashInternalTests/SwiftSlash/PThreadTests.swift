@@ -32,12 +32,12 @@ fileprivate struct SimpleReturnWorker<A:Sendable>:PThreadWork {
 	private let ia:Argument
 	
 	// initialize the worker thing with a given argument value
-	internal init(_ a:consuming Argument) {
+	internal init(_ a:sending Argument) {
 		ia = a
 	}
 	
 	// the pthread work that needs to be executed
-	fileprivate mutating func pthreadWork() throws -> A {
+	fileprivate mutating func pthreadWork() throws -> sending A {
 		return ia
 	}
 }
@@ -85,7 +85,7 @@ extension SwiftSlashTests {
 						try lf.setSuccess(())
 						
 						// wait for the cancelation to be set.
-						cf.blockingResult()!.get()
+						cf.waitSynchronously().wait()!.get()
 						
 						// test for cancellation. this would usually be the end of the pthread.
 						pthread_testcancel()

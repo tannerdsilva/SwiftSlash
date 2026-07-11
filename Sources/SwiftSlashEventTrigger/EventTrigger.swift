@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -42,7 +42,7 @@ public final class EventTrigger:Sendable {
 	/// initialize a new event trigger. will immediately open a new system primitive for polling, launch a pthread to handle the polling.
 	@SwiftSlashGlobalSerialization public init() throws {
 		cancelPipe = try PosixPipe()
-		regStream = FIFO()
+		regStream = try! FIFO()
 		let p = try PlatformSpecificETImplementation.newHandlePrimitive()
 		prim = p
 		let lt:Running<PlatformSpecificETImplementation>

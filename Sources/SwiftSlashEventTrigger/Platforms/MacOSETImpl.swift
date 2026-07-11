@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -17,7 +17,6 @@ import SwiftSlashFuture
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashGlobalSerialization
-
 
 /// the primary event trigger implementation for MacOS.
 /// 	- NOTE: this class is marked with `unchecked Sendable` because it has mutable storage for `activeTriggers`. As required by the Swift runtime, the access to this mutable storage is perfectly isolated and managed to only a single thread. 
@@ -51,9 +50,9 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								case .some(let r):
 									switch r {
 										case .reader(_, let future):
-											try? future.setSuccess(())
+											_ = try? future.setSuccess(())
 										case .writer(_, let future):
-											try? future.setSuccess(())
+											_ = try? future.setSuccess(())
 									}
 								case .none:
 									break
@@ -65,7 +64,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		} while true
 	}
 	
-	internal init(_ ptSetup:consuming ArgumentType) {
+	internal init(_ ptSetup:sending ArgumentType) {
 		registrations = ptSetup.registersIn
 		prim = ptSetup.handle
 		cancelPipe = ptSetup.cancelPipe
@@ -84,7 +83,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		eventBuffer.deallocate()
 	}
 
-	internal func pthreadWork() throws -> Void {
+	internal func pthreadWork() throws -> sending Void {
 		// break by pthread cancel
 		repeat {
 
@@ -148,7 +147,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								// reader close.
 								switch activeTriggers[curIdent] {
 									case .some(.reader(_, let future)):
-										try? future.setSuccess(())
+										_ = try? future.setSuccess(())
 									case .none:
 										break;
 									default:
@@ -160,7 +159,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								// writer close.
 								switch activeTriggers[curIdent] {
 									case .some(.writer(_, let future)):
-										try? future.setSuccess(())
+										_ = try? future.setSuccess(())
 									case .none:
 										break;
 									default:

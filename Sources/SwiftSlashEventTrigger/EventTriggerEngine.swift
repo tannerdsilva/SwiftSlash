@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -12,6 +12,7 @@ copyright (c) tanner silva 2025. all rights reserved.
 import SwiftSlashPThread
 import SwiftSlashFHHelpers
 import SwiftSlashGlobalSerialization
+import SwiftSlashFIFO
 
 /// event trigger is an abstract term for a given platforms low-level event handling mechanism. this protocol is used to define the interface for the event trigger of each platform.
 internal protocol EventTriggerEngine:PThreadWork where ArgumentType == EventTriggerSetup<EventTriggerHandlePrimitive>, ReturnType == Void, EventTriggerHandlePrimitive == Int32 {
