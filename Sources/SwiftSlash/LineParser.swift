@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -118,7 +118,7 @@ internal struct LineParser:~Copyable {
 			switch handler {
 				case .fifo(let stream):
 					stream.yield([final])
-					stream.finish()
+					try? stream.finish()
 				case .handler(let h):
 					h([final])
 					h(nil)
@@ -128,13 +128,16 @@ internal struct LineParser:~Copyable {
 			// nothing to emit, just signal end
 			switch handler {
 				case .fifo(let stream):
-					stream.finish()
+					try? stream.finish()
 				case .handler(let h):
 					h(nil)
 			}
 		}
 	}
 
+	/// ensure capacity exists to add at least `additional` amount of bytes.
+	/// - parameters:
+	///		- additional: the amount of bytes that are planned to be added to the buffer.
 	private mutating func ensureCapacity(for additional:Int) {
 		guard capacity >= count + additional else {
 			var newCap = capacity * 2
@@ -150,6 +153,7 @@ internal struct LineParser:~Copyable {
 		}
 	}
 
+	
 	private mutating func emitLinesIfAny() {
 		var lines = [LineOutput]()
 		var lineStart = 0

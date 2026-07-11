@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -17,29 +17,27 @@ import SwiftSlashFIFO
 import SwiftSlashFuture
 import SwiftSlashGlobalSerialization
 
+/// the result of a waitpid call. this is used to determine how a child process exited. similar to pthread_join but for child processes.
 internal enum WaitPIDResult {
+	/// the child process was signaled to exit. the associated value is the signal number that caused the child process to exit.
 	case signaled(Int32)
+	/// the child process exited normally. the associated value is the exit status of the child process.
 	case exited(Int32)
+	/// the waitpid call failed. the associated value is the errno value set by the failed waitpid call.
 	case failed(errno:Int32)
 }
+
 extension pid_t {
-	internal func waitPID() async -> WaitPIDResult {
-		let (statusValue, errnoValue) = await withUnsafeContinuation({ (continuation:UnsafeContinuation<(Int32, Int32?), Never>) in
-			var statusCapture:Int32 = 0
-			let wpidReturn = waitpid(self, &statusCapture, 0)
-			var errnoValue:Int32? = nil
-			if wpidReturn == -1 {
-				errnoValue = __cswiftslash_get_errno()
-			}
-			continuation.resume(returning:(statusCapture, errnoValue))
-		})
-		guard errnoValue == nil else {
-			return WaitPIDResult.failed(errno:errnoValue!)
+	internal func waitPID() -> WaitPIDResult {
+		var statusCapture:Int32 = 0
+		let wpidReturn = waitpid(self, &statusCapture, 0)
+		if wpidReturn == -1 {
+			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
 		}
-		if __cswiftslash_eventtrigger_wifsignaled(statusValue) != 0 {
-			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusValue))
-		} else if __cswiftslash_eventtrigger_wifexited(statusValue) != 0 {
-			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusValue))
+		if __cswiftslash_eventtrigger_wifsignaled(statusCapture) != 0 {
+			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusCapture))
+		} else if __cswiftslash_eventtrigger_wifexited(statusCapture) != 0 {
+			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusCapture))
 		}
 		fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
 	}
@@ -61,17 +59,17 @@ internal struct ProcessLogistics {
 		internal let dataChannels:[Int32:DataChannel]
 
 		internal init(
-			exe:Path,
-			arguments:[String],
-			workingDirectory:Path,
-			env:[String:String],
-			dataChannels:[Int32:DataChannel]
+			exe exePath:consuming Path,
+			arguments argsIn:consuming [String],
+			workingDirectory wd:Path,
+			env envIn:[String:String],
+			dataChannels io:[Int32:DataChannel]
 		) {
-			self.exe = exe
-			self.arguments = arguments
-			self.workingDirectory = workingDirectory
-			self.env = env
-			self.dataChannels = dataChannels
+			exe = exePath
+			arguments = argsIn
+			workingDirectory = wd
+			env = envIn
+			dataChannels = io
 		}
 
 		/// expose all of the arguments for this launch package as c pointers that could be used to launch a child process.
@@ -110,8 +108,8 @@ internal struct ProcessLogistics {
 				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [f = writeConsumerFIFO, uds = userDataStream.fifo] _ in
-						f.finish()
-						uds.finish()
+						try? f.finish()
+						try? uds.finish()
 					})
 					taskGroup.addTask { [writeConsumer = writeConsumerFIFO.makeAsyncConsumerExplicit(), et = eventTrigger] in
 						defer {
@@ -172,7 +170,7 @@ internal struct ProcessLogistics {
 						finalFlushLoop: while currentWriteStepper != nil {
 							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
 								case .element(let (_, writeCompleteFuture)):
-									try? writeCompleteFuture?.setFailure(.dataChannelClosed)
+									_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
 								case .capped(_):
 									// this is a signal that the file handle is not ready for writing.
 									break finalFlushLoop
@@ -192,7 +190,7 @@ internal struct ProcessLogistics {
 				internal let eventTrigger:EventTrigger
 				internal func launch(taskGroup:inout ThrowingTaskGroup<Void, Swift.Error>) {
 					terminationFuture.whenResult({ [f = systemReadEventsFIFO] _ in
-						f.finish()
+						try? f.finish()
 					})
 
 					taskGroup.addTask { [systemReadEvents = systemReadEventsFIFO.makeAsyncConsumer(), et = eventTrigger] in
@@ -206,7 +204,7 @@ internal struct ProcessLogistics {
 						}
 						// wait for the system to indicate that the file handle is ready for reading.
 						var largestReadSize = 256
-						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish) {
+						readLoop: while let readableSize = await systemReadEvents.next(whenTaskCancelled:.finish(.success(()))) {
 							do {
 								if readableSize > largestReadSize {
 									largestReadSize = readableSize
@@ -273,7 +271,7 @@ internal struct ProcessLogistics {
 							let newPipe = try PosixPipe.forChildReading()
 
 							// create a new FIFO that is used to signal when more data can be written. since this is only a momentary signal 
-							let writerFIFO = EventTrigger.WriterFIFO(maximumElementCount:1)
+							let writerFIFO = try! EventTrigger.WriterFIFO(maximumElementCount:1)
 
 							// register the writer FH and FIFO with the event trigger so that it can signal when the file handle is ready for writing.
 							try eventTrigger!.register(writer:newPipe.writing, writerFIFO, finishFuture:terminationFuture)
@@ -301,7 +299,7 @@ internal struct ProcessLogistics {
 							
 							// the child process shall write to a file handle that blocks (as is typically the case with newly launched processes). this process (parent) will read from the file handle in a non-blocking context.
 							let newPipe = try PosixPipe.forChildWriting()
-							let readerFIFO = EventTrigger.ReaderFIFO()
+							let readerFIFO = try! EventTrigger.ReaderFIFO()
 							try eventTrigger!.register(reader:newPipe.reading, readerFIFO, finishFuture:terminationFuture)
 
 							// close the writing end of the pipe after fork.

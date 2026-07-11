@@ -1,6 +1,6 @@
 /*
 LICENSE MIT
-copyright (c) tanner silva 2025. all rights reserved.
+copyright (c) tanner silva 2026. all rights reserved.
 
    _____      ______________________   ___   ______ __
   / __/ | /| / /  _/ __/_  __/ __/ /  / _ | / __/ // /
@@ -48,7 +48,7 @@ internal struct WriteStepper:~Copyable {
 		}
 		offset += try exposeBytes(&data, count:data.count)
 		if offset == data.count {
-			try? completeFuture?.setSuccess(())
+			_ = try? completeFuture?.setSuccess(())
 			return .retireMe
 		} else {
 			return .holdMe

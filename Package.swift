@@ -12,23 +12,6 @@ fileprivate let cswiftslashTargets:[Target] = [
 		name:"__cswiftslash_types",
 		publicHeadersPath:"."
 	),
-	// fifo
-	.target(
-		name:"__cswiftslash_fifo",
-		dependencies: [
-			"__cswiftslash_types"
-		],
-		publicHeadersPath:"."
-	),
-	// future
-	.target(
-		name:"__cswiftslash_future",
-		dependencies: [
-			"__cswiftslash_identified_list",
-			"__cswiftslash_types"
-		],
-		publicHeadersPath:"."
-	),
 	// threading
 	.target(
 		name:"__cswiftslash_threads",
@@ -42,43 +25,45 @@ fileprivate let cswiftslashTargets:[Target] = [
 		name:"__cswiftslash_posix_helpers",
 		publicHeadersPath:"."
 	),
-	// identified list
-	.target(
-		name:"__cswiftslash_identified_list",
-		dependencies: [
-			"__cswiftslash_types"
-		],
-		publicHeadersPath:"."
-	),
 ]
 
 fileprivate let swiftTargets:[Target] = [
 	.target(
-		name:"SwiftSlashContained"
+		name:"SwiftSlashPThreadSerialExecutor",
+		dependencies:[
+			"SwiftSlashPThread",
+			"SwiftSlashFIFO",
+			"__cswiftslash_threads"
+		]
 	),
 	.target(
-		name:"SwiftSlashGlobalSerialization"
+		name:"SwiftSlashGlobalSerialization",
+		dependencies:[
+			"SwiftSlashPThreadSerialExecutor",
+			"SwiftSlashFIFO",
+			"SwiftSlashPThread",
+		]
 	),
 	.target(
 		name:"SwiftSlashFuture",
 		dependencies:[
-			"__cswiftslash_future",
-			"SwiftSlashContained"
-		]
+			"SwiftSlashOneShotLatch",
+		],
+	),
+	.target(
+		name:"SwiftSlashOneShotLatch"
 	),
 	.target(
 		name:"SwiftSlashPThread",
 		dependencies:[
 			"__cswiftslash_threads",
-			"SwiftSlashContained",
 			"SwiftSlashFuture"
 		]
 	),
 	.target(
 		name:"SwiftSlashFIFO",
 		dependencies:[
-			"__cswiftslash_fifo",
-			"SwiftSlashContained"
+			"SwiftSlashOneShotLatch"
 		]
 	),
 	.target(
@@ -93,7 +78,8 @@ fileprivate let swiftTargets:[Target] = [
 			"__cswiftslash_eventtrigger",
 			"SwiftSlashPThread",
 			"SwiftSlashFIFO",
-			"SwiftSlashFHHelpers"
+			"SwiftSlashFHHelpers",
+			"SwiftSlashGlobalSerialization"
 		]
 	),
 	.target(
@@ -112,18 +98,16 @@ fileprivate let swiftTargets:[Target] = [
 fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
-		"__cswiftslash_fifo",
-		"__cswiftslash_future",
 		"__cswiftslash_types",
 		"__cswiftslash_threads",
 		"__cswiftslash_eventtrigger",
-		"__cswiftslash_identified_list",
 		"SwiftSlashFuture",
-		"SwiftSlashContained",
 		"SwiftSlashPThread",
 		"SwiftSlashFIFO",
 		"SwiftSlashEventTrigger",
 		"SwiftSlash",
+		"SwiftSlashGlobalSerialization",
+		"SwiftSlashOneShotLatch",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
