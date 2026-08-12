@@ -64,4 +64,23 @@ int __cswiftslash_fcntl_setfd(int fd, int flags);
 /// @return the result of the fcntl function call.
 int __cswiftslash_fcntl_getfd(int fd);
 
+/// Spawn a child process via posix_spawn with dup2 file actions and optional chdir.
+/// @param pid_out receives the child pid on success (may be NULL).
+/// @param path the executable path.
+/// @param argv null-terminated argument vector (argv[0] should be the program name).
+/// @param envp null-terminated environment, or NULL to inherit the parent environment.
+/// @param wd working directory to chdir into before exec, or NULL to skip.
+/// @param dup2Ops flat array of (srcfd, dstfd) pairs.
+/// @param dup2OpCount the number of (srcfd, dstfd) pairs.
+/// @return 0 on success, or an errno value on failure.
+int __cswiftslash_posix_spawn(
+	pid_t *pid_out,
+	const char *path,
+	char *const argv[],
+	char *const envp[],
+	const char *wd,
+	const int *dup2Ops,
+	size_t dup2OpCount
+);
+
 #endif // __CLIBSWIFTSLASH_POSIX_HELPERS_H

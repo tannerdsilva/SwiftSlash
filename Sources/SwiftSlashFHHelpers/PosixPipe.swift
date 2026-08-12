@@ -54,7 +54,18 @@ public struct PosixPipe:Sendable, Hashable, Equatable {
 				throw FileHandleError.fcntlError
 			}
 		}
-	}
+		// mark both ends close-on-exec so they never leak into a spawned child
+		// (or any grandchild) unless explicitly preserved via a spawn file action.
+		// this is the portable replacement for the macOS-only
+		// POSIX_SPAWN_CLOEXEC_DEFAULT flag and gives identical behaviour on
+		// macOS / glibc / musl.
+		guard __cswiftslash_fcntl_setfd(reading, FD_CLOEXEC) == 0 else {
+			throw FileHandleError.fcntlError
+		}
+		guard __cswiftslash_fcntl_setfd(writing, FD_CLOEXEC) == 0 else {
+			throw FileHandleError.fcntlError
+		}
+		}
 	
 	/// create a new pipe with the specified options.
 	private init(reading rArg:Int32, writing wArg:Int32) {
@@ -76,6 +87,13 @@ public struct PosixPipe:Sendable, Hashable, Equatable {
 			throw FileHandleError.pipeOpenError
 		}
 		guard __cswiftslash_fcntl_setfl(write, O_NONBLOCK) != -1 else {
+			throw FileHandleError.pipeOpenError
+		}
+		// mark both ends close-on-exec (see PosixPipe.init)
+		guard __cswiftslash_fcntl_setfd(read, FD_CLOEXEC) == 0 else {
+			throw FileHandleError.pipeOpenError
+		}
+		guard __cswiftslash_fcntl_setfd(write, FD_CLOEXEC) == 0 else {
 			throw FileHandleError.pipeOpenError
 		}
 		return PosixPipe(reading:read, writing:write)

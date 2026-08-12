@@ -9,6 +9,8 @@ copyright (c) tanner silva 2026. all rights reserved.
 
 */
 
+import __cswiftslash_posix_helpers
+
 extension ChildProcess {
 
 	/// Thrown when a critical part of the process lifecycle fails: process reaping. Process reaping ususally happens by way of the `waitpid` system call.
@@ -53,5 +55,27 @@ extension ChildProcess {
 		case internalFailure = 0xFA
 		/// Describes a failure of the fork function.
 		case forkFailure = 0xFB
+		/// Maps a posix_spawn errno return value to the closest SpawnError case.
+		/// The old fork-based spawn reported granular per-step failures over a notify
+		/// pipe; posix_spawn instead returns a single errno, so we translate common
+		/// errno values into the equivalent lifecycle errors here.
+		internal init(fromErrno errno:Int32) {
+			switch errno {
+				case ENOENT, ENOTDIR, ELOOP:
+					self = .precheckExecutableFailure
+				case EACCES, EPERM:
+					self = .precheckExecutableFailure
+				case ENOEXEC, EINVAL:
+					self = .precheckExecutableFailure
+				case E2BIG:
+					self = .precheckWorkingDirectoryFailure
+				case ENOMEM, EMFILE, ENFILE:
+					self = .posixPipeCreateFailure
+				case EAGAIN:
+					self = .forkFailure
+				default:
+					self = .internalFailure
+			}
+		}
 	}
 }

@@ -36,7 +36,8 @@ public final class OneShotLatch<Shot:Sendable>:Sendable {
 			}
 			semaphore.signal()
 		}
-
+		
+		@_optimize(none)
 		internal mutating func semaphoreForWaiting() throws(OneShotSemanticViolation) -> DispatchSemaphore {
 			guard hasBeenWaited == false else {
 				throw OneShotSemanticViolation()
@@ -65,6 +66,7 @@ public final class OneShotLatch<Shot:Sendable>:Sendable {
 	}
 
 	@available(*, noasync, message:"OneShotLatch.wait() is a synchronous blocking call. it is not compatible with async contexts.")
+	@_optimize(none)
 	public borrowing func wait() throws(OneShotSemanticViolation) -> Shot {
 		let checkState:ShotOrSemaphore = try core.withLock({ coreState throws(OneShotSemanticViolation) -> ShotOrSemaphore in
 			guard coreState.hasBeenUnlocked == false else {
