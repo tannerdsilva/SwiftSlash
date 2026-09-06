@@ -205,7 +205,6 @@ public final class Running<W>:@unchecked Sendable where W:PThreadWork {
 	}
 
 	/// cancels the running pthread. it will exit when it reaches the next pthread cancellation point.
-	/// - returns: true if the pthread was successfully set to cancelled, false if the pthread was not successfully canceled.
 	public borrowing func cancel() throws(PThreadCancellationFailure) {
 		try operatingState.withLock({ stateAccess throws(PThreadCancellationFailure) in
 			switch stateAccess.closeOut {

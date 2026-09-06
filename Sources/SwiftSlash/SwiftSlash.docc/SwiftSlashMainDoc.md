@@ -5,6 +5,7 @@
 ### Articles
 
 - <doc:Getting-Started>
+- <doc:Task-Cancellation>
 - <doc:Versioning>
 
 ### Core API Usage
@@ -20,7 +21,3 @@
 ### Working with the Existing Environment
 
 - ``SwiftSlash/CurrentEnvironment``
-
-### Swift Language Extensions
-
-- ``Swift``

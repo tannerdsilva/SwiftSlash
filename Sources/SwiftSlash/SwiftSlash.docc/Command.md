@@ -21,3 +21,12 @@
 ### Transferring Environment Variables
 
 - ``SwiftSlash/Command/inheritCurrentEnvironment()``
+
+### Synchronous Execution
+
+- ``SwiftSlash/Command/runSync()``
+- ``SwiftSlash/Command/runSync(cancellationSignal:)``
+
+### Synchronous Result
+
+- ``SwiftSlash/Command/SyncResult``
