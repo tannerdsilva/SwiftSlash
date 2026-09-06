@@ -75,7 +75,7 @@ public struct CurrentEnvironment {
 	}
 
 	/// Searches all directories in `path` for the given executable name.
-	/// - Parameter executablename: the name of the executable to locate.
+	/// - Parameter executableName: the name of the executable to locate.
 	/// - Throws:
 	/// 	- `PathSearchError.pathNotFoundInEnvironment` if the `PATH` variable is missing.
 	/// 	- `PathSearchError.executableNotFound(foundPaths: [String], executable: Path)`

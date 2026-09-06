@@ -102,8 +102,14 @@ int __cswiftslash_posix_spawn(
 	size_t dup2OpCount
 ) {
 	posix_spawn_file_actions_t actions;
+	posix_spawnattr_t attr;
 	int r = posix_spawn_file_actions_init(&actions);
 	if (r != 0) {
+		return r;
+	}
+	r = posix_spawnattr_init(&attr);
+	if (r != 0) {
+		posix_spawn_file_actions_destroy(&actions);
 		return r;
 	}
 
@@ -113,6 +119,7 @@ int __cswiftslash_posix_spawn(
 		r = posix_spawn_file_actions_adddup2(&actions, src, dst);
 		if (r != 0) {
 			posix_spawn_file_actions_destroy(&actions);
+			posix_spawnattr_destroy(&attr);
 			return r;
 		}
 	}
@@ -121,13 +128,53 @@ int __cswiftslash_posix_spawn(
 		r = cswiftslash_spawn_addchdir(&actions, wd);
 		if (r != 0) {
 			posix_spawn_file_actions_destroy(&actions);
+			posix_spawnattr_destroy(&attr);
 			return r;
 		}
 	}
 
+	// the child must begin with a pristine signal state: nothing blocked, and every
+	// disposition at its default. the signal mask and ignored dispositions survive
+	// exec, so without this a parent that blocks or ignores a signal (e.g. SIGTERM)
+	// silently passes that state into the child, making kill(2) a no-op for the life
+	// of the child.
+	sigset_t sigmask;
+	sigemptyset(&sigmask);
+	r = posix_spawnattr_setsigmask(&attr, &sigmask);
+	if (r != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		posix_spawnattr_destroy(&attr);
+		return r;
+	}
+	sigset_t sigdefault;
+	sigfillset(&sigdefault);
+	r = posix_spawnattr_setsigdefault(&attr, &sigdefault);
+	if (r != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		posix_spawnattr_destroy(&attr);
+		return r;
+	}
+	// the child becomes the leader of its own process group (pgid == its pid). this
+	// allows the parent to terminate the entire process tree with a single kill(2)
+	// on the negated pid, which is the only way to promptly shut down orchestration
+	// shells (e.g. sh -c ...) that defer signals while waiting on a foreground child.
+	r = posix_spawnattr_setpgroup(&attr, 0);
+	if (r != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		posix_spawnattr_destroy(&attr);
+		return r;
+	}
+	r = posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETPGROUP);
+	if (r != 0) {
+		posix_spawn_file_actions_destroy(&actions);
+		posix_spawnattr_destroy(&attr);
+		return r;
+	}
+
 	pid_t pid = 0;
-	r = posix_spawn(&pid, path, &actions, NULL, argv, envp);
+	r = posix_spawn(&pid, path, &actions, &attr, argv, envp);
 	posix_spawn_file_actions_destroy(&actions);
+	posix_spawnattr_destroy(&attr);
 	if (r == 0 && pid_out != NULL) {
 		*pid_out = pid;
 	}

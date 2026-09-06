@@ -44,6 +44,21 @@ let result = try await commandToLaunch.runSync()
 * `stdout`: an array of byte "lines" (`[UInt8]`) that were parsed from the standard output stream.
 * `stderr`: an array of byte "lines" (`[UInt8]`) that were parsed from the standard error stream.
 
+## Cancellation-Aware Execution
+
+For long-running commands, prefer the `runSync(cancellationSignal:)` variant. When the task awaiting the result is cancelled, the child process — including its entire process group — is terminated with the configured signal, all resources are reaped, and `CancellationError` is thrown:
+
+```swift
+do {
+    let result = try await Command("du", arguments: ["-sh", "/"]).runSync(cancellationSignal: ChildProcess.defaultCancellationSignal)
+    // handle result
+} catch is CancellationError {
+    // the child process was terminated because the task was cancelled
+}
+```
+
+The default signal is `SIGTERM`, which gives well-behaved processes a chance to clean up. Pass `SIGKILL` when the process must be terminated unconditionally. See <doc:Task-Cancellation> for the full semantics.
+
 ## Handling Output
 
 Convert `[UInt8]` lines to `String` using `String(decoding:as:)`:

@@ -9,6 +9,8 @@
 ### Run the Process
 
 - ``SwiftSlash/ChildProcess/run()``
+- ``SwiftSlash/ChildProcess/run(cancellationSignal:)``
+- ``SwiftSlash/ChildProcess/defaultCancellationSignal``
 - ``SwiftSlash/ChildProcess/Exit``
 
 ### Signaling a Running Process

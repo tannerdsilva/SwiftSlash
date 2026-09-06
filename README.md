@@ -11,6 +11,7 @@ SwiftSlash 4.0 is a pure-Swift library (zero external dependencies) designed for
 * 🔄 **True Concurrency**: Run hundreds or thousands of shell commands in parallel, leveraging Swift’s async/await for minimal overhead.
 * 🛡 **Secure Execution**: Isolated handles and controlled working-directory management ensure a hardened runtime.
 * 📦 **Type-Safe API**: Leveraging Swift 6.0/6.1’s advanced type system for compile-time correctness and clear intent.
+* 🛑 **Native Task Cancellation**: Cancelling the awaiting `Task` terminates the child process and its process group, reaps all resources, and surfaces `CancellationError` — no orphaned or zombie processes.
 
 ## 📚 Documentation
 

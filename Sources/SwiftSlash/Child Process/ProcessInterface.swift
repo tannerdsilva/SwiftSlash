@@ -9,6 +9,7 @@ copyright (c) tanner silva 2026. all rights reserved.
 
 */
 
+import Synchronization
 import __cswiftslash_posix_helpers
 
 /// Comprehensive tool for launching `Command`s.
@@ -112,54 +113,116 @@ public actor ChildProcess {
 		}
 	}
 	
+	/// The signal that a cancellable run path sends to the child process when the calling task is cancelled before the process exits.
+	public static let defaultCancellationSignal:Int32 = SIGTERM
+
 	/// Launches the child process by executing the configured command with the configured data channels.
 	/// This function will not return until the child process exits.
 	/// - Returns: The exit or signal code that the child process exited with.
 	public func run() async throws -> Exit {
+		return try await runInternal(cancellationSignal:nil)
+	}
+
+	/// Launches the child process by executing the configured command with the configured data channels.
+	/// This function will not return until the child process exits.
+	/// - Parameter signal: The signal code that is sent to the child process (and its entire process group) if the calling task is cancelled before the process exits. cancellation of the calling task will also cause this function to throw `CancellationError` (after the child process has been signaled and reaped).
+	/// - Returns: The exit or signal code that the child process exited with.
+	public func run(cancellationSignal signal:Int32) async throws -> Exit {
+		return try await runInternal(cancellationSignal:signal)
+	}
+
+	private func runInternal(cancellationSignal:Int32?) async throws -> Exit {
 		// check the current state of the process. 
 		switch state {
 			case .initialized:
-				
+				// the caller has already cancelled their task before the launch began. do not spawn a child process.
+				try Task.checkCancellation()
+
 				// the process has not been launched yet so we may proceed with the launch.
 				state = .launching
-				
-				return try await withThrowingTaskGroup(of:Void.self) { tg in
-					// create a launch package.
-					let launchPackage = ProcessLogistics.LaunchPackage(
-						exe:command.executable,
-						arguments:command.arguments,
-						workingDirectory:command.workingDirectory,
-						env:command.environment,
-						dataChannels:dataChannels
-					)
-					
-					// launch the package.
-					let preapredPackage = try await ProcessLogistics.launch(package:launchPackage)
-					
-					// update state
-					state = .running(preapredPackage.launchedPID)
-					
-					// launch the reader and writer loops that are associated with the running process.
-					for curWrite in preapredPackage.writeTasks {
-						curWrite.launch(taskGroup:&tg)
-					}
-					for curRead in preapredPackage.readTasks {
-						curRead.launch(taskGroup:&tg)
-					}
-					
-					try await tg.waitForAll()
 
-					// reap the running process
-					switch preapredPackage.launchedPID.waitPID() {
-						case .exited(let exitCode):
-							state = .reaped(.code(exitCode))
-							return .code(exitCode)
-						case .signaled(let sigCode):
-							state = .reaped(.signal(sigCode))
-							return .signal(sigCode)
-						case .failed(let err):
-							throw ReapError(errnoValue:err)
+				// the pid of the launched process, readable from the synchronous, nonisolated cancellation handler.
+				let cancellationKillPID:Atomic<Int32> = .init(0)
+				// set to true when a signal has been sent to the child process as the direct result of task cancellation.
+				let didSignalOnCancellation:Atomic<Bool> = .init(false)
+
+				return try await withTaskCancellationHandler {
+					try await withThrowingTaskGroup(of:Void.self) { tg in
+						// create a launch package.
+						let launchPackage = ProcessLogistics.LaunchPackage(
+							exe:command.executable,
+							arguments:command.arguments,
+							workingDirectory:command.workingDirectory,
+							env:command.environment,
+							dataChannels:dataChannels
+						)
+						
+						// launch the package.
+						let preapredPackage = try await ProcessLogistics.launch(package:launchPackage)
+						
+						// update state
+						state = .running(preapredPackage.launchedPID)
+
+						// expose the pid to the cancellation handler and cover the case where the task was cancelled during the launch. the pid is negated so that the signal targets the child's process group, terminating the entire process tree.
+						if let signal = cancellationSignal {
+							cancellationKillPID.store(preapredPackage.launchedPID, ordering:.releasing)
+							if Task.isCancelled {
+								_ = kill(-preapredPackage.launchedPID, signal)
+								didSignalOnCancellation.store(true, ordering:.releasing)
+							}
+						}
+						
+						// launch the reader and writer loops that are associated with the running process.
+						for curWrite in preapredPackage.writeTasks {
+							curWrite.launch(taskGroup:&tg)
+						}
+						for curRead in preapredPackage.readTasks {
+							curRead.launch(taskGroup:&tg)
+						}
+						
+						// wait for the io loops to wind down. the group is cancelled with the calling task, so this can throw. the child process must still be reaped regardless of the outcome.
+						let waitOutcome:Result<Void, any Error>
+						do {
+							try await tg.waitForAll()
+							waitOutcome = .success(())
+						} catch {
+							waitOutcome = .failure(error)
+						}
+
+						// reap the running process.
+						let exit:Exit
+						switch preapredPackage.launchedPID.waitPID() {
+							case .exited(let exitCode):
+								state = .reaped(.code(exitCode))
+								exit = .code(exitCode)
+							case .signaled(let sigCode):
+								state = .reaped(.signal(sigCode))
+								exit = .signal(sigCode)
+							case .failed(let err):
+								throw ReapError(errnoValue:err)
+						}
+
+						// surface cancellation to the caller when the process was terminated on their behalf. otherwise, propagate the io outcome.
+						switch waitOutcome {
+							case .success:
+								if didSignalOnCancellation.load(ordering:.acquiring) {
+									throw CancellationError()
+								}
+								return exit
+							case .failure(let error):
+								if didSignalOnCancellation.load(ordering:.acquiring) || Task.isCancelled {
+									throw CancellationError()
+								}
+								throw error
+						}
 					}
+				} onCancel: {
+					let pid = cancellationKillPID.load(ordering:.acquiring)
+					guard pid > 0, let signal = cancellationSignal else {
+						return
+					}
+					_ = kill(-pid, signal)
+					didSignalOnCancellation.store(true, ordering:.releasing)
 				}
 			default:
 				// the process has already been launched so we cannot proceed with the launch.

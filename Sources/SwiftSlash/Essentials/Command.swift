@@ -93,6 +93,16 @@ public struct Command:Sendable {
 	
 	/// Run a command synchronously.
 	public func runSync() async throws -> SyncResult {
+		return try await runSyncWithCancellation(cancellationSignal:nil)
+	}
+
+	/// Run a command synchronously, terminating the child process with `signal` if the calling task is cancelled before the process exits.
+	/// - Parameter signal: The signal code that is sent to the child process if the calling task is cancelled before the process exits. cancellation of the calling task will also cause this function to throw `CancellationError` (after the child process has been signaled and reaped). the default value is ``SwiftSlash/ChildProcess/defaultCancellationSignal``.
+	public func runSync(cancellationSignal signal:Int32 = ChildProcess.defaultCancellationSignal) async throws -> SyncResult {
+		return try await runSyncWithCancellation(cancellationSignal:signal)
+	}
+
+	private func runSyncWithCancellation(cancellationSignal:Int32?) async throws -> SyncResult {
 
 		let processInterface = ChildProcess(self)
 
@@ -115,7 +125,23 @@ public struct Command:Sendable {
 		}
 
 		// run the process and wait for everything to finish.
-		let (exitResult, stdoutLines, stderrLines) = try await (processInterface.run(), outTask.result.get(), errTask.result.get())
+		let exitResult:ChildProcess.Exit
+		do {
+			if let signal = cancellationSignal {
+				exitResult = try await processInterface.run(cancellationSignal:signal)
+			} else {
+				exitResult = try await processInterface.run()
+			}
+		} catch {
+			// the child process has been signaled and reaped inside run. drain the capture tasks, since they observe the end of their streams once the io loops have wound down, before rethrowing.
+			_ = await outTask.result.get()
+			_ = await errTask.result.get()
+			throw error
+		}
+
+		// the child process has exited by this point, so the capture tasks have observed the end of their streams. collect their final contents.
+		let stdoutLines = await outTask.result.get()
+		let stderrLines = await errTask.result.get()
 
 		return SyncResult(exit:exitResult, stderr:stderrLines, stdout:stdoutLines, succeeded:exitResult == .code(0) ? true : false)
 	}
