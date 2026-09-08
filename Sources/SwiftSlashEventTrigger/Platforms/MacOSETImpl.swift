@@ -34,6 +34,11 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 
 	/// the file handle registrations that are currently active.
 	private var activeTriggers:[Int32:Register] = [:]
+
+	/// process exit monitors, keyed by pid. held separately from the fd-keyed
+	/// `activeTriggers` dictionary so a pid number can never collide with an open file
+	/// descriptor in the parent process.
+	private var processMonitors:[Int32: FIFO<Int, Never>] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<(Int32, Register?), Never>
@@ -44,7 +49,12 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 				case .some(let (handle, register)):
 					switch register {
 						case .some(let r):
-							activeTriggers[handle] = r
+							switch r {
+								case .process(let fifo):
+									processMonitors[handle] = fifo
+								default:
+									activeTriggers[handle] = r
+							}
 						case .none:
 							switch activeTriggers.removeValue(forKey:handle) {
 								case .some(let r):
@@ -59,6 +69,8 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 								case .none:
 									break
 							}
+							// the removed key may have been a process monitor; clear it too.
+							processMonitors.removeValue(forKey:handle)
 					}
 				case nil:
 					break infiniteLoop
@@ -125,14 +137,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 						// to drive the cooperative reap of child processes.
 						if currentEvent.filter == Int16(EVFILT_PROC) {
 							if currentEvent.fflags & UInt32(NOTE_EXIT) != 0 {
-								switch activeTriggers[curIdent] {
-									case .some(.process(let fifo)):
-										fifo.yield(1)
-									case .none:
-										break
-									default:
-										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
-									}
+								processMonitors[curIdent]?.yield(1)
 							}
 							continue resultLoop
 						}
@@ -140,19 +145,25 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
 								// readable data.
-								switch activeTriggers[curIdent]! {
-									case .reader(let fifo, _):
+								switch activeTriggers[curIdent] {
+									case .some(.reader(let fifo, _)):
 										fifo.yield(currentEvent.data)
+									case .none:
+										// a deregistration raced with an in-flight event; nothing to do.
+										break
 									default:
 										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 								}
 
-							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writable data.
 								switch activeTriggers[curIdent] {
-									case .writer(let fifo, _):
+									case .some(.writer(let fifo, _)):
 										fifo.yield(())
+									case .none:
+										// a deregistration raced with an in-flight event; nothing to do.
+										break
 									default:
 										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 								}
@@ -171,7 +182,7 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 								}
 
-							} else if currentEvent.filter == Int16(EVFILT_WRITE) {
+						} else if currentEvent.filter == Int16(EVFILT_WRITE) {
 
 								// writer close.
 								switch activeTriggers[curIdent] {

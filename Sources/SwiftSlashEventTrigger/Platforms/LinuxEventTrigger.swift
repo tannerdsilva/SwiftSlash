@@ -36,6 +36,15 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 	/// the file handle registrations that are currently active.
 	private var activeTriggers:[Int32:Register] = [:]
 
+	/// process exit monitors, keyed by pid. held separately from the fd-keyed
+	/// `activeTriggers` dictionary so a pid number can never collide with an open file
+	/// descriptor in the parent process. pid-keyed epoll events are additionally
+	/// namespaced by `processEventMarker` in the data union.
+	private var processMonitors:[Int32: FIFO<Int, Never>] = [:]
+
+	/// the high bit of the epoll data union that marks a process-exit (pidfd) event.
+	fileprivate static let processEventMarker:UInt64 = UInt64(1) << 63
+
 	/// the pidfds that are currently registered for process exit monitoring, keyed by the monitored pid.
 	/// only mutated from `register(process:)`/`deregister(process:)`, which are globally serialized.
 	@SwiftSlashGlobalSerialization fileprivate static var activeProcessPidfds:[Int32:Int32] = [:]
@@ -47,7 +56,19 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let (handle, register)):
-					activeTriggers[handle] = register
+					switch register {
+						case .some(let r):
+							switch r {
+								case .process(let fifo):
+									processMonitors[handle] = fifo
+								default:
+									activeTriggers[handle] = r
+							}
+						case .none:
+							activeTriggers.removeValue(forKey:handle)
+							// the removed key may have been a process monitor; clear it too.
+							processMonitors.removeValue(forKey:handle)
+					}
 				case .none:
 					break infiniteLoop
 			}
@@ -101,6 +122,14 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 						// capture the relevant two points for this iteration: file handle and the flags triggered for said handle.
 						let currentEvent = eventBuffer[i]
 						let eventFlags = currentEvent.events
+						if currentEvent.data.u64 & LinuxEventTrigger.processEventMarker != 0 {
+							// a monitored process has exited (a pidfd event). pid-keyed events are
+							// namespaced away from fd-keyed events, even when the pid numerically
+							// collides with an open file descriptor.
+							let processPid = Int32(bitPattern:UInt32(truncatingIfNeeded:currentEvent.data.u64 & ~LinuxEventTrigger.processEventMarker))
+							processMonitors[processPid]?.yield(1)
+							continue resultLoop
+						}
 						guard currentEvent.data.fd != cancelPipe.reading else {
 							// cancel pipe was triggered, we need to exit the loop.
 							continue resultLoop
@@ -111,8 +140,6 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 							switch activeTriggers[currentEvent.data.fd] {
 								case .some(.reader(_, let future)):
 									_ = try? future.setSuccess(())
-								case .some(.process(let fifo)):
-									fifo.yield(1)
 								case .none:
 									// a deregistration raced with an in-flight event; nothing to do.
 									break
@@ -127,8 +154,6 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 							switch activeTriggers[currentEvent.data.fd] {
 								case .some(.writer(_, let future)):
 									_ = try? future.setSuccess(())
-								case .some(.process(let fifo)):
-									fifo.yield(1)
 								case .none:
 									// a deregistration raced with an in-flight event; nothing to do.
 									break
@@ -140,10 +165,6 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 
 							// read data available, or a monitored process (via its pidfd) has exited.
 							switch activeTriggers[currentEvent.data.fd] {
-								case .some(.process(let fifo)):
-									// a pidfd is not a byte stream; its readability means the monitored
-									// process has exited. never query byte counts on it.
-									fifo.yield(1)
 								case .some(.reader(let fifo, _)):
 									var byteCount:Int32 = 0
 									guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
@@ -247,7 +268,9 @@ extension LinuxEventTrigger {
 			throw EventTriggerErrors.processRegistrationFailure(pid, __cswiftslash_get_errno())
 		}
 		var newEvent = epoll_event()
-		newEvent.data.fd = pid
+		// namespace the registration with the high-bit marker so a pid that numerically
+		// equals an open parent file descriptor can never be confused with an fd event.
+		newEvent.data.u64 = processEventMarker | UInt64(UInt32(bitPattern:pid))
 		newEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_ADD, pidfd, &newEvent) == 0 else {
 			let errNo = __cswiftslash_get_errno()

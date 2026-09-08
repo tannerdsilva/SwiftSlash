@@ -71,17 +71,19 @@ extension pid_t {
 				}
 			}
 		} catch {
-			// process monitoring unavailable (e.g. no pidfd support). fall back to
-			// cooperative polling.
+			// registration failed (e.g. no pidfd support on an old kernel, or fd
+			// exhaustion). the registration's stream entry was already enqueued before
+			// the kernel call, so drop it now to keep the trigger's active set clean,
+			// then fall back to cooperative polling.
+			await ProcessLogistics.dropProcessExitMonitor(self, on:trigger)
 			return await waitPIDByPolling()
 		}
 	}
 
 	/// cooperative poll fallback for reaping. only used when kernel process monitoring
-	/// is unavailable. NOTE: the sleep between polls is cancellation-gated, so a
-	/// cancelled task that reaches this path paces by throwing instead of suspending;
-	/// this is accepted only because the fast, kernel-driven path covers all supported
-	/// modern platforms.
+	/// is unavailable. NOTE: on a cancelled task `Task.sleep` throws without suspending,
+	/// so this loop tight-spins (bounded by the child's actual exit); this is accepted
+	/// only because the fast, kernel-driven path covers all supported modern platforms.
 	private func waitPIDByPolling() async -> WaitPIDResult {
 		var statusCapture:Int32 = 0
 		reapLoop: while true {
@@ -323,6 +325,13 @@ internal struct ProcessLogistics {
 		try? trigger.deregister(process:pid)
 	}
 
+	/// drops a process exit registration from the event trigger's registration stream
+	/// without a kernel call. used when a registration failed after its stream entry was
+	/// enqueued, so no stale `.process` entry can linger in the trigger's active set.
+	@SwiftSlashGlobalSerialization internal static func dropProcessExitMonitor(_ pid:pid_t, on trigger:EventTrigger) {
+		trigger.dropProcessRegistration(pid)
+	}
+
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		// the event trigger is required for every launch: it services the built-in
 		// channel readiness signals AND the process-exit monitor that drives the
@@ -426,12 +435,13 @@ internal struct ProcessLogistics {
 							let newPipe = try PosixPipe.createNull()
 							nullPipes.insert(newPipe)
 							processPipes[fh] = .writePipe(newPipe)
-						case .byo(let fd):
+						case .byo(_):
 							// the caller owns this descriptor end-to-end. swiftslash only
 							// binds it to the child file handle; no pipe, registration, or
-							// task is produced.
-							byoFdBindings[fh] = fd.rawValue
-					}
+							// task is produced. the dup2 source binding was established by
+							// the validation pass (the private copy), so nothing is done here.
+							break;
+						}
 				case .write(let readable):
 					switch readable {
 						case .toParentProcess(let channel, let sep):
@@ -460,11 +470,11 @@ internal struct ProcessLogistics {
 							processPipes[fh] = .readPipe(newPipe)
 							nullPipes.insert(newPipe)
 							break;
-						case .byo(let fd):
+						case .byo(_):
 							// the caller owns this descriptor end-to-end. swiftslash only
 							// binds it to the child file handle; no pipe, registration, or
-							// task is produced.
-							byoFdBindings[fh] = fd.rawValue
+							// task is produced. the dup2 source binding was established by
+							// the validation pass (the private copy), so nothing is done here.
 							break;
 					}
 			}

@@ -89,7 +89,18 @@ public final class EventTrigger:Sendable {
 
 	/// deregisters a process exit monitor.
 	@SwiftSlashGlobalSerialization public borrowing func deregister(process pid:pid_t) throws {
+		// enqueue the removal BEFORE the kernel call: if the platform deregistration
+		// throws, the stream entry has already removed the monitor from the trigger's
+		// active set, so no stale entry can linger.
+		regStream.yield((pid, nil))
 		try PlatformSpecificETImplementation.deregister(prim, process:pid)
+	}
+
+	/// removes a pending process-exit registration from the registration stream without
+	/// touching the kernel. used to clean up when a platform registration fails: the
+	/// registration is enqueued before the kernel call so no exit event can be lost, and a
+	/// failing kernel call would otherwise leave a stale `.process` entry installed forever.
+	@SwiftSlashGlobalSerialization public borrowing func dropProcessRegistration(_ pid:pid_t) {
 		regStream.yield((pid, nil))
 	}
 
