@@ -37,6 +37,8 @@ extension ChildProcess {
 		case readerPipeCleanupFailure = 0xCB
 		/// Describes a failure to assign the writing end of a pipe to the child process.
 		case dup2WriterFailure = 0xCC
+		/// Describes a failure where a caller-provided "bring your own" file descriptor was found to be invalid at launch time (already closed, or a negative value). the descriptor must remain open for the duration of the spawn.
+		case invalidByoFileDescriptor = 0xCE
 		/// Describes a failure to close redundant writing pipes file handles after they have been successfully dup2'd to the running process.
 		case writerPipeCleanupFailure = 0xCD
 		/// Describes a failure to open the system's directory of file handles.

@@ -2,6 +2,10 @@
 
 ## Topics
 
+### Articles
+
+- <doc:Bring-Your-Own-Data-Channels>
+
 ### Types of Data Channels
 
 - ``SwiftSlash/DataChannel/read(_:)``
@@ -14,3 +18,7 @@
 ### Configuring Writable Data Channels
 
 - ``SwiftSlash/DataChannel/ChildWrite``
+
+### Caller-Owned Descriptors
+
+- ``SwiftSlash/FileDescriptor``

@@ -7,6 +7,7 @@
 - <doc:Getting-Started>
 - <doc:Task-Cancellation>
 - <doc:Versioning>
+- <doc:Bring-Your-Own-Data-Channels>
 
 ### Core API Usage
 

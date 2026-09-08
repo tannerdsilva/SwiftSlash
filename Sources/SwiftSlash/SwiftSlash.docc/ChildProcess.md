@@ -5,6 +5,7 @@
 ### Initialize a New Instance
 
 - ``SwiftSlash/ChildProcess/init(_:dataChannels:)``
+- <doc:Bring-Your-Own-Data-Channels>
 
 ### Run the Process
 

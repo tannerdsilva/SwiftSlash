@@ -28,18 +28,33 @@ internal enum WaitPIDResult {
 }
 
 extension pid_t {
-	internal func waitPID() -> WaitPIDResult {
+	/// waits for the child process associated with `self` to be reaped using `waitpid` with the `WNOHANG` flag and a cooperative sleep between polls.
+	/// polling (rather than a blocking waitpid) keeps the caller's actor available while the child runs, so sibling operations (signal delivery, state reads) are never blocked behind the reap. this matters most for "bring your own" data channel configurations, which produce no io tasks that would otherwise pace the wait, but it also removes the actor-blocking wait from long-lived built-in children that close their standard streams early.
+	internal func waitPIDAsync() async -> WaitPIDResult {
 		var statusCapture:Int32 = 0
-		let wpidReturn = waitpid(self, &statusCapture, 0)
-		if wpidReturn == -1 {
-			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
+		reapLoop: while true {
+			let wpidReturn = waitpid(self, &statusCapture, WNOHANG)
+			switch wpidReturn {
+				case -1:
+					let errNo = __cswiftslash_get_errno()
+					guard errNo == EINTR else {
+						return WaitPIDResult.failed(errno:errNo)
+					}
+					continue reapLoop
+				case 0:
+					// child is still running. yield to the actor, then poll again.
+					// the sleep is best-effort: cancellation must not abort the reap.
+					try? await Task.sleep(for:.milliseconds(10))
+					continue reapLoop
+				default:
+					if __cswiftslash_eventtrigger_wifsignaled(statusCapture) != 0 {
+						return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusCapture))
+					} else if __cswiftslash_eventtrigger_wifexited(statusCapture) != 0 {
+						return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusCapture))
+					}
+					fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
+			}
 		}
-		if __cswiftslash_eventtrigger_wifsignaled(statusCapture) != 0 {
-			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusCapture))
-		} else if __cswiftslash_eventtrigger_wifexited(statusCapture) != 0 {
-			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusCapture))
-		}
-		fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
 	}
 }
 
@@ -249,7 +264,49 @@ internal struct ProcessLogistics {
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger? = nil
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
-		if eventTrigger == nil {
+		// caller-provided ("bring your own") descriptors that must be bound to child
+		// file handles at spawn time. these descriptors are not owned by swiftslash:
+		// it will never close, mutate, register, read, or write them. keeping them in
+		// a separate dictionary from the swiftslash-owned pipes makes it structurally
+		// impossible for any pipe cleanup path to touch them.
+		var byoFdBindings:[Int32:Int32] = [:]
+
+		// validate every caller-provided descriptor before any pipe or registration
+		// work happens. a descriptor that was already closed (or a negative value)
+		// produces a dedicated error instead of a confusing errno translation.
+		for (_, config) in package.dataChannels {
+			switch config {
+				case .read(.byo(fd:let fd)):
+					guard __cswiftslash_fcntl_getfd(fd.rawValue) >= 0 else {
+						throw ChildProcess.SpawnError.invalidByoFileDescriptor
+					}
+				case .write(.byo(fd:let fd)):
+					guard __cswiftslash_fcntl_getfd(fd.rawValue) >= 0 else {
+						throw ChildProcess.SpawnError.invalidByoFileDescriptor
+					}
+				default:
+					break
+			}
+		}
+
+		// determine whether the event trigger is needed at all: only the built-in
+		// parent-stream channels register descriptors with it. a configuration that is
+		// entirely "bring your own" or null never instantiates the trigger (and its
+		// pthread) at all.
+		var needsEventTrigger = false
+		needsEventScan: for (_, config) in package.dataChannels {
+			switch config {
+				case .read(.fromParentProcess(_)):
+					needsEventTrigger = true
+					break needsEventScan
+				case .write(.toParentProcess(_, _)):
+					needsEventTrigger = true
+					break needsEventScan
+				default:
+					break
+			}
+		}
+		if needsEventTrigger && eventTrigger == nil {
 			eventTrigger = try EventTrigger()
 		}
 		// pipes that will be used to facilitate io exchange with the child process.
@@ -290,6 +347,11 @@ internal struct ProcessLogistics {
 							let newPipe = try PosixPipe.createNull()
 							nullPipes.insert(newPipe)
 							processPipes[fh] = .writePipe(newPipe)
+						case .byo(let fd):
+							// the caller owns this descriptor end-to-end. swiftslash only
+							// binds it to the child file handle; no pipe, registration, or
+							// task is produced.
+							byoFdBindings[fh] = fd.rawValue
 					}
 				case .write(let readable):
 					switch readable {
@@ -319,6 +381,12 @@ internal struct ProcessLogistics {
 							processPipes[fh] = .readPipe(newPipe)
 							nullPipes.insert(newPipe)
 							break;
+						case .byo(let fd):
+							// the caller owns this descriptor end-to-end. swiftslash only
+							// binds it to the child file handle; no pipe, registration, or
+							// task is produced.
+							byoFdBindings[fh] = fd.rawValue
+							break;
 					}
 			}
 		}
@@ -327,7 +395,7 @@ internal struct ProcessLogistics {
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes, byoFdBindings:byoFdBindings)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
@@ -385,7 +453,7 @@ internal struct ProcessLogistics {
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ChildProcess.SpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe], byoFdBindings:[Int32:Int32]) throws(ChildProcess.SpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
 			throw ChildProcess.SpawnError.precheckExecutableFailure
@@ -408,6 +476,11 @@ internal struct ProcessLogistics {
 					// the child reads from targetFH. preserve the reading end of the write pipe.
 					dup2Ops.append(contentsOf:[writer.reading, targetFH])
 			}
+		}
+		// bind any caller-provided ("bring your own") descriptors to their target file handles.
+		// these descriptors are not swiftslash-owned: no flag mutation, no cleanup, no close.
+		for (targetFH, callerFD) in byoFdBindings {
+			dup2Ops.append(contentsOf:[callerFD, targetFH])
 		}
 
 		// build the environment as a C-style "KEY=VALUE" array. an empty dict yields
