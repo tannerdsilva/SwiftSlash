@@ -23,4 +23,10 @@ public enum EventTriggerErrors:Swift.Error {
 
 	/// thrown when a given file handle (for writing) is not able to deregister with an event trigger. this is considered an internal error that should never be thrown under any circumstances
 	case writerDeregistrationFailure(Int32, Int32)
+
+	/// thrown when a given process is not able to register its exit monitor with an event trigger. on Linux this can be thrown when pidfd support is unavailable (kernels older than 5.3).
+	case processRegistrationFailure(Int32, Int32)
+
+	/// thrown when a given process is not able to deregister its exit monitor with an event trigger. this is considered an internal error that should never be thrown under any circumstances
+	case processDeregistrationFailure(Int32, Int32)
 }

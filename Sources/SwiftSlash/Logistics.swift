@@ -28,18 +28,82 @@ internal enum WaitPIDResult {
 }
 
 extension pid_t {
-	internal func waitPID() -> WaitPIDResult {
-		var statusCapture:Int32 = 0
-		let wpidReturn = waitpid(self, &statusCapture, 0)
-		if wpidReturn == -1 {
-			return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
-		}
+	/// decodes a raw waitpid status into a WaitPIDResult.
+	private func decodeWaitStatus(_ statusCapture:Int32) -> WaitPIDResult {
 		if __cswiftslash_eventtrigger_wifsignaled(statusCapture) != 0 {
 			return WaitPIDResult.signaled(__cswiftslash_eventtrigger_wtermsig(statusCapture))
 		} else if __cswiftslash_eventtrigger_wifexited(statusCapture) != 0 {
 			return WaitPIDResult.exited(__cswiftslash_eventtrigger_wexitstatus(statusCapture))
 		}
 		fatalError("SwiftSlash WaitPID error - unrecognized exit code & status combination. this is a critical and unexpected bug. \(#file):\(#line)")
+	}
+
+	/// waits for the child process associated with `self` to be reaped.
+	/// reaping is event-driven when possible: the process is registered with the event
+	/// trigger (kqueue `EVFILT_PROC` on macOS, a pidfd on Linux), whose dedicated
+	/// polling thread signals a FIFO when the process exits. the FIFO wait is
+	/// cancellation-immune (`.noAction`), so a cancelled task suspends until the reap
+	/// becomes possible instead of busy-spinning, and the child process's own task never
+	/// blocks the actor. a cooperative polling loop is retained as a fallback for
+	/// platforms without kernel process monitoring (linux kernels older than 5.3).
+	internal func waitPIDAsync(on trigger:EventTrigger) async -> WaitPIDResult {
+		do {
+			let exitFIFO:FIFO<Int, Never> = try! .init()
+			let exitConsumer = exitFIFO.makeAsyncConsumer()
+			try await ProcessLogistics.registerProcessExitMonitor(self, on:trigger, fifo:exitFIFO)
+			// suspend until the process-exit event arrives. this suspension survives
+			// task cancellation: the event trigger's polling thread is independent of
+			// the calling task.
+			_ = await exitConsumer.next(whenTaskCancelled:.noAction)
+			await ProcessLogistics.deregisterProcessExitMonitor(self, on:trigger)
+			// the process has exited. reap it with a brief drain to cover any residual
+			// window between the exit event and waitability.
+			var statusCapture:Int32 = 0
+			drainLoop: while true {
+				switch waitpid(self, &statusCapture, WNOHANG) {
+					case -1:
+						return WaitPIDResult.failed(errno:__cswiftslash_get_errno())
+					case 0:
+						try? await Task.sleep(for:.milliseconds(1))
+						continue drainLoop
+					default:
+						return decodeWaitStatus(statusCapture)
+				}
+			}
+		} catch {
+			// registration failed (e.g. no pidfd support on an old kernel, or fd
+			// exhaustion). the registration's stream entry was already enqueued before
+			// the kernel call, so drop it now to keep the trigger's active set clean,
+			// then fall back to cooperative polling.
+			await ProcessLogistics.dropProcessExitMonitor(self, on:trigger)
+			return await waitPIDByPolling()
+		}
+	}
+
+	/// cooperative poll fallback for reaping. only used when kernel process monitoring
+	/// is unavailable. NOTE: on a cancelled task `Task.sleep` throws without suspending,
+	/// so this loop tight-spins (bounded by the child's actual exit); this is accepted
+	/// only because the fast, kernel-driven path covers all supported modern platforms.
+	private func waitPIDByPolling() async -> WaitPIDResult {
+		var statusCapture:Int32 = 0
+		reapLoop: while true {
+			let wpidReturn = waitpid(self, &statusCapture, WNOHANG)
+			switch wpidReturn {
+				case -1:
+					let errNo = __cswiftslash_get_errno()
+					guard errNo == EINTR else {
+						return WaitPIDResult.failed(errno:errNo)
+					}
+					continue reapLoop
+				case 0:
+					// child is still running. yield to the actor, then poll again.
+					// the sleep is best-effort: cancellation must not abort the reap.
+					try? await Task.sleep(for:.milliseconds(10))
+					continue reapLoop
+				default:
+					return decodeWaitStatus(statusCapture)
+			}
+		}
 	}
 }
 
@@ -99,6 +163,8 @@ internal struct ProcessLogistics {
 			internal let writeTasks:[WriteTask]
 			internal let readTasks:[ReadTask]
 			internal let launchedPID:pid_t
+			/// the event trigger that services this launch's io and reaping.
+			internal let eventTrigger:EventTrigger
 			
 			internal struct WriteTask {
 				internal let terminationFuture:Future<Void, Never>
@@ -248,10 +314,89 @@ internal struct ProcessLogistics {
 
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger? = nil
+
+	/// registers a process exit monitor with the event trigger. serialized because the trigger's registration stream is shared across launches.
+	@SwiftSlashGlobalSerialization internal static func registerProcessExitMonitor(_ pid:pid_t, on trigger:EventTrigger, fifo:consuming FIFO<Int, Never>) throws {
+		try trigger.register(process:pid, fifo)
+	}
+
+	/// deregisters a process exit monitor with the event trigger. errors are intentionally swallowed: this is best-effort cleanup at the end of a reap.
+	@SwiftSlashGlobalSerialization internal static func deregisterProcessExitMonitor(_ pid:pid_t, on trigger:EventTrigger) {
+		try? trigger.deregister(process:pid)
+	}
+
+	/// drops a process exit registration from the event trigger's registration stream
+	/// without a kernel call. used when a registration failed after its stream entry was
+	/// enqueued, so no stale `.process` entry can linger in the trigger's active set.
+	@SwiftSlashGlobalSerialization internal static func dropProcessExitMonitor(_ pid:pid_t, on trigger:EventTrigger) {
+		trigger.dropProcessRegistration(pid)
+	}
+
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
+		// the event trigger is required for every launch: it services the built-in
+		// channel readiness signals AND the process-exit monitor that drives the
+		// cooperative reaping of the child process.
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
 		}
+
+		// caller-provided ("bring your own") descriptors that must be bound to child
+		// file handles at spawn time. these descriptors are not owned by swiftslash:
+		// it will never close, mutate, register, read, or write them. keeping them in
+		// a separate dictionary from the swiftslash-owned pipes makes it structurally
+		// impossible for any pipe cleanup path to touch them.
+		var byoFdBindings:[Int32:Int32] = [:]
+		// private copies (dup) of the caller's descriptors, taken at validation time.
+		// using the copy as the dup2 source closes the window between validation and
+		// spawn: if the caller closes their descriptor after validation, the spawn still
+		// binds the same open file description, and a recycled descriptor number can
+		// never cross-wire a different open file description into the child. the copies
+		// are released by the defer once the launch settles.
+		var byoPrivateCopies:[Int32] = []
+		defer {
+			for copy in byoPrivateCopies {
+				try? copy.closeFileHandle()
+			}
+		}
+
+		// validate every caller-provided descriptor before any pipe or registration
+		// work happens. three checks, in order:
+		//   1. the descriptor is open (`dup` fails with EBADF on a closed descriptor).
+		//   2. its access mode matches the channel direction (catches swapped pipe ends).
+		//   3. a private copy is taken for the spawn, as described above.
+		for (fh, config) in package.dataChannels {
+			let childReads:Bool
+			let byoDescriptor:FileDescriptor
+			switch config {
+				case .read(.byo(fd:let fd)):
+					childReads = true
+					byoDescriptor = fd
+				case .write(.byo(fd:let fd)):
+					childReads = false
+					byoDescriptor = fd
+				default:
+					continue
+			}
+			let privateCopy = dup(byoDescriptor.rawValue)
+			guard privateCopy >= 0 else {
+				throw ChildProcess.SpawnError.invalidByoFileDescriptor
+			}
+			// the copy is ours to mutate: mark it close-on-exec so it never leaks into
+			// the child as a stray descriptor that is not part of the dup2 binding.
+			_ = __cswiftslash_fcntl_setfd(privateCopy, FD_CLOEXEC)
+			let accessMode = __cswiftslash_fcntl_getfl(privateCopy) & O_ACCMODE
+			let directionMatches = childReads
+				? (accessMode == O_RDONLY || accessMode == O_RDWR)
+				: (accessMode == O_WRONLY || accessMode == O_RDWR)
+			guard directionMatches else {
+				// close this copy directly; its release has not been registered yet.
+				try? privateCopy.closeFileHandle()
+				throw ChildProcess.SpawnError.byoFileDescriptorWrongDirection
+			}
+			byoPrivateCopies.append(privateCopy)
+			byoFdBindings[fh] = privateCopy
+		}
+
 		// pipes that will be used to facilitate io exchange with the child process.
 		var processPipes = [Int32:Pipe]()
 		var nullPipes = Set<PosixPipe>()
@@ -290,7 +435,13 @@ internal struct ProcessLogistics {
 							let newPipe = try PosixPipe.createNull()
 							nullPipes.insert(newPipe)
 							processPipes[fh] = .writePipe(newPipe)
-					}
+						case .byo(_):
+							// the caller owns this descriptor end-to-end. swiftslash only
+							// binds it to the child file handle; no pipe, registration, or
+							// task is produced. the dup2 source binding was established by
+							// the validation pass (the private copy), so nothing is done here.
+							break;
+						}
 				case .write(let readable):
 					switch readable {
 						case .toParentProcess(let channel, let sep):
@@ -319,6 +470,12 @@ internal struct ProcessLogistics {
 							processPipes[fh] = .readPipe(newPipe)
 							nullPipes.insert(newPipe)
 							break;
+						case .byo(_):
+							// the caller owns this descriptor end-to-end. swiftslash only
+							// binds it to the child file handle; no pipe, registration, or
+							// task is produced. the dup2 source binding was established by
+							// the validation pass (the private copy), so nothing is done here.
+							break;
 					}
 			}
 		}
@@ -327,7 +484,7 @@ internal struct ProcessLogistics {
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes, byoFdBindings:byoFdBindings)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
@@ -381,11 +538,12 @@ internal struct ProcessLogistics {
 		return LaunchPackage.Launched(
 			writeTasks:writeTasks,
 			readTasks:readTasks,
-			launchedPID:launchedPID
+			launchedPID:launchedPID,
+			eventTrigger:eventTrigger!
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe]) throws(ChildProcess.SpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe], byoFdBindings:[Int32:Int32]) throws(ChildProcess.SpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
 			throw ChildProcess.SpawnError.precheckExecutableFailure
@@ -408,6 +566,11 @@ internal struct ProcessLogistics {
 					// the child reads from targetFH. preserve the reading end of the write pipe.
 					dup2Ops.append(contentsOf:[writer.reading, targetFH])
 			}
+		}
+		// bind any caller-provided ("bring your own") descriptors to their target file handles.
+		// these descriptors are not swiftslash-owned: no flag mutation, no cleanup, no close.
+		for (targetFH, callerFD) in byoFdBindings {
+			dup2Ops.append(contentsOf:[callerFD, targetFH])
 		}
 
 		// build the environment as a C-style "KEY=VALUE" array. an empty dict yields

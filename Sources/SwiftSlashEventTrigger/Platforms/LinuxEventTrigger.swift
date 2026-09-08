@@ -35,6 +35,19 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 
 	/// the file handle registrations that are currently active.
 	private var activeTriggers:[Int32:Register] = [:]
+
+	/// process exit monitors, keyed by pid. held separately from the fd-keyed
+	/// `activeTriggers` dictionary so a pid number can never collide with an open file
+	/// descriptor in the parent process. pid-keyed epoll events are additionally
+	/// namespaced by `processEventMarker` in the data union.
+	private var processMonitors:[Int32: FIFO<Int, Never>] = [:]
+
+	/// the high bit of the epoll data union that marks a process-exit (pidfd) event.
+	fileprivate static let processEventMarker:UInt64 = UInt64(1) << 63
+
+	/// the pidfds that are currently registered for process exit monitoring, keyed by the monitored pid.
+	/// only mutated from `register(process:)`/`deregister(process:)`, which are globally serialized.
+	@SwiftSlashGlobalSerialization fileprivate static var activeProcessPidfds:[Int32:Int32] = [:]
 	
 	/// the registrations that are pending.
 	private let registrations:FIFO<(Int32, Register?), Never>
@@ -43,7 +56,19 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 		infiniteLoop: repeat {
 			switch getIterator.next() {
 				case .some(let (handle, register)):
-					activeTriggers[handle] = register
+					switch register {
+						case .some(let r):
+							switch r {
+								case .process(let fifo):
+									processMonitors[handle] = fifo
+								default:
+									activeTriggers[handle] = r
+							}
+						case .none:
+							activeTriggers.removeValue(forKey:handle)
+							// the removed key may have been a process monitor; clear it too.
+							processMonitors.removeValue(forKey:handle)
+					}
 				case .none:
 					break infiniteLoop
 			}
@@ -97,16 +122,27 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 						// capture the relevant two points for this iteration: file handle and the flags triggered for said handle.
 						let currentEvent = eventBuffer[i]
 						let eventFlags = currentEvent.events
+						if currentEvent.data.u64 & LinuxEventTrigger.processEventMarker != 0 {
+							// a monitored process has exited (a pidfd event). pid-keyed events are
+							// namespaced away from fd-keyed events, even when the pid numerically
+							// collides with an open file descriptor.
+							let processPid = Int32(bitPattern:UInt32(truncatingIfNeeded:currentEvent.data.u64 & ~LinuxEventTrigger.processEventMarker))
+							processMonitors[processPid]?.yield(1)
+							continue resultLoop
+						}
 						guard currentEvent.data.fd != cancelPipe.reading else {
 							// cancel pipe was triggered, we need to exit the loop.
 							continue resultLoop
 						}
 						if eventFlags & UInt32(EPOLLHUP.rawValue) != 0 {
-							// reading handle closed
+							// reading handle closed, or a monitored process has exited (pidfd HUP).
 							// let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
-							switch activeTriggers[currentEvent.data.fd]! {
-								case .reader(_, let future):
-									try? future.setSuccess(())
+							switch activeTriggers[currentEvent.data.fd] {
+								case .some(.reader(_, let future)):
+									_ = try? future.setSuccess(())
+								case .none:
+									// a deregistration raced with an in-flight event; nothing to do.
+									break
 								default:
 									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 							}
@@ -115,23 +151,29 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 
 							// writing handle closed
 							// let removedValue = activeTriggers.removeValue(forKey:currentEvent.data.fd)!
-							switch activeTriggers[currentEvent.data.fd]! {
-								case .writer(_, let future):
-									try? future.setSuccess(())
+							switch activeTriggers[currentEvent.data.fd] {
+								case .some(.writer(_, let future)):
+									_ = try? future.setSuccess(())
+								case .none:
+									// a deregistration raced with an in-flight event; nothing to do.
+									break
 								default:
 									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 							}
 
 						} else if eventFlags & UInt32(EPOLLIN.rawValue) != 0 {
-							
-							// read data available
-							var byteCount:Int32 = 0
-							guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
-								fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
-							}
-							switch activeTriggers[currentEvent.data.fd]! {
-								case .reader(let fifo, _):
+
+							// read data available, or a monitored process (via its pidfd) has exited.
+							switch activeTriggers[currentEvent.data.fd] {
+								case .some(.reader(let fifo, _)):
+									var byteCount:Int32 = 0
+									guard __cswiftslash_fcntl_fionread(currentEvent.data.fd, &byteCount) == 0 else {
+										fatalError("fcntl error - this should never happen :: \(#file):\(#line)")
+									}
 									fifo.yield(Int(byteCount))
+								case .none:
+									// a deregistration raced with an in-flight event; nothing to do.
+									break
 								default:
 									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 							}
@@ -139,9 +181,12 @@ internal final class LinuxEventTrigger:EventTriggerEngine, @unchecked Sendable {
 						} else if eventFlags & UInt32(EPOLLOUT.rawValue) != 0 {
 							
 							// write data available
-							switch activeTriggers[currentEvent.data.fd]! {
-								case .writer(let fifo, _):
+							switch activeTriggers[currentEvent.data.fd] {
+								case .some(.writer(let fifo, _)):
 									fifo.yield(())
+								case .none:
+									// a deregistration raced with an in-flight event; nothing to do.
+									break
 								default:
 									fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
 							}
@@ -211,6 +256,42 @@ extension LinuxEventTrigger {
 		buildEvent.events = UInt32(EPOLLOUT.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
 		guard epoll_ctl(ev, EPOLL_CTL_DEL, writer, &buildEvent) == 0 else {
 			throw EventTriggerErrors.writerDeregistrationFailure(writer, __cswiftslash_get_errno())
+		}
+	}
+
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, process pid:Int32) throws(EventTriggerErrors) {
+		// a pidfd becomes pollable (EPOLLIN) when the monitored process has exited.
+		// this registration keys the event payload by the pid (not the pidfd) so the
+		// dispatch loop and the registration stream stay symmetric with macOS.
+		let pidfd = __cswiftslash_pidfd_open(pid)
+		guard pidfd != -1 else {
+			throw EventTriggerErrors.processRegistrationFailure(pid, __cswiftslash_get_errno())
+		}
+		var newEvent = epoll_event()
+		// namespace the registration with the high-bit marker so a pid that numerically
+		// equals an open parent file descriptor can never be confused with an fd event.
+		newEvent.data.u64 = processEventMarker | UInt64(UInt32(bitPattern:pid))
+		newEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		guard epoll_ctl(ev, EPOLL_CTL_ADD, pidfd, &newEvent) == 0 else {
+			let errNo = __cswiftslash_get_errno()
+			try? pidfd.closeFileHandle()
+			throw EventTriggerErrors.processRegistrationFailure(pid, errNo)
+		}
+		activeProcessPidfds[pid] = pidfd
+	}
+
+	@SwiftSlashGlobalSerialization internal static func deregister(_ ev:EventTriggerHandlePrimitive, process pid:Int32) throws(EventTriggerErrors) {
+		guard let pidfd = activeProcessPidfds.removeValue(forKey:pid) else {
+			// never registered (or already deregistered). nothing to do.
+			return
+		}
+		var buildEvent = epoll_event()
+		buildEvent.data.fd = pid
+		buildEvent.events = UInt32(EPOLLIN.rawValue) | UInt32(EPOLLERR.rawValue) | UInt32(EPOLLHUP.rawValue) | UInt32(EPOLLET.rawValue)
+		let deleteReturn = epoll_ctl(ev, EPOLL_CTL_DEL, pidfd, &buildEvent)
+		try? pidfd.closeFileHandle()
+		guard deleteReturn == 0 else {
+			throw EventTriggerErrors.processDeregistrationFailure(pid, __cswiftslash_get_errno())
 		}
 	}
 }

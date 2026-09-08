@@ -37,6 +37,10 @@ extension ChildProcess {
 		case readerPipeCleanupFailure = 0xCB
 		/// Describes a failure to assign the writing end of a pipe to the child process.
 		case dup2WriterFailure = 0xCC
+		/// Describes a failure where a caller-provided "bring your own" file descriptor was found to be invalid at launch time (already closed, or a negative value). the descriptor must remain open for the duration of the spawn.
+		case invalidByoFileDescriptor = 0xCE
+		/// Describes a failure where a caller-provided "bring your own" file descriptor's access mode does not match the direction of its data channel. for a child-writing channel (`.write(.byo(...))`, e.g. stdout) the descriptor must be writable; for a child-reading channel (`.read(.byo(...))`, e.g. stdin) it must be readable. this is usually a swapped pipe end.
+		case byoFileDescriptorWrongDirection = 0xCF
 		/// Describes a failure to close redundant writing pipes file handles after they have been successfully dup2'd to the running process.
 		case writerPipeCleanupFailure = 0xCD
 		/// Describes a failure to open the system's directory of file handles.
@@ -65,7 +69,7 @@ extension ChildProcess {
 					self = .precheckExecutableFailure
 				case EACCES, EPERM:
 					self = .precheckExecutableFailure
-				case ENOEXEC, EINVAL:
+				case ENOEXEC:
 					self = .precheckExecutableFailure
 				case E2BIG:
 					self = .precheckWorkingDirectoryFailure
@@ -73,6 +77,12 @@ extension ChildProcess {
 					self = .posixPipeCreateFailure
 				case EAGAIN:
 					self = .forkFailure
+				case EBADF:
+					// posix_spawn reports EBADF when a dup2 file action referenced a
+					// descriptor that was not open at spawn time. for a caller-provided
+					// descriptor this is a (rare) close-after-validation race; surface
+					// it as the byo descriptor error rather than a generic failure.
+					self = .invalidByoFileDescriptor
 				default:
 					self = .internalFailure
 			}

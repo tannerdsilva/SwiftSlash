@@ -63,6 +63,10 @@ int __cswiftslash_fcntl_getfd(int fd) {
 	return fcntl(fd, F_GETFD);
 }
 
+int __cswiftslash_fcntl_getfl(int fd) {
+	return fcntl(fd, F_GETFL);
+}
+
 /// Cross-platform addchdir shim for spawn file actions.
 /// - macOS >= 10.15: posix_spawn_file_actions_addchdir_np (deprecated in 26.0,
 ///   superseded by addchdir, but _np remains available and portable to .v15)

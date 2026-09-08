@@ -9,13 +9,25 @@ copyright (c) tanner silva 2026. all rights reserved.
 
 */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "__cswiftslash_eventtrigger.h"
 
 #ifdef __linux__
 int __cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr) {
 	return ioctl(fd, FIONREAD, sizeptr);
 }
+pid_t __cswiftslash_pidfd_open(pid_t pid) {
+#ifdef SYS_pidfd_open
+	return (pid_t)syscall(SYS_pidfd_open, (pid_t)pid, 0);
+#else
+	errno = ENOSYS;
+	return (pid_t)-1;
 #endif
+}
+#endif // __linux__
 
 int32_t __cswiftslash_eventtrigger_wifsignaled(const int32_t status) {
 	return WIFSIGNALED(status);

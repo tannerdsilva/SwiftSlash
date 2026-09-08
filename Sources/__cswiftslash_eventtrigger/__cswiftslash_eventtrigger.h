@@ -18,11 +18,18 @@ copyright (c) tanner silva 2026. all rights reserved.
 #ifdef __linux__
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <unistd.h>
 /// a wrapper function for `ioctl(fd, FIONREAD, &byteCount)`. swift cannot call into variadic functions, let alone passing some inout shit into a variable arg...so here we are with this function. only used on Linux.
 /// @param fd the file descriptor associated with the fionread request.
 /// @param sizeptr the resulting value of the fionread request.
 /// @return 0 if the fionread request returns a value as expected. a non-zero value will be returned if an unexpected error is encountered.
 int __cswiftslash_fcntl_fionread(int fd, int *_Nonnull sizeptr);
+/// a wrapper for the `pidfd_open` syscall, which produces an fd that becomes pollable (EPOLLIN) when the process with the given pid has exited.
+/// @param pid the process identifier to monitor.
+/// @return the pidfd on success, or -1 with errno set. returns ENOSYS when pidfd support is unavailable (non-Linux, or kernels older than 5.3).
+pid_t __cswiftslash_pidfd_open(pid_t pid);
 #endif // __linux__
 
 #ifdef __APPLE__

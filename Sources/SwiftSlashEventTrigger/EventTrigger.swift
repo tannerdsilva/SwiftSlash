@@ -80,6 +80,30 @@ public final class EventTrigger:Sendable {
 		regStream.yield((writer, nil))
 	}
 
+	/// registers a process for exit monitoring. the provided FIFO will receive a single element when the monitored process exits.
+	/// - NOTE: monitoring is performed by the event trigger's polling thread, so the FIFO recipient will be signaled even if the registering task is cancelled before the process exits.
+	@SwiftSlashGlobalSerialization public borrowing func register(process pid:pid_t, _ fifo:consuming FIFO<Int, Never>) throws(EventTriggerErrors) {
+		regStream.yield((pid, .process(fifo)))
+		try PlatformSpecificETImplementation.register(prim, process:pid)
+	}
+
+	/// deregisters a process exit monitor.
+	@SwiftSlashGlobalSerialization public borrowing func deregister(process pid:pid_t) throws {
+		// enqueue the removal BEFORE the kernel call: if the platform deregistration
+		// throws, the stream entry has already removed the monitor from the trigger's
+		// active set, so no stale entry can linger.
+		regStream.yield((pid, nil))
+		try PlatformSpecificETImplementation.deregister(prim, process:pid)
+	}
+
+	/// removes a pending process-exit registration from the registration stream without
+	/// touching the kernel. used to clean up when a platform registration fails: the
+	/// registration is enqueued before the kernel call so no exit event can be lost, and a
+	/// failing kernel call would otherwise leave a stale `.process` entry installed forever.
+	@SwiftSlashGlobalSerialization public borrowing func dropProcessRegistration(_ pid:pid_t) {
+		regStream.yield((pid, nil))
+	}
+
 	deinit {
 		// cancel the thread since it will still be running at this point
 		try! launchedThread.cancel()

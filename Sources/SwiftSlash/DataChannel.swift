@@ -12,6 +12,19 @@ copyright (c) tanner silva 2026. all rights reserved.
 import SwiftSlashFIFO
 import SwiftSlashFuture
 
+/// a file descriptor owned by the caller, handed to SwiftSlash for binding to a child process file handle.
+/// swiftslash never closes, mutates, registers, reads, or writes this descriptor; the caller retains ownership for the entire child process lifecycle.
+/// - NOTE: the descriptor must remain open from the moment it is placed in a data channel configuration until the child process has been spawned.
+public struct FileDescriptor:Sendable, Hashable {
+	/// the raw system file descriptor integer.
+	public let rawValue:Int32
+	/// wraps a raw system file descriptor value for use with SwiftSlash data channels.
+	/// - Parameter rawValue: the raw system file descriptor value.
+	public init(rawValue:Int32) {
+		self.rawValue = rawValue
+	}
+}
+
 /// Represents a unidirectional data channel that will connect to the launched process.
 /// Data channels must be prepared for a child process **before** the process is launched.
 /// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
@@ -87,6 +100,11 @@ public enum DataChannel:Sendable {
 		/// Discards child output on this data channel by piping it to `/dev/null`.
 		/// The written data from the child process never reaches the parent process.
 		case toNull
+
+		/// The child process writes to a descriptor owned entirely by the caller. SwiftSlash binds the descriptor to the child process file handle at spawn time and takes no further part in the data path: it never creates a pipe, registers the descriptor with its event trigger, reads from it, writes to it, mutates its flags, or closes it. The caller retains the opposite end of the underlying pipe (or socket, pty, or other descriptor object) and owns all data exchange on it.
+		/// - Parameter fd: The *child-facing* end of the descriptor pair. This descriptor is duplicated (`dup2`) onto the child process's target file handle; the child writes to it. The caller keeps the other end and reads from it.
+		/// - NOTE: The descriptor must remain open until the child process has been spawned (`run()` has begun its launch phase). After the spawn, the caller may close their own copy of the child-facing descriptor; closing it is what lets reads on the retained end observe EOF at the natural time.
+		case byo(fd:FileDescriptor)
 	}
 
 	/// Represents the various ways that a child process can be configured to read data.
@@ -157,5 +175,10 @@ public enum DataChannel:Sendable {
 
 		/// Child reads data sourced directly from `/dev/null` or equivalent source.
 		case fromNull
+
+		/// The child process reads from a descriptor owned entirely by the caller. SwiftSlash binds the descriptor to the child process file handle at spawn time and takes no further part in the data path: it never creates a pipe, registers the descriptor with its event trigger, reads from it, writes to it, mutates its flags, or closes it. The caller retains the opposite end of the underlying pipe (or socket, pty, or other descriptor object) and owns all data exchange on it.
+		/// - Parameter fd: The *child-facing* end of the descriptor pair. This descriptor is duplicated (`dup2`) onto the child process's target file handle; the child reads from it. The caller keeps the other end and writes to it.
+		/// - NOTE: The descriptor must remain open until the child process has been spawned (`run()` has begun its launch phase).
+		case byo(fd:FileDescriptor)
 	}
 }
