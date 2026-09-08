@@ -18,7 +18,9 @@ internal enum Register {
 	/// register a parent process reader.
 	case reader(FIFO<Int, Never>, Future<Void, Never>)
 
-
 	/// register a parent process writer.
 	case writer(FIFO<Void, Never>, Future<Void, Never>)
+
+	/// register a child process exit monitor. the FIFO receives a single element when the monitored process exits.
+	case process(FIFO<Int, Never>)
 }

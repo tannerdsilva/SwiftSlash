@@ -23,19 +23,21 @@ For a BYO channel, SwiftSlash's behavior is exactly this:
 | **never** | mutates its flags (`O_NONBLOCK`, `FD_CLOEXEC`, …) |
 | **never** | closes it — not on launch, not on cancellation, not on reap |
 
-Every built-in guarantee that is not about the bytes themselves stays fully intact: the child is **reaped** with `waitpid`, task **cancellation** still signals the process group and throws `CancellationError`, `state` transitions normally, and `signal(_:)` works. A configuration that is entirely BYO behaves identically to a built-in configuration at the lifecycle level. Reaping never blocks your ability to observe `state` or deliver signals: the internal wait continually yields to the actor while the child runs.
+Every built-in guarantee that is not about the bytes themselves stays fully intact: the child is **reaped** with `waitpid`, task **cancellation** still signals the process group and throws `CancellationError`, `state` transitions normally, and `signal(_:)` works. A configuration that is entirely BYO behaves identically to a built-in configuration at the lifecycle level. Reaping is **event-driven**: the child process is registered with SwiftSlash's internal event trigger (kqueue `EVFILT_PROC` on macOS, a pidfd on Linux), and `run()` suspends — never spins, never blocks the actor — until the process actually exits. `state` reads and `signal(_:)` therefore always work, including when the calling task has been cancelled and the child refuses the cancellation signal.
 
 ## Ownership contract
 
 - You pass the **child-facing** end of your descriptor pair — the end that the child should read from or write to at its file handle.
 - You keep the **opposite** end and perform all data exchange on it (e.g. via a SwiftNIO `FileHandle`/`FileChannel`).
 - The descriptor must be **valid and open for the duration of the spawn** — from the moment it is placed in the channel map until the child has launched. A closed or negative descriptor is rejected up front with ``SwiftSlash/ChildProcess/SpawnError/invalidByoFileDescriptor``.
+- Its **access mode must match the channel direction**: a child-writing channel (`.write(.byo(...))`) requires a writable descriptor, and a child-reading channel (`.read(.byo(...))`) requires a readable one. This is verified at launch, so a swapped pipe end is rejected with ``SwiftSlash/ChildProcess/SpawnError/byoFileDescriptorWrongDirection`` before the child ever sees it.
+- SwiftSlash takes a **private copy** (`dup`) of your descriptor as the `dup2` source for the spawn, and releases it once the launch settles. Your descriptor is never closed, mutated, or read by SwiftSlash — and because the spawn binds the private copy, a descriptor you close (or a number that gets recycled) after validation cannot affect the child.
 - After the spawn, your copy of the child-facing descriptor is yours to close whenever you like. For a child-**writing** channel (stdout/stderr), note that the pipe only reports EOF to your reading end once *every* writer (including any copy you still hold) has closed it.
 - SwiftSlash remains indifferent to when you close either end. Early closure only affects your own I/O, which is yours.
 
 ### Descriptor hygiene
 
-Because SwiftSlash never mutates descriptor flags, any descriptor that is still open — and not marked `FD_CLOEXEC` — when the child is spawned is inherited by the child as a stray file descriptor, even when it is not named in a channel binding. In practice the important one is the retained, parent-facing end of a child-**writing** pipe: if that end leaks into the child, the child holds a writer reference and your reading end will not observe EOF while the child lives. Mark retained ends `FD_CLOEXEC` yourself (or close them after the spawn) if this matters to you.
+Because SwiftSlash never mutates descriptor flags, any descriptor that is still open — and not marked `FD_CLOEXEC` — when the child is spawned is inherited by the child as a stray file descriptor, even when it is not named in a channel binding. The failure this causes is subtle and easy to hit: for a child-**writing** channel, if your retained, parent-facing reading end leaks into the child (or is copied into a grandchild), the child holds a writer reference and your reading end never reports EOF while it lives — reads hang at the end of the stream. Mark retained ends `FD_CLOEXEC` yourself, or close the child-facing copy after the spawn, if EOF timing matters to you.
 
 ## Using a pipe
 
@@ -101,4 +103,4 @@ You might wonder whether SwiftSlash could also register your BYO descriptor with
 - The trigger's EOF notification exists to wind down *SwiftSlash's* I/O tasks. A BYO channel has none.
 - You already observe EOF in the place that matters: your own read returns 0, or your NIO channel goes inactive.
 
-Keep the BYO seam invisible to the event trigger — it is the simplest correct design, and it leaves your data path entirely under your control.
+The event trigger *is* used for one lifecycle task — watching the child process itself exit, to drive `run()`'s reap — but never for the contents of your descriptor. Keep the BYO seam invisible to the data side of the event trigger; it is the simplest correct design, and it leaves your data path entirely under your control.

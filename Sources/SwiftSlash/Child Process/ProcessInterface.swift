@@ -191,7 +191,7 @@ public actor ChildProcess {
 
 						// reap the running process.
 						let exit:Exit
-						switch await preapredPackage.launchedPID.waitPIDAsync() {
+						switch await preapredPackage.launchedPID.waitPIDAsync(on:preapredPackage.eventTrigger) {
 							case .exited(let exitCode):
 								state = .reaped(.code(exitCode))
 								exit = .code(exitCode)

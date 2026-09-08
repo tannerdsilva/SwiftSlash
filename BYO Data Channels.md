@@ -148,11 +148,20 @@ The `__cswiftslash_posix_spawn` C helper is already correct for this input (plai
 `posix_spawn_file_actions_adddup2`; async-signal-safe; works on macOS kqueue-less spawn and
 glibc/musl CLONE_VM children). **No C changes.**
 
-New named error for the pre-flight check, using the existing `fcntl` helper that is already
-in the C module (`__cswiftslash_fcntl_getfd`, F_GETFD): a BYO descriptor that is already
-closed (or `< 0`) is caught in `launch()` before any pipe or process work happens and thrown
-as a dedicated `SpawnError` case (e.g. `invalidByoFileDescriptor`), instead of posix_spawn
-returning `EBADF` and the existing errno map degrading it to `.internalFailure`.
+New named errors and hardening for the pre-flight check, all inside `launch()` before any pipe or
+process work happens:
+
+- `invalidByoFileDescriptor` (new `SpawnError` case) — `dup(2)` of the caller descriptor fails
+  (closed or negative descriptor).
+- `byoFileDescriptorWrongDirection` (new `SpawnError` case) — `F_GETFL`/`O_ACCMODE` does not
+  match the channel direction, catching swapped pipe ends before the child sees the descriptor.
+- **Private-copy hardening**: the `dup(2)` taken at validation time is used as the `dup2` source,
+  not the caller's descriptor. the copy is released when the launch settles, which closes the
+  validation-to-spawn TOCTOU window entirely (a caller closing their descriptor after validation,
+  or a reused number, can no longer affect the spawn or cross-wire another open file description
+  into the child).
+- defensively, `posix_spawn` returning `EBADF` (a dup2 source not open at spawn time) now maps
+  to `invalidByoFileDescriptor` instead of `.internalFailure`.
 
 ### 4.3 `run()` / `ChildProcess` — zero changes
 
@@ -161,13 +170,26 @@ returns immediately, `waitpid` blocks until exit, cancellation and reaping proce
 identically. The only developer-facing obligation is documented: the caller must drive its
 own IO (its NIO event loop) while `run()` awaits — that is the definition of BYO.
 
-### 4.4 optional micro-refinement
+### 4.4 event-driven reaping — post-review revision (original refinement withdrawn)
 
-`launch()` currently instantiates the global `EventTrigger` (a pthread + FIFO + cancel
-pipe) unconditionally, even though a pure-BYO or pure-null configuration registers nothing.
-Guard instantiation on "at least one channel needs registration" so a BYO-only process pulls
-in zero event-trigger machinery. Safe: the global is already lazily created once and reused.
-Marked optional because it changes a hot global-init path; the feature works without it.
+The originally proposed "optional micro-refinement" (lazy event-trigger instantiation so a
+pure-BYO config never spawns a pthread) is **withdrawn**. An adversarial review found that
+cooperative-poll reaping (`waitpid(WNOHANG)` + `try? await Task.sleep`) busy-spins at ~5M
+iterations/sec once the calling task is cancelled, because `Task.sleep` throws on a cancelled
+task *without suspending* — the byo cancellation test passed only because `/bin/sleep` died in
+milliseconds, and a child that ignores SIGTERM would burn a whole core and starve the actor.
+
+Reaping is now **event-driven** through the event trigger:
+
+- macOS: the pid is registered as `EVFILT_PROC`/`NOTE_EXIT` on the trigger's kqueue.
+- Linux: a `pidfd_open` descriptor is registered for `EPOLLIN` on the trigger's epoll (a
+  cooperative poll loop remains as a fallback for kernels older than 5.3).
+- `waitPIDAsync` registers the process, then suspends on the monitor FIFO with a
+  **cancellation-immune** consumer (`.noAction`), so a cancelled task genuinely suspends until
+  the child exits — zero CPU, no actor blocking, no polling latency.
+- consequence: the event trigger is required for every launch (reaping needs it), so it is
+  created unconditionally again. one shared process-lifetime pthread; the "no hidden pthread"
+  property was not worth trading for reaping correctness.
 
 ## 5. Feature parity — nothing regresses
 
@@ -223,8 +245,9 @@ The `EventTrigger` is also the wrong home for this by construction: it lives in 
 see it, so any monitoring API added there would be invisible to the very user who would
 need it.
 
-Net: the BYO seam is *invisible to the event trigger by design*. The only event-trigger
-change in this plan is the optional removal of its unconditional instantiation (§4.4).
+Net: the BYO data seam is *invisible to the event trigger by design*. The event trigger *is*
+used for one lifecycle task — watching the child process itself exit, to drive `run()`'s
+reap (§4.4) — but never for the contents of a BYO descriptor.
 
 ## 7. Test plan (Swift Testing, one file per suite)
 
@@ -233,10 +256,11 @@ tagged, mirroring the existing process-test conventions. Tests use `PosixPipe`
 (`@testable`-visible through the already-imported `SwiftSlashFHHelpers`) to fabricate
 caller-owned pipes and hand SwiftSlash the child-facing end.
 
-1. **`testByoStdout`** — `/bin/echo` with a payload larger than `PIPE_BUF`; stdout =
-   `.write(.byo(fd: writing end))`; the test reads the *caller's* retained read end raw;
-   asserts exact byte equality with **no** line splitting (proves SwiftSlash is not in the
-   data path) and `exit == .code(0)`.
+1. **`testByoStdout`** — the child generates a payload far larger than any platform pipe
+   capacity (`yes marker | head -c 200000`); stdout = `.write(.byo(fd: writing end))`; the test
+   reads the *caller's* retained read end raw; asserts byte-exact equality with **no** line
+   splitting or mangling (proves SwiftSlash is not in the data path, even under backpressure)
+   and `exit == .code(0)`.
 2. **`testByoStdin`** — child `cat`; stdin = `.read(.byo(fd: reading end))`; the test writes
    a known payload to its retained write end, closes it, asserts the child exits cleanly
    having seen EOF.
@@ -248,12 +272,19 @@ caller-owned pipes and hand SwiftSlash the child-facing end.
 5. **`testByoCancellation`** — child sleeps; all-BYO; `run(cancellationSignal:SIGTERM)`;
    cancel mid-flight; assert `CancellationError` is thrown and `state == .reaped` (mirrors
    `CancellationTests`, proves cancellation is channel-agnostic).
-6. **`testByoInvalidDescriptor`** — a closed descriptor (or `rawValue:-1`) in the channel
+6. **`testByoStubbornCancellation`** — regression test for the reaping fix: the child
+   ignores SIGTERM (`trap '' TERM`) and loops forever; after cancellation the actor must
+   stay responsive (state reads return `.running`, `signal(SIGKILL)` interleaves) and the
+   process must be reaped. this test structurally fails under the pre-review polling reap.
+7. **`testByoWrongDirection`** — a read-only descriptor on a child-writing channel (and its
+   mirror: a write-only descriptor on a child-reading channel) throws
+   `byoFileDescriptorWrongDirection` before spawn.
+8. **`testByoInvalidDescriptor`** — a closed descriptor (or `rawValue:-1`) in the channel
    map throws the dedicated `SpawnError` case before any process is spawned.
-7. **`testFileDescriptorType`** — `rawValue` round-trip; `Hashable`.
+9. **`testFileDescriptorType`** — `rawValue` round-trip; `Hashable`.
 
 No changes to existing suites. `swift test` on macOS is the gate (baseline green at commit
-time); Linux CI would run the identical suite.
+time); Linux CI would run the identical suite (the pidfd path is exercised on Linux).
 
 ## 8. Documentation
 

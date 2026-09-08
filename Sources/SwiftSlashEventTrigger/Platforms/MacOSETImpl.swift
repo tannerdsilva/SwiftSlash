@@ -53,6 +53,8 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 											_ = try? future.setSuccess(())
 										case .writer(_, let future):
 											_ = try? future.setSuccess(())
+										case .process(_):
+											break
 									}
 								case .none:
 									break
@@ -119,6 +121,21 @@ internal final class MacOSEventTrigger:EventTriggerEngine, @unchecked Sendable {
 						}
 
 						// logic branch to determine if the event is a read or write event, or if it is an EOF event.
+						// process exit monitors are dispatched first: the event trigger watches exiting children
+						// to drive the cooperative reap of child processes.
+						if currentEvent.filter == Int16(EVFILT_PROC) {
+							if currentEvent.fflags & UInt32(NOTE_EXIT) != 0 {
+								switch activeTriggers[curIdent] {
+									case .some(.process(let fifo)):
+										fifo.yield(1)
+									case .none:
+										break
+									default:
+										fatalError("eventtrigger error - this should never happen. \(#file):\(#line)")
+									}
+							}
+							continue resultLoop
+						}
 						if currentEvent.flags & UInt16(EV_EOF) == 0 {
 							if currentEvent.filter == Int16(EVFILT_READ) {
 							
@@ -246,6 +263,32 @@ extension MacOSEventTrigger {
 		newEvent.udata = nil
 		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
 			throw EventTriggerErrors.writerDeregistrationFailure(writer, __cswiftslash_get_errno())
+		}
+	}
+
+	@SwiftSlashGlobalSerialization internal static func register(_ ev:EventTriggerHandlePrimitive, process pid:Int32) throws(EventTriggerErrors) {
+		var newEvent = kevent()
+		newEvent.ident = UInt(pid)
+		newEvent.flags = UInt16(EV_ADD | EV_CLEAR)
+		newEvent.filter = Int16(EVFILT_PROC)
+		newEvent.fflags = UInt32(NOTE_EXIT)
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerErrors.processRegistrationFailure(pid, __cswiftslash_get_errno())
+		}
+	}
+
+	internal static func deregister(_ ev:EventTriggerHandlePrimitive, process pid:Int32) throws(EventTriggerErrors) {
+		var newEvent = kevent()
+		newEvent.ident = UInt(pid)
+		newEvent.flags = UInt16(EV_DELETE | EV_CLEAR)
+		newEvent.filter = Int16(EVFILT_PROC)
+		newEvent.fflags = UInt32(NOTE_EXIT)
+		newEvent.data = 0
+		newEvent.udata = nil
+		guard kevent(ev, &newEvent, 1, nil, 0, nil) == 0 else {
+			throw EventTriggerErrors.processDeregistrationFailure(pid, __cswiftslash_get_errno())
 		}
 	}
 }

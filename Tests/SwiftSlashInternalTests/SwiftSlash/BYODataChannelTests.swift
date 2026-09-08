@@ -55,9 +55,20 @@ extension SwiftSlashTests {
 				try? pipe.reading.closeFileHandle()
 				try? pipe.writing.closeFileHandle()
 			}
-			let randomInt = Int.random(in:0...Int.max)
-			let payload = "byo hello world \(randomInt)\nsecond line without trailing newline"
-			let process = ChildProcess(Command(absolutePath:"/bin/echo", arguments:[payload]), dataChannels:[
+			// the child generates a payload far larger than any platform pipe capacity
+			// (PIPE_BUF / pipe buffer), so a complete drain requires the caller's read
+			// loop to consume concurrently while the child writes. byte-exact equality
+			// proves swiftslash is not in the data path and does no chunking of its own.
+			let marker = "byo-passthrough_\(Int.random(in:0...Int.max))_"
+			let byteCount = 200_000
+			let command = "yes '\(marker)' | head -c \(byteCount)"
+			var expected:[UInt8] = []
+			let unit = Array((marker + "\n").utf8)
+			while expected.count < byteCount {
+				expected.append(contentsOf:unit)
+			}
+			expected.removeLast(expected.count - byteCount)
+			let process = ChildProcess(Command(absolutePath:"/bin/sh", arguments:["-c", command]), dataChannels:[
 				STDOUT_FILENO: .write(.byo(fd:.init(rawValue:pipe.writing))),
 				STDERR_FILENO: .write(.toNull),
 				STDIN_FILENO: .read(.fromNull)
@@ -72,9 +83,9 @@ extension SwiftSlashTests {
 			#expect(__cswiftslash_fcntl_getfd(pipe.writing) >= 0, "swiftslash must not close a caller-owned descriptor")
 			try? pipe.writing.closeFileHandle()
 			let bytes = await readerTask.result.get()
-			let received = String(bytes:bytes, encoding:.utf8)
 			#expect(exit == .code(0))
-			#expect(received == payload + "\n", "expected the exact raw payload with no line splitting")
+			#expect(bytes.count == byteCount, "expected exactly \(byteCount) raw bytes")
+			#expect(bytes == expected, "expected the exact raw payload with no line splitting or mangling")
 		}
 
 		@Test("BYODataChannelTests :: stdin byo feeder observes EOF",
@@ -140,6 +151,93 @@ extension SwiftSlashTests {
 			#expect(outLines.count == 1, "expected exactly one line of built-in stdout")
 			#expect(String(bytes:outLines.first!, encoding:.utf8) == "mixed-out")
 			#expect(String(bytes:errBytes, encoding:.utf8) == "mixed-err\n", "expected raw stderr bytes with no line splitting")
+		}
+
+		@Test("BYODataChannelTests :: swapped pipe end is rejected up front",
+			.timeLimit(.minutes(1))
+		)
+		func testByoWrongDirection() async throws {
+			let pipe = try PosixPipe()
+			defer {
+				try? pipe.reading.closeFileHandle()
+				try? pipe.writing.closeFileHandle()
+			}
+			// a child-writing (stdout) channel cannot be fed a read-only descriptor:
+			// the child would write into a reader end and fail in the child. this is
+			// the classic swapped-end mistake and must be caught before spawn.
+			let wrongWriter = ChildProcess(Command(absolutePath:"/bin/echo", arguments:["x"]), dataChannels:[
+				STDOUT_FILENO: .write(.byo(fd:.init(rawValue:pipe.reading))),
+				STDERR_FILENO: .write(.toNull),
+				STDIN_FILENO: .read(.fromNull)
+			])
+			await #expect(throws:ChildProcess.SpawnError.byoFileDescriptorWrongDirection) {
+				try await wrongWriter.run()
+			}
+			// and the mirror image: a child-reading (stdin) channel cannot be fed a
+			// write-only descriptor.
+			let wrongReader = ChildProcess(Command(absolutePath:"/bin/cat"), dataChannels:[
+				STDIN_FILENO: .read(.byo(fd:.init(rawValue:pipe.writing))),
+				STDOUT_FILENO: .write(.toNull),
+				STDERR_FILENO: .write(.toNull)
+			])
+			await #expect(throws:ChildProcess.SpawnError.byoFileDescriptorWrongDirection) {
+				try await wrongReader.run()
+			}
+		}
+
+		@Test("BYODataChannelTests :: task cancellation with a sigterm-ignoring child stays actor-responsive and then reaps",
+			.timeLimit(.minutes(1))
+		)
+		func testByoStubbornCancellation() async throws {
+			let pipe = try PosixPipe()
+			defer {
+				try? pipe.reading.closeFileHandle()
+				try? pipe.writing.closeFileHandle()
+			}
+			// the shell ignores SIGTERM and loops forever, so cancellation cannot
+			// complete the reap on its own; the wait must suspend without burning CPU,
+			// leaving the actor available for signaling/state. only the escalated
+			// SIGKILL (which cannot be ignored) terminates the child.
+			let process = ChildProcess(Command(absolutePath:"/bin/sh", arguments:["-c", "trap '' TERM; while :; do sleep 1; done"]), dataChannels:[
+				STDOUT_FILENO: .write(.byo(fd:.init(rawValue:pipe.writing))),
+				STDERR_FILENO: .write(.toNull),
+				STDIN_FILENO: .read(.fromNull)
+			])
+			let runTask = Task { () -> ChildProcess.Exit in
+				try await process.run(cancellationSignal:ChildProcess.defaultCancellationSignal)
+			}
+			let running = await waitUntilRunning(process)
+			guard case .running(_) = running else {
+				Issue.record("process never reached the running state")
+				runTask.cancel()
+				return
+			}
+			runTask.cancel()
+			// while the cancelled wait is pending, the actor must stay responsive:
+			// state reads must not block behind the reap, and signal delivery must
+			// still interleave.
+			try? await Task.sleep(for:.milliseconds(200))
+			let midState = await process.state
+			guard case .running(_) = midState else {
+				Issue.record("expected the actor to stay responsive during the cancelled wait, but state was \(midState)")
+				return
+			}
+			// escalate to SIGKILL, which proves signal(_:) interleaves during the wait.
+			try await process.signal(SIGKILL)
+			do {
+				_ = try await runTask.value
+				Issue.record("expected CancellationError, but the run produced a result")
+			} catch is CancellationError {
+				// expected. the signal was SIGTERM (ignored) then SIGKILL (escalation).
+			} catch {
+				Issue.record("expected CancellationError, but got \(error)")
+			}
+			let finalState = await process.state
+			guard case .reaped(let exit) = finalState else {
+				Issue.record("expected the process to be reaped after cancellation, but got \(finalState)")
+				return
+			}
+			#expect(exit == .signal(SIGKILL), "expected termination by the escalated SIGKILL, but the process exited with \(exit)")
 		}
 
 		@Test("BYODataChannelTests :: caller descriptors survive the full process lifecycle",

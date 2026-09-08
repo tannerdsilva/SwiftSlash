@@ -64,6 +64,11 @@ int __cswiftslash_fcntl_setfd(int fd, int flags);
 /// @return the result of the fcntl function call.
 int __cswiftslash_fcntl_getfd(int fd);
 
+/// swift cannot call variadic functions, so this function is a wrapper around the fcntl function that gets the file status flags (F_GETFL).
+/// @param fd the file descriptor to get the file status flags from.
+/// @return the file status flags on success, or -1 with errno set.
+int __cswiftslash_fcntl_getfl(int fd);
+
 /// Spawn a child process via posix_spawn with dup2 file actions and optional chdir.
 /// @param pid_out receives the child pid on success (may be NULL).
 /// @param path the executable path.
