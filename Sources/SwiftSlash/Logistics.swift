@@ -183,63 +183,93 @@ internal struct ProcessLogistics {
 							try! wFH.closeFileHandle()
 						}
 
-						// this function will retrieve the next data chunk that the user wants to write.
-						func getNextWriteStep(iterator:borrowing FIFO<([UInt8], Future<Void, DataChannel.ChildRead.ParentWrite.Error>?), Never>.AsyncConsumerExplicit) async -> WriteStepper? {
-							switch await iterator.next(whenTaskCancelled:.noAction) {
-								case .element(let (newUserDataToWrite, writeCompleteFuture)):
-									// this is a signal that the file handle is ready for writing.
-									return WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
-								case .capped(_):
-									// this is a signal that the file handle is not ready for writing.
-									return nil
-								case .wouldBlock:
-									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
-							}
-						}
-
-						// this function will attempt to write the entire contents of the current write step to the file handle.
-						func flushCurrentStep(_ currentWriteStep:inout WriteStepper?) throws(FileHandleError) {
-							switch try currentWriteStep!.write(to:wFH) {
-								case .retireMe:
-									currentWriteStep = nil
-									return
-								case .holdMe:
-									return
-							}
-						}
-
+						// the write loop is driven by the user data stream rather than by
+						// pipe readiness signals. an element means "write these bytes to
+						// the child"; a cap means "the channel is finished — close the
+						// write descriptor", which is what delivers EOF to the child.
+						// pushing data or closing the channel resumes this consumer
+						// directly, so with no bytes in flight the finish is observed
+						// without any further pipe-readiness event — the exact situation
+						// that deadlocked on linux (LINUX_STDIN_EOF_DEADLOCK.md). when a
+						// step is mid-flight in a full pipe, the finish is observed once
+						// that step drains: a full->space transition, which the
+						// edge-triggered trigger always reports, and which any child
+						// that reads to EOF will produce. closing earlier would truncate
+						// the child's input, so deferring EOF until the in-flight bytes
+						// are flushed is the correct ordering. the writability consumer
+						// is consulted only while a write is refused because the pipe is
+						// full.
 						let userDataConsume = userDataStream.makeAsyncConsumer()
 
-						var currentWriteStepper:WriteStepper? = nil
-						// main loop. if this loop is broken, it means that the termination future has been set.
-						systemEventLoopInfinite: repeat {
-							// wait for the system to indicate that the file handle is ready for writing.
-							switch await writeConsumer.next(whenTaskCancelled:.noAction) {
-								case .element(_):
-									if currentWriteStepper == nil {
-										// this is a signal that the file handle is ready for writing.
-										currentWriteStepper = await getNextWriteStep(iterator:userDataConsume)
-										guard currentWriteStepper != nil else {
-											// user is ready for this stream to be closed.
-											break systemEventLoopInfinite
+						// the channel is finished — the user closed it, or the child
+						// exited (which caps the user stream too). fail every buffered
+						// write so no caller can hang on a future that will never
+						// complete, then let the defer close the write descriptor.
+						func drainPendingWrites() async {
+							finalFlushLoop: while true {
+								switch await userDataConsume.next(whenTaskCancelled:.noAction) {
+									case .element(let (_, writeCompleteFuture)):
+										_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
+									case .capped(_):
+										break finalFlushLoop
+									case .wouldBlock:
+										fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
+								}
+							}
+						}
+
+						writeLoop: while true {
+							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
+								case .element(let (newUserDataToWrite, writeCompleteFuture)):
+									// flush this step in its entirety, bridging backpressure.
+									var currentWriteStepper = WriteStepper(newUserDataToWrite, writeFuture:writeCompleteFuture)
+									flushLoop: while true {
+										// resolve the outcome of a write attempt. a full
+										// pipe surfaces either as a refused write
+										// (EWOULDBLOCK on the non-blocking descriptor,
+										// mapped to .error_wouldblock) or as a partial
+										// write (.holdMe); both leave the remaining bytes
+										// to be flushed once the pipe gains space.
+										let isStepRetired:Bool
+										do {
+											switch try currentWriteStepper.write(to:wFH) {
+												case .retireMe:
+													isStepRetired = true
+												case .holdMe:
+													isStepRetired = false
+											}
+										} catch FileHandleError.error_wouldblock {
+											isStepRetired = false
+										} catch FileHandleError.error_pipe {
+											// the child's read end is gone. the in-flight
+											// step can never complete; fail it and treat
+											// the channel as closed (the defer closes the
+											// descriptor, and run() reaps the child).
+											_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
+											await drainPendingWrites()
+											break writeLoop
+										}
+										if isStepRetired {
+											break flushLoop
+										}
+										// the pipe is full. block on the next writability
+										// signal. a cap here means the child has exited
+										// mid-flush: the in-flight step can never complete.
+										switch await writeConsumer.next(whenTaskCancelled:.noAction) {
+											case .element(_):
+												continue flushLoop
+											case .capped(_):
+												_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
+												await drainPendingWrites()
+												break writeLoop
+											case .wouldBlock:
+												fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 										}
 									}
-									try flushCurrentStep(&currentWriteStepper)
 								case .capped(_):
-									// this is a signal that the file handle is not ready for writing.
-									break systemEventLoopInfinite
-								case .wouldBlock:
-									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
-							}
-						} while true
-						// data channel has been terminated. now we need to just cleanup any pending writes that the user might have stored in the FIFO. all futures found in the fifo at this point will be returned with an error instead of a successful completion or cancellation.
-						finalFlushLoop: while currentWriteStepper != nil {
-							switch await userDataConsume.next(whenTaskCancelled:.noAction) {
-								case .element(let (_, writeCompleteFuture)):
-									_ = try? writeCompleteFuture?.setFailure(.dataChannelClosed)
-								case .capped(_):
-									// this is a signal that the file handle is not ready for writing.
-									break finalFlushLoop
+									// the user closed the channel (or the child exited).
+									await drainPendingWrites()
+									break writeLoop
 								case .wouldBlock:
 									fatalError("SwiftSlashFIFO :: unexpected wouldBlock condition in WriteTask.launch()")
 							}
@@ -315,6 +345,10 @@ internal struct ProcessLogistics {
 	/// the event trigger that will be used to facilitate the IO exchange between the parent and child process.
 	@SwiftSlashGlobalSerialization fileprivate static var eventTrigger:EventTrigger? = nil
 
+	/// guards the once-only suppression of SIGPIPE in the parent process.
+	/// only mutated inside `launch`, which is globally serialized.
+	@SwiftSlashGlobalSerialization private static var didSuppressParentSIGPIPE = false
+
 	/// registers a process exit monitor with the event trigger. serialized because the trigger's registration stream is shared across launches.
 	@SwiftSlashGlobalSerialization internal static func registerProcessExitMonitor(_ pid:pid_t, on trigger:EventTrigger, fifo:consuming FIFO<Int, Never>) throws {
 		try trigger.register(process:pid, fifo)
@@ -338,6 +372,22 @@ internal struct ProcessLogistics {
 		// cooperative reaping of the child process.
 		if eventTrigger == nil {
 			eventTrigger = try EventTrigger()
+		}
+
+		// the parent writes to the child's stdin through a non-blocking pipe, and
+		// that write can race the child's exit. without SIGPIPE suppressed, the
+		// race terminates the parent before write() can return EPIPE. suppressing
+		// it turns the race into a normal EPIPE error, which the write loop treats
+		// as a closed channel. NOTE: this is a process-wide disposition change and
+		// is the standard approach for pipe/socket I/O (there is no per-descriptor
+		// SIGPIPE suppression for pipes on either supported platform); it is
+		// installed exactly once per process, at the first launch, and can never
+		// be uninstalled. children are unaffected: the spawn helper resets every
+		// signal disposition to default via POSIX_SPAWN_SETSIGDEF, so a child
+		// never inherits the ignored disposition.
+		if Self.didSuppressParentSIGPIPE == false {
+			Self.didSuppressParentSIGPIPE = true
+			__cswiftslash_ignore_sigpipe()
 		}
 
 		// caller-provided ("bring your own") descriptors that must be bound to child

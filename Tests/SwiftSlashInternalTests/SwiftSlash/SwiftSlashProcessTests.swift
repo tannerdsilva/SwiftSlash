@@ -224,5 +224,67 @@ extension SwiftSlashTests {
 			}
 			#expect(foundItems == 10, "expected to find exactly 10 output items from child process")
 		}
+
+		@Test("SwiftSlashProcessTests :: stdin EOF is delivered to an EOF-consuming child", 
+			.timeLimit(.minutes(1))
+		)
+		func stdinEOFDelivery() async throws {
+			// the child must consume all of stdin to EOF before it can proceed. this
+			// deadlocked on linux (see LINUX_STDIN_EOF_DEADLOCK.md): the payload was
+			// written but the child's stdin descriptor was never closed, so the child
+			// waited for EOF forever and run() never returned.
+			let command = Command(absolutePath:"/bin/sh", arguments:["-c", #"cat > /dev/null && echo "EOF_OK""#])
+			let process = ChildProcess(command)
+			let outTask = Task {
+				var build = [[UInt8]]()
+				for await chunk in process.stdout {
+					build.append(contentsOf:chunk)
+				}
+				return build
+			}
+			async let exitResult = process.run()
+			// send a payload, then signal EOF by closing the channel.
+			try process.stdin.yield([UInt8]("hello\n".utf8))
+			process.stdin.closeDataChannel()
+			let exit = try await exitResult
+			#expect(exit == .code(0), "expected the child to see EOF and exit 0, got \(exit)")
+			let captured = await outTask.value
+			let joined = String(bytes:captured.flatMap{$0}, encoding:.utf8) ?? ""
+			#expect(joined.contains("EOF_OK"), "expected the child to observe EOF and print EOF_OK, got \(joined)")
+		}
+
+		@Test("SwiftSlashProcessTests :: multi-chunk piped input reaches an EOF-consuming child", 
+			.timeLimit(.minutes(1))
+		)
+		func multiChunkStreamingToEOF() async throws {
+			// chunks yielded over time (not in a single burst) must each reach the
+			// child, and the final close must deliver EOF. on linux the old
+			// signal-driven write loop never resumed after the first chunk, so
+			// everything past chunk one was lost and EOF was never delivered.
+			let command = Command(absolutePath:"/bin/cat", arguments:[])
+			let process = ChildProcess(command)
+			let outTask = Task {
+				var build = [UInt8]()
+				for await chunk in process.stdout {
+					build.append(contentsOf:chunk.flatMap{$0})
+				}
+				return build
+			}
+			async let exitResult = process.run()
+			let chunks:[[UInt8]] = [
+				[UInt8]("first-chunk-".utf8),
+				[UInt8]("second-chunk-".utf8),
+				[UInt8]("third-chunk".utf8)
+			]
+			for chunk in chunks {
+				try process.stdin.yield(chunk)
+				try await Task.sleep(for:.milliseconds(300))
+			}
+			process.stdin.closeDataChannel()
+			let exit = try await exitResult
+			#expect(exit == .code(0), "expected the child to see EOF and exit 0, got \(exit)")
+			let captured = await outTask.value
+			#expect(captured == chunks.flatMap{$0}, "expected the child to echo every yielded byte back")
+		}
 	}
 }

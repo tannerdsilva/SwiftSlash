@@ -69,6 +69,12 @@ int __cswiftslash_fcntl_getfd(int fd);
 /// @return the file status flags on success, or -1 with errno set.
 int __cswiftslash_fcntl_getfl(int fd);
 
+/// swift cannot portably reference the SIG_IGN macro, so this function is a
+/// wrapper around signal(SIGPIPE, SIG_IGN). suppresses the terminating SIGPIPE
+/// that a write to a pipe with no readers (a child that just exited) would
+/// otherwise raise, so the write returns EPIPE and can be handled as an error.
+void __cswiftslash_ignore_sigpipe(void);
+
 /// Spawn a child process via posix_spawn with dup2 file actions and optional chdir.
 /// @param pid_out receives the child pid on success (may be NULL).
 /// @param path the executable path.
