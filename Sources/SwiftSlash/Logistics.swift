@@ -146,7 +146,11 @@ internal struct ProcessLogistics {
 			}
 			// populate the base array with the arguments.
 			for (i, arg) in buildArgs.enumerated() {
-				baseArray[i] = strndup(arg, arg.count)
+				// the length handed to strndup is a BYTE count, so it has to come
+				// from the utf-8 view. `arg.count` counts characters, which
+				// silently truncated every non-ascii argument to that many bytes
+				// (argv[0] included).
+				baseArray[i] = strndup(arg, arg.utf8.count)
 			}
 			// cap the base array with nil.
 			baseArray[buildArgs.count] = nil

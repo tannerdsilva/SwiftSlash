@@ -5,6 +5,8 @@ import SwiftSlashFHHelpers
 import SwiftSlashFIFO
 import SwiftSlashFuture
 import class Foundation.FileManager
+import struct Foundation.UUID
+import struct Foundation.Data
 
 extension Tag {
 	@Tag internal static var swiftSlashProcessTests:Self
@@ -58,6 +60,66 @@ extension SwiftSlashTests {
 			#expect(await errTask.result.get() == 0, "expected no errors from child process")
 			#expect(try await exitResult == .code(0))
 		}
+		@Test("SwiftSlashProcessTests :: non-ascii arguments reach the child byte-exact",
+			.timeLimit(.minutes(1))
+		)
+		func testNonASCIIArguments() async throws {
+			// regression: the argv marshaller passed `String.count` (characters)
+			// as the byte length to strndup, so a non-ascii argument arrived
+			// truncated to its character count in bytes ("日本語" -> "日 3 bytes").
+			let payload = "héllo→wörld 日本語 é"
+			#expect(payload.utf8.count > payload.count, "the payload must exercise multi-byte characters")
+			let command = Command(absolutePath:"/bin/echo", arguments:[payload])
+			let process = ChildProcess(command)
+			async let exitResult = process.run()
+			let outTask = Task {
+				var buildLines = [[UInt8]]()
+				for await curItem in process.stdout {
+					buildLines.append(contentsOf:curItem)
+				}
+				return buildLines
+			}
+			let outBytes = await outTask.result.get()
+			let text = outBytes.map { String(decoding:$0, as:UTF8.self) }.joined(separator:"\n")
+			#expect(text == payload, "expected the argument to arrive without truncation")
+			#expect(try await exitResult == .code(0))
+		}
+
+		@Test("SwiftSlashProcessTests :: non-ascii executable path spawns byte-exact",
+			.timeLimit(.minutes(1))
+		)
+		func testNonASCIIExecutablePath() async throws {
+			// the executable path is handed to posix_spawn as the exec path (and appears
+			// again as argv[0] inside the marshalled argument vector), so a
+			// non-ascii path must resolve byte-exact: a truncated path would not
+			// exist. this stages a shell script, not a copied binary — macos
+			// refuses to exec a copied Apple-signed binary (SIGKILL, for reasons
+			// unrelated to argument marshalling).
+			let fm = FileManager.default
+			let dir = fm.temporaryDirectory.appendingPathComponent("swiftslash-日本語-\(UUID().uuidString)")
+			try fm.createDirectory(at:dir, withIntermediateDirectories:true)
+			defer { try? fm.removeItem(at:dir) }
+			let scriptURL = dir.appendingPathComponent("echo-日本語.sh")
+			let body = "#!/bin/sh\necho \"$1\"\n"
+			_ = fm.createFile(atPath:scriptURL.path, contents:Data(body.utf8))
+			try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath:scriptURL.path)
+
+			let command = Command(absolutePath:Path(scriptURL.path), arguments:["payload"])
+			let process = ChildProcess(command)
+			async let exitResult = process.run()
+			let outTask = Task {
+				var buildLines = [[UInt8]]()
+				for await curItem in process.stdout {
+					buildLines.append(contentsOf:curItem)
+				}
+				return buildLines
+			}
+			let outBytes = await outTask.result.get()
+			let text = outBytes.map { String(decoding:$0, as:UTF8.self) }.joined(separator:"\n")
+			#expect(text == "payload", "expected the child at the non-ascii path to run")
+			#expect(try await exitResult == .code(0))
+		}
+
 		@Test("SwiftSlashProcessTests :: getting started example test",
 			  .timeLimit(.minutes(1))
 		)
