@@ -11,6 +11,7 @@ copyright (c) tanner silva 2026. all rights reserved.
 
 import Synchronization
 import __cswiftslash_posix_helpers
+import SwiftSlashFIFO
 
 /// Comprehensive tool for launching `Command`s.
 /// - NOTE: When SwiftSlash launches a process, the launched process is referred to as a *child* process.
@@ -180,6 +181,56 @@ public actor ChildProcess {
 							curRead.launch(taskGroup:&tg)
 						}
 						
+						// the io loops are capped only by their channels' finish
+						// futures, which the event trigger completes on eof. a
+						// process that survives the child can keep a pipe end open,
+						// so no eof ever arrives and a loop parks on a stream that
+						// nothing can end. the child's own exit must therefore cap
+						// the channels too, and it has to be watched while the loops
+						// are still running — the reap below runs only after them.
+						//
+						// this watcher is a member of the same group, so waitForAll
+						// cannot return before it has finished and deregistered. the
+						// reap then registers a monitor for the same pid, and those
+						// two registrations must never overlap: process monitors are
+						// held per pid, so a second registration would replace this
+						// one's entry and strand its waiter.
+						let cappableWriteFutures = preapredPackage.writeTasks.map({ $0.terminationFuture })
+						let cappableReadFutures = preapredPackage.readTasks.map({ $0.terminationFuture })
+						let watchedPID = preapredPackage.launchedPID
+						let watchingTrigger = preapredPackage.eventTrigger
+						tg.addTask {
+							let exitFIFO:FIFO<Int, Never> = try! .init()
+							let exitConsumer = exitFIFO.makeAsyncConsumer()
+							do {
+								try await ProcessLogistics.registerProcessExitMonitor(watchedPID, on:watchingTrigger, fifo:exitFIFO)
+							} catch {
+								// no kernel process monitor (an old kernel, or fd
+								// exhaustion). the reap below falls back to polling,
+								// but this cap cannot: capping before the child is
+								// known to be gone would truncate live output. the
+								// loops keep their pre-existing behaviour here.
+								return
+							}
+							// suspend until the child exits. this suspension survives
+							// task cancellation: the trigger's polling thread is
+							// independent of the calling task.
+							_ = await exitConsumer.next(whenTaskCancelled:.noAction)
+							await ProcessLogistics.deregisterProcessExitMonitor(watchedPID, on:watchingTrigger)
+							// the child is gone. cap every channel that its own eof
+							// has not already ended, so a stream a survivor holds
+							// open can still finish. a channel that already has a
+							// result is left to its eof path, and the drain loop
+							// that follows a cap reads out whatever the child left
+							// behind in the pipe.
+							for curFuture in cappableWriteFutures where curFuture.hasResult() == false {
+								_ = try? curFuture.setSuccess(())
+							}
+							for curFuture in cappableReadFutures where curFuture.hasResult() == false {
+								_ = try? curFuture.setSuccess(())
+							}
+						}
+
 						// wait for the io loops to wind down. the group is cancelled with the calling task, so this can throw. the child process must still be reaped regardless of the outcome.
 						let waitOutcome:Result<Void, any Error>
 						do {

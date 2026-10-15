@@ -46,7 +46,9 @@ extension Int32 {
 	/// reads data from self (represented as a system file handle) into the buffer provided.
 	/// - parameter dataBuffer: the buffer to read the data into.
 	/// - parameter readSize: the size of data to read.
-	/// - returns: the number of bytes read.
+	/// - returns: the number of bytes read. zero means end-of-file: the write end of the pipe has closed.
+	/// - throws: FileHandleError.error_wouldblock, FileHandleError.error_bad_fh, FileHandleError.error_invalid, FileHandleError.error_io, FileHandleError.error_unknown.
+	/// - note: an interruption (EINTR) is handled internally and the read is retried. a non-blocking file handle with no data available surfaces as FileHandleError.error_wouldblock and blocks no thread — the caller is expected to park on a readiness signal and retry. retrying HERE instead would spin the calling thread with no suspension point: the read could neither finish nor observe cancellation, so its launch's task group could never complete and the child would never be reaped.
 	public func readFH(into dataBuffer:UnsafeMutablePointer<UInt8>, size readSize:Int) throws(FileHandleError) -> Int {
 		infiniteLoop: repeat {
 			// read the data from the file handle.
@@ -54,9 +56,13 @@ extension Int32 {
 			guard amountRead > -1 else {
 				let errNo = __cswiftslash_get_errno()
 				switch errNo {
-					case EAGAIN:
-						continue infiniteLoop
 					case EWOULDBLOCK:
+						// an empty non-blocking descriptor. on both supported
+						// platforms EAGAIN and EWOULDBLOCK share a single value
+						// (11 on linux, 35 on darwin), so this case covers the
+						// non-blocking "would block" condition of both names.
+						// the caller is expected to park on a readiness signal
+						// and retry.
 						throw FileHandleError.error_wouldblock;
 					case EBADF:
 						throw FileHandleError.error_bad_fh;
