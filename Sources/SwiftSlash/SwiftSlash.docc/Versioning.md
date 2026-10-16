@@ -30,7 +30,9 @@ For complete rules and edge cases, see the official specification: [https://semv
 | Series | Recommended Version | Branch   | Notes                                                                                            |
 | ------ | ------------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | **v3** | v3.4.0              | `v3`     | Last stable v3 release. Community-driven maintenance; updates are not officially guaranteed.     |
-| **v4** | v4.0.0              | `master` | Current major series with Swift 6.x compatibility, enhanced memory control, and ongoing support. |
+| **v6** | v6.0.0              | `master` | Current major series. Process-group placement is part of the spawn contract: nested launches cascade, detachment is explicit. |
+| **v5** | v5.0.3              | `master` | Read-path termination (a launch settles when its child exits) and non-ASCII argument marshalling fixes. |
+| **v4** | v4.0.0              | `master` | Swift 6.x compatibility, enhanced memory control, and ongoing support. |
 
 - Future v3 fixes or minor updates will be merged into the `v3` branch.
 - All new v4 development targets the `master` branch.
@@ -47,4 +49,20 @@ Legacy codebases still on v3.x can continue with **v3.4.0** but are encouraged t
 
 ---
 
-*This document was last updated for SwiftSlash v4.0.0*
+## Migrating to v6.0.0
+
+v6.0.0 makes process-group placement part of the spawn contract. The migration is small, and most callers are unaffected.
+
+| Change | What to do |
+| --- | --- |
+| `ChildProcess(_:processGroup:)` now resolves its default from the enclosing launch instead of always meaning ``SwiftSlash/ChildProcess/ProcessGroup/own``. | Nothing, unless you depended on "no argument means `.own`" *while running inside a launch*. Pass `processGroup: .own` explicitly to keep that behaviour. |
+| ``SwiftSlash/ChildProcess/ProcessGroup`` gained `inherited` and `detached`. | Nothing. `.own` is unchanged. |
+| ``SwiftSlash/ChildProcess/signal(_:to:)`` is new, and defaults to `.processGroup`. | Use it instead of signalling a pid by hand. |
+| File descriptor 3 is reserved for the launch descriptor. | A program that binds or closes descriptor 3 loses cascading and falls back to its own group. Bind elsewhere. |
+| Cancellation signals once and does not escalate. | Pass `SIGKILL` where termination must be guaranteed. This was already the behaviour in v5; v6 documents it as a contract. |
+
+The nested-launch escape is why this is a major bump: a launch's child that itself spawned through SwiftSlash used to form a second process group, so an outer teardown could not reach it and the grandchild survived for minutes after the caller had reported failure. See <doc:Process Groups and Detachment>.
+
+---
+
+*This document was last updated for SwiftSlash v6.0.0*

@@ -118,4 +118,42 @@ public struct CurrentEnvironment {
 				throw PathSearchError.pathNotFoundInEnvironment
 		}
 	}
+
+	/// What this process knows about the launch it is running under.
+	///
+	/// `nil` when the current process was not spawned by a launch. The answer is
+	/// resolved once per process and cached, because reading the reserved
+	/// descriptor consumes the record it carries.
+	/// - Returns: The identity of the enclosing launch, or `nil` if there is none.
+	public static func launchIdentity() -> LaunchIdentity? {
+		guard let record = ProcessLogistics.enclosingLaunch else {
+			return nil
+		}
+		return LaunchIdentity(
+			launcherPID:record.launcher_pid,
+			processGroup:getpgid(0),
+			session:getsid(0)
+		)
+	}
+}
+
+/// Identifies the launch a process is running under.
+///
+/// Placement is conveyed by the process relationship itself rather than by ambient
+/// configuration, so a process can always discover where it sits. There is no public
+/// initializer that fabricates one — ``CurrentEnvironment/launchIdentity()`` is the only
+/// way to obtain a value, and it returns `nil` outside a launch.
+public struct LaunchIdentity:Sendable, Hashable {
+	/// The process that spawned this one.
+	public let launcherPID:Int32
+	/// This process's process group.
+	public let processGroup:Int32
+	/// This process's session.
+	public let session:Int32
+
+	public init(launcherPID:Int32, processGroup:Int32, session:Int32) {
+		self.launcherPID = launcherPID
+		self.processGroup = processGroup
+		self.session = session
+	}
 }

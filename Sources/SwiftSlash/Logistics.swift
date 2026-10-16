@@ -121,18 +121,22 @@ internal struct ProcessLogistics {
 		internal let env:[String:String]
 		/// represents a mapping of the data channels with the file handles of the child process.
 		internal let dataChannels:[Int32:DataChannel]
+		/// where the child will be placed in the process-group hierarchy.
+		internal let processGroup:ChildProcess.ProcessGroup
 
 		internal init(
 			exe exePath:consuming Path,
 			arguments argsIn:consuming [String],
 			workingDirectory wd:Path,
 			env envIn:[String:String],
+			processGroup group:ChildProcess.ProcessGroup,
 			dataChannels io:[Int32:DataChannel]
 		) {
 			exe = exePath
 			arguments = argsIn
 			workingDirectory = wd
 			env = envIn
+			processGroup = group
 			dataChannels = io
 		}
 
@@ -167,6 +171,9 @@ internal struct ProcessLogistics {
 			internal let writeTasks:[WriteTask]
 			internal let readTasks:[ReadTask]
 			internal let launchedPID:pid_t
+			/// the placement this child was given, which decides how this launch
+			/// reaches it on teardown.
+			internal let processGroup:ChildProcess.ProcessGroup
 			/// the event trigger that services this launch's io and reaping.
 			internal let eventTrigger:EventTrigger
 			
@@ -370,6 +377,31 @@ internal struct ProcessLogistics {
 		trigger.dropProcessRegistration(pid)
 	}
 
+	/// the enclosing launch, probed once per process.
+	///
+	/// reading the reserved descriptor CONSUMES the record, and a process's
+	/// enclosing launch cannot change over its lifetime, so the answer is
+	/// resolved exactly once and cached for the rest of the process. `nil` means
+	/// this process was not spawned by a launch.
+	internal static let enclosingLaunch:__cswiftslash_launch_descriptor? = {
+		var record = __cswiftslash_launch_descriptor()
+		guard __cswiftslash_probe_launch_descriptor(&record) == 0 else {
+			return nil
+		}
+		return record
+	}()
+
+	/// the placement a launch uses when the caller names none.
+	///
+	/// a process that was itself spawned by a launch is already inside the
+	/// launching process's group, so its own children join that group and an
+	/// outer teardown cascades through every level. a process nobody launched
+	/// keeps the historical behaviour of leading its own group. an explicit
+	/// placement argument always wins over this.
+	internal static var automaticPlacement:ChildProcess.ProcessGroup {
+		return enclosingLaunch == nil ? .own : .inherited
+	}
+
 	@SwiftSlashGlobalSerialization internal static func launch(package:borrowing LaunchPackage) throws -> LaunchPackage.Launched {
 		// the event trigger is required for every launch: it services the built-in
 		// channel readiness signals AND the process-exit monitor that drives the
@@ -393,6 +425,7 @@ internal struct ProcessLogistics {
 			Self.didSuppressParentSIGPIPE = true
 			__cswiftslash_ignore_sigpipe()
 		}
+
 
 		// caller-provided ("bring your own") descriptors that must be bound to child
 		// file handles at spawn time. these descriptors are not owned by swiftslash:
@@ -534,11 +567,42 @@ internal struct ProcessLogistics {
 			}
 		}
 
+		// the descriptor this launch leaves for its child. it is created LAST, after
+		// every caller-provided descriptor has been validated: this library's
+		// contract is that no pipe of its own exists before that validation, and
+		// allocating one earlier lets the launch's own descriptor take a number the
+		// caller had just released, which turns their "closed descriptor" into
+		// someone else's live one.
+		//
+		// the record is written BEFORE the spawn, so the child can read it without
+		// ever waiting, and the write end is closed immediately afterwards: the
+		// child's descriptor is therefore "one record, then end of file". the read
+		// end is released before this function returns on every path (normal exit,
+		// thrown error, cancellation), so a launch never holds a descriptor for its
+		// lifetime.
+		var launchDescriptorReadFD:Int32 = -1
+		var launchDescriptorWriteFD:Int32 = -1
+		if __cswiftslash_create_launch_descriptor(&launchDescriptorReadFD, &launchDescriptorWriteFD) == 0 {
+			if __cswiftslash_write_launch_descriptor(launchDescriptorWriteFD, package.processGroup.spawnMode) != 0 {
+				// a descriptor carrying no record would read as "not inside a
+				// launch", which is the degraded but correct answer. drop it
+				// rather than install a half-descriptor.
+				try? launchDescriptorReadFD.closeFileHandle()
+				launchDescriptorReadFD = -1
+			}
+			try? launchDescriptorWriteFD.closeFileHandle()
+		}
+		defer {
+			if launchDescriptorReadFD >= 0 {
+				try? launchDescriptorReadFD.closeFileHandle()
+			}
+		}
+
 		// launch the application
 		let launchedPID:pid_t
 		do {
 			launchedPID = try package.exposeArguments({ argumentArr in
-				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, pipes:processPipes, byoFdBindings:byoFdBindings)
+				return try spawn(package.exe.path(), arguments:argumentArr, wd:package.workingDirectory.path(), env:package.env, processGroup:package.processGroup, pipes:processPipes, byoFdBindings:byoFdBindings, launchDescriptorReadFD:launchDescriptorReadFD)
 			})
 		} catch let error {
 			// cleanup the pipes that were created.
@@ -593,11 +657,12 @@ internal struct ProcessLogistics {
 			writeTasks:writeTasks,
 			readTasks:readTasks,
 			launchedPID:launchedPID,
+			processGroup:package.processGroup,
 			eventTrigger:eventTrigger!
 		)
 	}
 
-	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], pipes:[Int32:Pipe], byoFdBindings:[Int32:Int32]) throws(ChildProcess.SpawnError) -> pid_t {
+	@SwiftSlashGlobalSerialization fileprivate static func spawn(_ path:UnsafePointer<UInt8>, arguments argv:UnsafePointer<UnsafeMutablePointer<Int8>?>, wd:UnsafePointer<UInt8>, env:[String:String], processGroup:ChildProcess.ProcessGroup, pipes:[Int32:Pipe], byoFdBindings:[Int32:Int32], launchDescriptorReadFD:Int32) throws(ChildProcess.SpawnError) -> pid_t {
 		// verify that the exec path passes initial validation.
 		guard precheckExecute(path) == true else {
 			throw ChildProcess.SpawnError.precheckExecutableFailure
@@ -658,7 +723,9 @@ internal struct ProcessLogistics {
 					UnsafePointer<UnsafeMutablePointer<Int8>?>(envPtr.baseAddress!),
 					wd,
 					opsPtr.baseAddress,
-					dup2Ops.count / 2
+					dup2Ops.count / 2,
+					processGroup.spawnMode,
+					launchDescriptorReadFD
 				)
 			}
 		}

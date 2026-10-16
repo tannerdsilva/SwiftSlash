@@ -95,6 +95,22 @@ fileprivate let swiftTargets:[Target] = [
 	),
 ]
 
+// test fixtures. an executable target with NO product: it exists so the
+// process-group suite can drive a real second process that itself spawns
+// through swiftslash, and it is deliberately absent from the package's
+// published surface. the test target depends on it so that it is always built;
+// no test imports it.
+fileprivate let fixtureTargets:[Target] = [
+	.executableTarget(
+		name:"SwiftSlashTestSpawner",
+		dependencies:[
+			"SwiftSlash",
+			"__cswiftslash_posix_helpers"
+		],
+		path:"Tests/SwiftSlashTestSpawner"
+	),
+]
+
 fileprivate let testTarget:Target = .testTarget(
 	name:"SwiftSlashInternalTests",
 	dependencies:[
@@ -108,11 +124,12 @@ fileprivate let testTarget:Target = .testTarget(
 		"SwiftSlash",
 		"SwiftSlashGlobalSerialization",
 		"SwiftSlashOneShotLatch",
+		"SwiftSlashTestSpawner",
 	],
 	path:"Tests/SwiftSlashInternalTests"
 )
 
-fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets + [testTarget]
+fileprivate var ssInternalTargets:[Target] = cswiftslashTargets + swiftTargets + fixtureTargets + [testTarget]
 
 let package = Package(
 	name:"SwiftSlash",

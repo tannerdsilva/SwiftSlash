@@ -4,7 +4,7 @@
 
 ### Initialize a New Instance
 
-- ``SwiftSlash/ChildProcess/init(_:dataChannels:)``
+- ``SwiftSlash/ChildProcess/init(_:processGroup:dataChannels:)``
 - <doc:Bring-Your-Own-Data-Channels>
 
 ### Run the Process
@@ -16,7 +16,7 @@
 
 ### Signaling a Running Process
 
-- ``SwiftSlash/ChildProcess/signal(_:)``
+- ``SwiftSlash/ChildProcess/signal(_:to:)``
 - ``SwiftSlash/ChildProcess/SignalError``
 
 ### Process Lifecycle State

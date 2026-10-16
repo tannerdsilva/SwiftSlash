@@ -33,6 +33,22 @@ public actor ChildProcess {
 		case invalidState(InvalidProcessStateError)
 	}
 
+	/// The set of processes a signal addresses.
+	public enum SignalRecipient:Sendable {
+		/// The direct child only.
+		case process
+		/// The child and everything sharing its process group. This is the
+		/// default, and it is the same scope the cancellation path uses.
+		///
+		/// The scope a launch can actually reach is bounded by the child's
+		/// ``ProcessGroup``: a child placed in its own group takes its whole
+		/// tree down with it, while a child that leads no group of its own has
+		/// no group this launch can address — signalling that group would reach
+		/// the caller's own processes — so the signal goes to the child's pid
+		/// alone.
+		case processGroup
+	}
+
 	/// Represents the various states that a child process may be in while going through its lifecycle.
 	public enum State:Sendable {
 		/// The process interface is initialized, but not yet launched.
@@ -62,16 +78,24 @@ public actor ChildProcess {
 	/// The data channels that will be launched.
 	private let dataChannels:[Int32:DataChannel]
 
+	/// Where this child sits in the process-group hierarchy. This decides which
+	/// signals reach the child and whether it outlives its launch.
+	private let processGroup:ProcessGroup
+
 	/// Initialize a process interface with a command and a set of data channels.
 	/// - Parameters:
 	/// 	- command: The command to execute.
+	/// 	- processGroup: Where the child is placed in the process-group hierarchy, or `nil` to resolve it from the enclosing launch (see ``ProcessGroup``). A process spawned by a launch joins the group of the launch it is already in, so an outer teardown cascades; a process nobody launched leads its own group.
 	/// 	- dataChannels: Data channels to bind to the child process. The keys of this dictionary are the file handle values that will be assigned to the child process (values of `STDOUT_FILENO`, `STDIN_FILENO`, etc).
-	public init(_ command:Command, dataChannels:[Int32:DataChannel] = [
+	public init(_ command:Command,
+		processGroup:ProcessGroup? = nil,
+		dataChannels:[Int32:DataChannel] = [
 		STDOUT_FILENO : .write(.toParentProcess(stream:.init(), separator:[0x0A])),
 		STDERR_FILENO : .write(.toParentProcess(stream:.init(), separator:[0x0A])),
 		STDIN_FILENO : .read(.fromParentProcess(stream:.init()))
 	]) {
 		self.command = command
+		self.processGroup = processGroup ?? ProcessLogistics.automaticPlacement
 		self.dataChannels = dataChannels
 	}
 	
@@ -126,7 +150,7 @@ public actor ChildProcess {
 
 	/// Launches the child process by executing the configured command with the configured data channels.
 	/// This function will not return until the child process exits.
-	/// - Parameter signal: The signal code that is sent to the child process (and its entire process group) if the calling task is cancelled before the process exits. cancellation of the calling task will also cause this function to throw `CancellationError` (after the child process has been signaled and reaped).
+	/// - Parameter signal: The signal code that is sent to the child process if the calling task is cancelled before the process exits. The target of the signal is decided by the child's ``ProcessGroup``: a child placed in its own group is signalled as a group, so the whole tree goes down with it, while a child that leads no group is signalled as a single pid. cancellation of the calling task will also cause this function to throw `CancellationError` (after the child process has been signaled and reaped).
 	/// - Returns: The exit or signal code that the child process exited with.
 	public func run(cancellationSignal signal:Int32) async throws -> Exit {
 		return try await runInternal(cancellationSignal:signal)
@@ -147,6 +171,12 @@ public actor ChildProcess {
 				// set to true when a signal has been sent to the child process as the direct result of task cancellation.
 				let didSignalOnCancellation:Atomic<Bool> = .init(false)
 
+				// the placement decides what this launch's teardown can address.
+				// it is read once, before the launch, so the synchronous
+				// nonisolated cancellation handler below can capture a plain
+				// value rather than reaching back into the actor.
+				let teardownPlacement = processGroup
+
 				return try await withTaskCancellationHandler {
 					try await withThrowingTaskGroup(of:Void.self) { tg in
 						// create a launch package.
@@ -155,6 +185,7 @@ public actor ChildProcess {
 							arguments:command.arguments,
 							workingDirectory:command.workingDirectory,
 							env:command.environment,
+							processGroup:processGroup,
 							dataChannels:dataChannels
 						)
 						
@@ -164,11 +195,11 @@ public actor ChildProcess {
 						// update state
 						state = .running(preapredPackage.launchedPID)
 
-						// expose the pid to the cancellation handler and cover the case where the task was cancelled during the launch. the pid is negated so that the signal targets the child's process group, terminating the entire process tree.
+						// expose the pid to the cancellation handler and cover the case where the task was cancelled during the launch. the target of the signal is decided by the child's placement: a child that leads its own process group is signalled as a group so the whole tree goes down, and any other placement is signalled as a pid.
 						if let signal = cancellationSignal {
 							cancellationKillPID.store(preapredPackage.launchedPID, ordering:.releasing)
 							if Task.isCancelled {
-								_ = kill(-preapredPackage.launchedPID, signal)
+								_ = kill(teardownPlacement.signalTarget(pid:preapredPackage.launchedPID), signal)
 								didSignalOnCancellation.store(true, ordering:.releasing)
 							}
 						}
@@ -272,7 +303,7 @@ public actor ChildProcess {
 					guard pid > 0, let signal = cancellationSignal else {
 						return
 					}
-					_ = kill(-pid, signal)
+					_ = kill(teardownPlacement.signalTarget(pid:pid), signal)
 					didSignalOnCancellation.store(true, ordering:.releasing)
 				}
 			default:
@@ -282,17 +313,87 @@ public actor ChildProcess {
 	}
 	
 	/// Send a signal to the child process.
-	/// - Parameter code: The signal code to send to the child process.
-	/// - Throws: `InvalidProcessStateError` is thrown if the process is not running.
-	public func signal(_ code:Int32) throws(SignalError) {
+	/// - Parameters:
+	/// 	- code: The signal code to send to the child process.
+	/// 	- recipient: The set of processes the signal addresses. The default is ``SignalRecipient/processGroup``, which is the same scope the cancellation path uses. Pass ``SignalRecipient/process`` to address the direct child alone.
+	/// - Throws: `SignalError` is thrown if the process is not running, or if the kernel refuses the signal.
+	public func signal(_ code:Int32, to recipient:SignalRecipient = .processGroup) throws(SignalError) {
 		switch state {
 			case .running(let pid):
-				let killReturnValue = kill(pid, code)
+				let target:pid_t
+				switch recipient {
+					case .process:
+						target = pid
+					case .processGroup:
+						target = processGroup.signalTarget(pid:pid)
+				}
+				let killReturnValue = kill(target, code)
 				guard killReturnValue == 0 else {
 					throw .systemSignalError(errno:__cswiftslash_get_errno())
 				}
 			default:
 				throw .invalidState(InvalidProcessStateError(expectedState:.running(0), actualState:state))
+		}
+	}
+}
+
+extension ChildProcess {
+	/// Where a spawned child sits in the process-group hierarchy. This decides
+	/// which signals reach the child and whether it outlives its launch, so it
+	/// is part of the launch contract rather than a launch detail.
+	public enum ProcessGroup:Sendable {
+		/// The child leads a new process group (`pgid == its pid`). A group
+		/// signal aimed at this launch cascades through the child's whole tree,
+		/// and the caller's own group is never touched. This is the placement
+		/// used when no enclosing launch is detected.
+		case own
+		/// The child joins the caller's process group. The caller's group signal
+		/// reaches the child and its tree. The child leads no group of its own,
+		/// so this launch's own teardown signals the child's pid rather than a
+		/// group: the group-scoped teardown belongs to whoever owns that group,
+		/// which is an enclosing launch or the terminal a top-level process was
+		/// started from. This placement is resolved automatically for a process
+		/// that was itself spawned by a launch.
+		case inherited
+		/// The child starts a new session (`setsid(2)`), so it leads its own
+		/// group and session. It survives the launch's teardown and no group
+		/// signal can reach it. Detachment is always explicit.
+		case detached
+	}
+}
+
+extension ChildProcess.ProcessGroup {
+	/// The placement code the spawn helper expects. Expressed through the
+	/// imported C enumeration so the numbers exist in exactly one place.
+	internal var spawnMode:Int32 {
+		switch self {
+			case .own:
+				return Int32(__cswiftslash_pgroup_mode_own.rawValue)
+			case .inherited:
+				return Int32(__cswiftslash_pgroup_mode_inherited.rawValue)
+			case .detached:
+				return Int32(__cswiftslash_pgroup_mode_detached.rawValue)
+		}
+	}
+
+	/// The pid value that addresses exactly the processes this placement makes a
+	/// launch responsible for, when that launch sends a signal.
+	///
+	/// A child that leads its own group is reachable as a group: `kill(-pid)`
+	/// cascades through the child's whole tree. A child that does not lead a
+	/// group is reachable only as a pid — an `.inherited` child leads no group of
+	/// its own, so the group-scoped teardown belongs to whoever owns that group
+	/// (an enclosing launch, or the terminal a top-level process was started
+	/// from), and a `.detached` child is deliberately out of reach of a group
+	/// signal. Signalling the negated pid for either of those would address a
+	/// process group that does not exist, so the signal would silently fail to
+	/// arrive at all.
+	internal func signalTarget(pid:pid_t) -> pid_t {
+		switch self {
+			case .own:
+				return -pid
+			case .inherited, .detached:
+				return pid
 		}
 	}
 }
